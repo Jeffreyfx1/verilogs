@@ -1,0 +1,476 @@
+import { extractCatalog, type ParsedItem } from "@/lib/categorize";
+import { uid } from "@/lib/money";
+import type { Category } from "@/lib/categorize";
+
+export type Role = "customer" | "admin";
+
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  passwordHash: string;
+  google: boolean;
+  role: Role;
+  balance: number;
+  createdAt: string;
+  hasPassword?: boolean;
+};
+
+export type Provider = {
+  id: string;
+  name: string;
+  baseUrl: string;
+  hasKey: boolean;
+  servesNumbers: boolean;
+  enabled: boolean;
+  currency: "NGN" | "USD";
+  createdAt: string;
+  lastSync: {
+    at: string;
+    imported: number;
+    created: number;
+    updated: number;
+    skipped: number;
+    byCategory: Record<string, number>;
+    byNetwork: Record<string, number>;
+  } | null;
+};
+
+export type Product = {
+  id: string;
+  providerId: string;
+  externalId: string;
+  category: Category;
+  name: string;
+  service: string;
+  country: string;
+  network: string;
+  price: number;
+  stock: number;
+  enabled: boolean;
+  validity: string;
+  variable: boolean;
+  description: string;
+};
+
+export type Order = {
+  id: string;
+  userId: string;
+  productId: string;
+  category: Category;
+  title: string;
+  server: string;
+  network: string;
+  amount: number;
+  phone: string;
+  code: string;
+  status: "waiting" | "received" | "completed" | "refunded";
+  detail: string;
+  createdAt: string;
+};
+
+export type Txn = {
+  id: string;
+  userId: string;
+  kind: "topup" | "purchase" | "refund";
+  amount: number;
+  note: string;
+  createdAt: string;
+};
+
+export type Ticket = {
+  id: string;
+  userId: string;
+  email: string;
+  subject: string;
+  body: string;
+  createdAt: string;
+};
+
+export type Faq = { id: string; question: string; answer: string };
+export type Announcement = { id: string; title: string; body: string; createdAt: string };
+export type Banner = { id: string; title: string; body: string; href: string };
+export type HomeCopy = { eyebrow: string; title: string; body: string };
+export type Note = {
+  id: string;
+  userId: string;
+  title: string;
+  body: string;
+  read: boolean;
+  createdAt: string;
+  kind: "account" | "wallet" | "mail" | "order" | "support";
+};
+
+export type Settings = {
+  usdNgn: number;
+  margin: number;
+  community: string;
+  telegram: string;
+  whatsapp: string;
+  logo: string;
+  brand: string;
+  supportWelcome: string;
+  home: HomeCopy;
+  banners: Banner[];
+};
+
+export type Data = {
+  users: User[];
+  sessionUserId: string | null;
+  googleDraft: { name: string; email: string } | null;
+  providers: Provider[];
+  products: Product[];
+  orders: Order[];
+  txns: Txn[];
+  tickets: Ticket[];
+  faqs: Faq[];
+  announcements: Announcement[];
+  notifications: Note[];
+  paidRefs: string[];
+  settings: Settings;
+};
+
+export function defaultSettings(): Settings {
+  return {
+    usdNgn: 1650,
+    margin: 12,
+    community: "VeriLogs Community",
+    telegram: "https://t.me/verilogs",
+    whatsapp: "https://wa.me/2348000000000",
+    logo: "",
+    brand: "VeriLogs",
+    supportWelcome: "Hi, I am Vera. Ask about numbers, data, your wallet, or how to reach the Telegram channel.",
+    home: {
+      eyebrow: "Trusted digital services",
+      title: "Secure SMS verification, data and bills",
+      body: "Get virtual numbers, airtime, data and bill payment from one naira wallet. Pick a server, fund the wallet, and the code or recharge shows up in your dashboard.",
+    },
+    banners: [
+      { id: "b1", title: "Servers stay separate", body: "Each SMS API you connect becomes the next server. Prices and stock are never merged.", href: "/register" },
+      { id: "b2", title: "SIMs stay apart", body: "MTN, Airtel, Glo, 9mobile and Smile are their own catalogues.", href: "/register" },
+    ],
+  };
+}
+
+export function normalizeData(input: Partial<Data> | null | undefined): Data {
+  const base = defaultSettings();
+  const src = input ?? {};
+  const incoming = src.settings;
+  return {
+    users: src.users ?? [],
+    sessionUserId: src.sessionUserId ?? null,
+    googleDraft: src.googleDraft ?? null,
+    providers: src.providers ?? [],
+    products: src.products ?? [],
+    orders: src.orders ?? [],
+    txns: src.txns ?? [],
+    tickets: src.tickets ?? [],
+    faqs: src.faqs ?? [],
+    announcements: src.announcements ?? [],
+    notifications: src.notifications ?? [],
+    paidRefs: src.paidRefs ?? [],
+    settings: {
+      ...base,
+      ...incoming,
+      home: { ...base.home, ...incoming?.home },
+      banners: incoming?.banners?.length ? incoming.banners : base.banners,
+      logo: incoming?.logo ?? "",
+      brand: incoming?.brand || base.brand,
+      supportWelcome: incoming?.supportWelcome || base.supportWelcome,
+    },
+  };
+}
+
+const SERVICES: Array<[string, number]> = [
+  ["WhatsApp", 620], ["WhatsApp2", 740], ["Telegram", 380], ["Telegram 2.0", 460],
+  ["Signal", 510], ["Google", 540], ["Gmail", 520], ["Instagram", 690],
+  ["Facebook", 640], ["TikTok", 710], ["Twitter", 580], ["Discord", 490],
+  ["Snapchat", 670], ["Amazon", 880], ["Netflix", 920], ["Apple", 990],
+  ["Microsoft", 860], ["Uber", 730], ["Bolt", 700], ["PayPal", 1100],
+  ["Binance", 980], ["Steam", 640], ["Tinder", 770], ["Outlook", 560],
+  ["Yahoo", 430], ["Viber", 450], ["WeChat", 800], ["Line", 760],
+  ["LinkedIn", 690], ["Reddit", 540], ["1688", 360], ["163.com", 340],
+  ["115.com", 300], ["11exch", 1220], ["1xbet", 480], ["pof.com", 590],
+];
+
+const COUNTRIES: Array<[string, number]> = [
+  ["nigeria", 0.62], ["usa", 1.35], ["england", 1.12], ["canada", 1.18],
+  ["india", 0.5], ["germany", 1.22], ["indonesia", 0.58], ["kenya", 0.7],
+  ["ghana", 0.68], ["brazil", 0.86], ["france", 1.28], ["south-africa", 0.8],
+  ["netherlands", 1.16], ["philippines", 0.64], ["mexico", 0.9], ["poland", 0.95],
+];
+
+function hash(s: string) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+export function smsPayload(factor: number) {
+  const sms: Record<string, Record<string, { cost: number; count: number; operator: string }>> = {};
+  for (const [name, base] of SERVICES) {
+    sms[name] = {};
+    for (const [country, mult] of COUNTRIES) {
+      const h = hash(name + country + String(factor));
+      sms[name][country] = {
+        cost: Math.max(120, Math.round((base * mult * factor) / 10) * 10),
+        count: 40 + (h % 1800),
+        operator: h % 2 ? "Virtual" + ((h % 40) + 1) : "Route" + ((h % 12) + 1),
+      };
+    }
+  }
+  return { sms };
+}
+
+const PLANS: Array<[string, number, string]> = [
+  ["500MB", 220, "1 day"], ["1GB", 360, "1 day"], ["1.5GB", 490, "7 days"],
+  ["2GB", 720, "30 days"], ["3GB", 1050, "30 days"], ["5GB", 1550, "30 days"],
+  ["10GB", 2900, "30 days"], ["15GB", 4100, "30 days"], ["20GB", 5300, "30 days"],
+  ["40GB", 9200, "30 days"], ["75GB", 14500, "30 days"], ["120GB", 21000, "30 days"],
+];
+
+export function vtuPayload() {
+  const nets = ["MTN", "Airtel", "Glo", "9mobile", "Smile"] as const;
+  const bump: Record<string, number> = { MTN: 1, Airtel: 1.04, Glo: 0.96, "9mobile": 0.92, Smile: 1.12 };
+  const dataplans: Record<string, Array<Record<string, string | number>>> = {};
+  for (const net of nets) {
+    dataplans[net] = PLANS.map(([size, price, validity], i) => ({
+      plan_id: `${net}-${i + 1}`,
+      plan_name: `${size} data`,
+      price: Math.round((price * (bump[net] ?? 1)) / 10) * 10,
+      month_validate: validity,
+      plan_type: i % 3 === 0 ? "SME" : i % 3 === 1 ? "Gifting" : "CG",
+    }));
+  }
+  return {
+    dataplans,
+    airtime: nets.filter((n) => n !== "Smile").map((n) => ({ id: `airtime-${n}`, name: `${n} VTU Airtime`, network: n, category: "airtime" })),
+    cables: {
+      DStv: [["Padi", 2500], ["Yanga", 4200], ["Confam", 7400], ["Compact", 12500], ["Compact Plus", 19800], ["Premium", 29500]].map(
+        ([name, price]) => ({ id: `dstv-${name}`, name, price }),
+      ),
+      GOtv: [["Smallie", 1300], ["Jinja", 2700], ["Jolli", 4200], ["Max", 6400]].map(([name, price]) => ({ id: `gotv-${name}`, name, price })),
+      StarTimes: [["Nova", 1200], ["Basic", 2600], ["Smart", 3800], ["Super", 6500]].map(([name, price]) => ({ id: `star-${name}`, name, price })),
+    },
+    electricity: ["Ikeja Electric", "Eko Electric", "Abuja AEDC", "Ibadan IBEDC", "Port Harcourt PHED", "Kano KEDCO", "Enugu EEDC", "Kaduna KAEDCO"].map(
+      (name, i) => ({ id: `disco-${i + 1}`, name, category: "electricity", description: "Prepaid and postpaid" }),
+    ),
+    exams: [
+      { id: "waec", name: "WAEC Result Checker", price: 3500, category: "exam" },
+      { id: "neco", name: "NECO Result Checker", price: 1500, category: "exam" },
+      { id: "nabteb", name: "NABTEB Result Checker", price: 1200, category: "exam" },
+      { id: "jamb", name: "JAMB PIN", price: 6200, category: "exam" },
+    ],
+  };
+}
+
+export function mixedPayload() {
+  return { ...smsPayload(0.92), ...vtuPayload() };
+}
+
+const POPULAR_SERVICES = new Set(["whatsapp", "whatsapp2", "telegram", "google", "instagram", "facebook", "tiktok"]);
+const POPULAR_COUNTRIES = new Set(["Nigeria", "United States", "United Kingdom", "Canada", "Ghana", "Kenya", "India"]);
+
+function sellPrice(cost: number, currency: "NGN" | "USD", settings: Data["settings"]) {
+  const ngn = currency === "USD" ? cost * settings.usdNgn : cost;
+  if (ngn <= 0) return 0;
+  return Math.ceil((ngn * (1 + settings.margin / 100)) / 5) * 5;
+}
+
+export type SyncReport = {
+  imported: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  byCategory: Record<string, number>;
+  byNetwork: Record<string, number>;
+  providerId: string;
+  serverLabel: string | null;
+};
+
+export function serverLabel(providers: Provider[], id: string) {
+  const list = providers
+    .filter((p) => p.servesNumbers)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name));
+  const i = list.findIndex((p) => p.id === id);
+  return i === -1 ? null : "Server " + (i + 1);
+}
+
+export function ingest(
+  data: Data,
+  input: {
+    providerId?: string;
+    name: string;
+    baseUrl: string;
+    hasKey?: boolean;
+    currency: "NGN" | "USD";
+    payload: unknown;
+    enable?: (item: ParsedItem) => boolean;
+  },
+): { data: Data; report: SyncReport } {
+  const extracted = extractCatalog(input.payload);
+  const items = extracted.items;
+  const now = new Date().toISOString();
+  const providers = data.providers.map((p) => ({ ...p }));
+  let provider = input.providerId ? providers.find((p) => p.id === input.providerId) : undefined;
+  if (!provider) {
+    provider = {
+      id: uid("prov"),
+      name: input.name,
+      baseUrl: input.baseUrl,
+      hasKey: !!input.hasKey,
+      servesNumbers: false,
+      enabled: true,
+      currency: input.currency,
+      createdAt: now,
+      lastSync: null,
+    };
+    providers.push(provider);
+  } else {
+    provider.name = input.name || provider.name;
+    provider.baseUrl = input.baseUrl || provider.baseUrl;
+    provider.currency = input.currency;
+    if (input.hasKey) provider.hasKey = true;
+  }
+  const products = data.products.map((p) => ({ ...p }));
+  const byCategory: Record<string, number> = {};
+  const byNetwork: Record<string, number> = {};
+  let created = 0;
+  let updated = 0;
+  for (const item of items) {
+    byCategory[item.category] = (byCategory[item.category] || 0) + 1;
+    if (item.network) byNetwork[item.network] = (byNetwork[item.network] || 0) + 1;
+    const price = sellPrice(item.price, input.currency, data.settings);
+    const existing = products.find((p) => p.providerId === provider!.id && p.externalId === item.externalId);
+    if (existing) {
+      existing.name = item.name;
+      existing.service = item.service;
+      existing.country = item.country;
+      existing.network = item.network;
+      existing.price = price;
+      existing.stock = item.stock;
+      existing.validity = item.validity;
+      existing.variable = item.variable;
+      existing.description = item.description;
+      existing.category = item.category;
+      updated++;
+    } else {
+      products.push({
+        id: uid("prd"),
+        providerId: provider.id,
+        externalId: item.externalId,
+        category: item.category,
+        name: item.name,
+        service: item.service,
+        country: item.country,
+        network: item.network,
+        price,
+        stock: item.stock,
+        enabled: input.enable ? input.enable(item) : false,
+        validity: item.validity,
+        variable: item.variable,
+        description: item.description,
+      });
+      created++;
+    }
+  }
+  provider.servesNumbers = products.some((p) => p.providerId === provider!.id && p.category === "numbers");
+  provider.lastSync = { at: now, imported: items.length, created, updated, skipped: extracted.skipped, byCategory, byNetwork };
+  const next = { ...data, providers, products };
+  return {
+    data: next,
+    report: {
+      imported: items.length,
+      created,
+      updated,
+      skipped: extracted.skipped,
+      byCategory,
+      byNetwork,
+      providerId: provider.id,
+      serverLabel: serverLabel(providers, provider.id),
+    },
+  };
+}
+
+export const CATEGORY_LABEL: Record<string, string> = {
+  numbers: "Virtual numbers",
+  airtime: "Airtime",
+  data: "Data",
+  cable: "Cable TV",
+  electricity: "Electricity",
+  exam: "Exam PINs",
+  giftcard: "Gift cards",
+  betting: "Betting",
+  other: "Other",
+};
+
+export function isLive(product: Product, providers: Provider[]) {
+  const provider = providers.find((p) => p.id === product.providerId);
+  return product.enabled && !!provider?.enabled;
+}
+
+export function freshData(): Data {
+  const settings = defaultSettings();
+  let data: Data = {
+    users: [{
+      id: "usr_admin",
+      name: "VeriLogs Admin",
+      email: "admin@verilogs.app",
+      phone: "+2348000000000",
+      passwordHash: "1e16d6e9cfbb52596211577ad84a169944b6951c47703d65fa7800309d086b89",
+      google: false,
+      role: "admin",
+      balance: 0,
+      createdAt: "2026-01-04T10:00:00.000Z",
+    }],
+    sessionUserId: null,
+    googleDraft: null,
+    providers: [],
+    products: [],
+    orders: [],
+    txns: [],
+    tickets: [],
+    faqs: [
+      { id: "f1", question: "How do I get a verification code?", answer: "Fund your wallet with Paystack, open Virtual numbers, pick a server, choose the service and country, then buy. The number shows up immediately and the SMS code lands on the same card." },
+      { id: "f2", question: "What if the SMS never arrives?", answer: "Cancel the waiting order from your active numbers. The naira goes straight back to your wallet." },
+      { id: "f3", question: "Why are data plans split by network?", answer: "MTN, Airtel, Glo, 9mobile and Smile are separate SIM catalogues. Pick the network that matches the line you are recharging." },
+      { id: "f4", question: "What is Server 1 and Server 2?", answer: "Each SMS or virtual-number API you connect becomes the next server. Server 1 is the first number API, Server 2 the second, and so on. Prices and stock stay separate." },
+      { id: "f5", question: "How do I add money?", answer: "Open Fund wallet and pay with Paystack. The naira is added after Paystack confirms the charge. You also get an in-app notice, and an email when mail is connected." },
+      { id: "f6", question: "How do I reach support?", answer: "Use the chat button at the bottom of the screen, or open the Telegram channel linked in Support." },
+    ],
+    announcements: [
+      { id: "a1", title: "Pay with Paystack", body: "Wallet top-ups go through Paystack. The balance updates when the payment is confirmed.", createdAt: "2026-11-11T09:00:00.000Z" },
+      { id: "a2", title: "Servers stay separate", body: "When you connect more than one SMS API, customers pick Server 1, Server 2 or Server 3. Nothing is merged.", createdAt: "2026-11-11T09:05:00.000Z" },
+    ],
+    notifications: [],
+    paidRefs: [],
+    settings,
+  };
+  data = ingest(data, {
+    name: "SwiftSMS",
+    baseUrl: "https://sms.provider.example/api",
+    hasKey: true,
+    currency: "NGN",
+    payload: smsPayload(1),
+    enable: (item) => item.category === "numbers" && POPULAR_SERVICES.has(item.service.toLowerCase()) && POPULAR_COUNTRIES.has(item.country),
+  }).data;
+  data = ingest(data, {
+    name: "NovaOTP",
+    baseUrl: "https://otp.provider.example/v1",
+    hasKey: true,
+    currency: "NGN",
+    payload: smsPayload(1.15),
+    enable: (item) => item.category === "numbers" && ["whatsapp", "telegram", "google"].includes(item.service.toLowerCase()) && ["Nigeria", "United States", "United Kingdom"].includes(item.country),
+  }).data;
+  data = ingest(data, {
+    name: "NaijaVTU",
+    baseUrl: "https://vtu.provider.example/api",
+    hasKey: true,
+    currency: "NGN",
+    payload: vtuPayload(),
+    enable: (item) => item.category !== "other",
+  }).data;
+  data.providers = data.providers.map((p, i) => ({ ...p, createdAt: `2026-02-0${i + 1}T08:00:00.000Z` }));
+  return data;
+}
