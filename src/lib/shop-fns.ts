@@ -55,6 +55,11 @@ export const confirmPaystack = createServerFn({ method: "POST" })
     return creditPaystack(data.reference, "session");
   });
 
+export const clearNumberCatalog = createServerFn({ method: "POST" }).handler(async () => {
+  const { clearNumberCatalog } = await core();
+  return clearNumberCatalog();
+});
+
 export const beginCatalogImport = createServerFn({ method: "POST" })
   .validator((input: { url?: string; payload?: unknown; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean }) => ({
     url: String(input?.url || ""),
