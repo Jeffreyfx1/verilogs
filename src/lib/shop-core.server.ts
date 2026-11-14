@@ -601,7 +601,10 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     if (!res.ok) return { ok: false as const, error: `The API replied ${res.status}.` };
     const parsed = JSON.parse(text) as unknown;
     const hint = /hosting|rent/i.test(url.search + url.pathname) ? "hosting" : "";
-    const payload = url.hostname.endsWith("5sim.net") ? slimFiveSim(parsed, hint, input.allow || []) : parsed;
+    const parts = url.pathname.split("/").filter(Boolean);
+    const at = parts.findIndex((part) => part === "products");
+    const place = at >= 0 ? { country: parts[at + 1] || "", operator: parts[at + 2] || "any" } : {};
+    const payload = url.hostname.endsWith("5sim.net") ? slimFiveSim(parsed, hint, input.allow || [], place) : parsed;
     return { ok: true as const, payload };
   } catch {
     return { ok: false as const, error: "Could not reach that API. Check the URL and key." };
