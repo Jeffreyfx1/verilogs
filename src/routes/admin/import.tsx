@@ -9,6 +9,14 @@ import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/import")({ component: ImportPage });
 
+const PULL_STEPS = [
+  "Opening the API",
+  "Downloading the catalogue",
+  "Reading every operator and success rate",
+  "Applying this API's naira rate and markup",
+  "Saving the catalogue",
+];
+
 function ImportPage() {
   const providers = useStore((s) => s.providers);
   const importPayload = useStore((s) => s.importPayload);
@@ -23,6 +31,15 @@ function ImportPage() {
   const [apiUrl, setApiUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [report, setReport] = useState<SyncReport | null>(null);
+  const [phase, setPhase] = useState<"idle" | "run" | "done" | "fail">("idle");
+  const [step, setStep] = useState(0);
+  const [status, setStatus] = useState("");
+  const busy = phase === "run";
+  useEffect(() => {
+    if (!busy) return;
+    const id = window.setInterval(() => setStep((n) => Math.min(n + 1, PULL_STEPS.length - 1)), 8000);
+    return () => window.clearInterval(id);
+  }, [busy]);
   useEffect(() => {
     const existing = providers.find((p) => p.id === providerId);
     if (existing) {
@@ -49,8 +66,12 @@ function ImportPage() {
   }, [text]);
 
   const run = async (payload: unknown, fallbackName: string, url?: string) => {
+    if (busy) return;
     const existing = providerId ? providers.find((p) => p.id === providerId) : undefined;
     const label = (existing?.name || name).trim() || fallbackName;
+    setPhase("run");
+    setStep(0);
+    setStatus("");
     try {
       const result = await importPayload({
         providerId: existing?.id,
@@ -65,16 +86,26 @@ function ImportPage() {
         apiKey,
       });
       setReport(result);
+      setPhase("done");
+      setStatus(`${result.imported} services filed under ${result.serverLabel || label}`);
       toast.success(`${result.imported} services filed under ${result.serverLabel || label}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Import failed");
+      const message = err instanceof Error ? err.message : "Import failed";
+      setPhase("fail");
+      setStatus(message);
+      toast.error(message);
     }
   };
 
   const adopt = useStore((s) => s.adopt);
   const pull = async () => {
+    if (busy) return;
     const existing = providerId ? providers.find((p) => p.id === providerId) : undefined;
     const label = (existing?.name || name).trim() || "New API";
+    setPhase("run");
+    setStep(0);
+    setStatus("");
+    setReport(null);
     try {
       const res = await importUrl({
         data: {
@@ -89,11 +120,21 @@ function ImportPage() {
           publish,
         },
       });
-      if (res.error || !res.report) return toast.error(res.error || "Import failed");
+      if (res.error || !res.report) {
+        const message = res.error || "Import failed";
+        setPhase("fail");
+        setStatus(message);
+        return toast.error(message);
+      }
       adopt(res.state);
       setReport(res.report);
-      toast.success(`${res.report.imported} services filed under ${res.report.serverLabel || label}`);
+      const message = `${res.report.imported} services filed under ${res.report.serverLabel || label}`;
+      setPhase("done");
+      setStatus(message);
+      toast.success(message);
     } catch {
+      setPhase("fail");
+      setStatus("Could not pull that API. Check the URL and try again.");
       toast.error("Could not pull that API.");
     }
   };
@@ -106,6 +147,32 @@ function ImportPage() {
           Paste a provider catalogue or pull a live URL. A 5sim pull keeps every in-stock operator, with its price and success rate. Use https://5sim.net/v1/guest/prices with currency USD. Pull again after changing the rate or markup. For rentals use https://5sim.net/v1/guest/prices?category=hosting. New rows stay off until you enable them.
         </p>
       </div>
+      {phase !== "idle" ? (
+        <section className="rounded-card border border-line bg-card p-4 shadow-card">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-extrabold">{phase === "run" ? "Importing" : phase === "done" ? "Import finished" : "Import stopped"}</h2>
+            <span className={`text-xs font-bold ${phase === "done" ? "text-primary" : phase === "fail" ? "text-danger" : "text-muted"}`}>{phase === "run" ? "Working" : phase === "done" ? "Done" : "Failed"}</span>
+          </div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-paper">
+            <div
+              className={`h-full rounded-full transition-all duration-700 ${phase === "fail" ? "bg-danger" : "bg-primary"} ${phase === "run" ? "animate-pulse" : ""}`}
+              style={{ width: phase === "run" ? `${Math.round(((step + 1) / (PULL_STEPS.length + 1)) * 100)}%` : "100%" }}
+            />
+          </div>
+          {phase === "run" ? (
+            <ol className="mt-3 space-y-1 text-sm">
+              {PULL_STEPS.map((label, i) => (
+                <li key={label} className={i < step ? "text-muted" : i === step ? "font-bold" : "text-muted/60"}>
+                  {i < step ? "Done · " : i === step ? "Now · " : ""}{label}
+                </li>
+              ))}
+              <li className="pt-1 text-xs text-muted">A 5sim catalogue takes about a minute. Stay on this page.</li>
+            </ol>
+          ) : (
+            <p className="mt-3 text-sm">{status}</p>
+          )}
+        </section>
+      ) : null}
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="space-y-3 rounded-card border border-line bg-card p-4 shadow-card">
           <Field label="Add to">
@@ -126,7 +193,7 @@ function ImportPage() {
           <Field label="Catalogue URL">
             <input className={inputClass} value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="https://provider.example/api/services" />
           </Field>
-          <Button tone="soft" onClick={() => void pull()}>Pull and import this API</Button>
+          <Button tone="soft" disabled={busy || !apiUrl.trim()} onClick={() => void pull()}>{busy ? "Importing…" : "Pull and import this API"}</Button>
           <Field label="Price currency">
             <select className={inputClass} value={currency} onChange={(e) => setCurrency(e.target.value as "NGN" | "USD")}>
               <option value="NGN">NGN, already in naira</option>
@@ -147,7 +214,7 @@ function ImportPage() {
           <Field label="Or paste the provider JSON">
             <textarea className={`${inputClass} font-mono text-xs`} rows={8} value={text} onChange={(e) => setText(e.target.value)} placeholder='{"sms":{...},"dataplans":{...}}' />
           </Field>
-          <Button disabled={!preview || !preview.ok} onClick={() => preview && preview.ok && run(JSON.parse(text), "Pasted API")}>Import pasted catalogue</Button>
+          <Button disabled={busy || !preview || !preview.ok} onClick={() => preview && preview.ok && run(JSON.parse(text), "Pasted API")}>{busy ? "Importing…" : "Import pasted catalogue"}</Button>
         </section>
         <section className="rounded-card border border-line bg-card p-4 shadow-card">
           <h2 className="font-bold">Before it lands</h2>
