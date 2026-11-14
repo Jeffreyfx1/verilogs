@@ -119,18 +119,26 @@
 
 .tier-card {
   background:
-    radial-gradient(90% 80% at 0% 100%, color-mix(in srgb, #7c3aed 55%, transparent), transparent 55%),
-    radial-gradient(70% 80% at 100% 0%, color-mix(in srgb, #22d3ee 28%, transparent), transparent 50%),
-    linear-gradient(160deg, #2a1460, #14082e 70%);
-  border: 1px solid #6d28d9;
-  box-shadow: 0 16px 40px color-mix(in srgb, #6d28d9 35%, transparent);
+    radial-gradient(80% 90% at 8% 80%, #7c3aed 0%, transparent 58%),
+    radial-gradient(60% 80% at 100% 0%, #22d3ee55, transparent 46%),
+    linear-gradient(145deg, #3b1280 0%, #1a0840 42%, #0c0420 100%);
+  border: 1px solid #c084fc;
+  box-shadow:
+    0 0 0 1px #7c3aed,
+    0 0 28px #a855f7,
+    0 0 64px #6d28d988,
+    inset 0 0 40px #7c3aed55;
 }
 
 .uk-card {
   background:
-    radial-gradient(80% 140% at 100% 80%, color-mix(in srgb, #4c1d95 70%, transparent), transparent 60%),
-    linear-gradient(160deg, #241048, #120826);
-  border: 1px solid #5b21b6;
+    radial-gradient(70% 140% at 92% 80%, #6d28d9 0%, transparent 58%),
+    linear-gradient(160deg, #3a1280, #160838 62%, #0c0422);
+  border: 1px solid #c084fc;
+  box-shadow:
+    0 0 0 1px #7c3aed,
+    0 0 22px #a855f799,
+    inset 0 0 28px #6d28d944;
 }
 
 .hero-wash {

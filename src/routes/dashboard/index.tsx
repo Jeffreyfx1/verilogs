@@ -25,29 +25,31 @@ const quick = [
 
 function PhoneArt() {
   return (
-    <div className="relative h-36 w-28 shrink-0">
-      <span className="orbit-ring absolute inset-2 rounded-[2rem] border-2 border-cyan-300/70 shadow-[0_0_18px_#22d3ee]" />
-      <div className="float-slow absolute left-3 top-1 h-32 w-[4.5rem] rounded-[1.4rem] border-2 border-violet-200/40 bg-gradient-to-b from-[#2a1468] to-[#12081f] shadow-[0_12px_24px_rgba(0,0,0,.45)]">
-        <span className="absolute left-1/2 top-1 h-1 w-6 -translate-x-1/2 rounded-full bg-white/30" />
-        <span className="absolute left-2 top-8 grid size-10 place-items-center rounded-2xl bg-violet-500 shadow-[0_0_16px_#8b5cf6]">
-          <span className="flex gap-0.5">
-            <span className="size-1.5 rounded-full bg-white" />
-            <span className="size-1.5 rounded-full bg-white" />
-            <span className="size-1.5 rounded-full bg-white" />
+    <div className="relative h-40 w-32 shrink-0">
+      <span className="orbit-ring absolute left-1 top-6 h-28 w-32 rounded-[50%] border-[3px] border-cyan-300 shadow-[0_0_22px_#22d3ee,0_0_40px_#22d3ee] [transform:rotate(-18deg)]" />
+      <div className="float-slow absolute left-2 top-2 h-[8.5rem] w-[4.6rem] -rotate-6 rounded-[1.35rem] border-[3px] border-violet-200 bg-gradient-to-b from-[#4c1d95] to-[#1e0b3a] shadow-[0_0_24px_#a855f7,0_16px_24px_rgba(0,0,0,.5)]">
+        <span className="absolute left-1/2 top-1.5 h-1 w-7 -translate-x-1/2 rounded-full bg-white/50" />
+        <span className="absolute left-1.5 top-7 grid h-12 w-[3.1rem] place-items-center rounded-2xl bg-gradient-to-b from-white to-violet-200 shadow-[0_0_18px_#e9d5ff]">
+          <span className="flex gap-1">
+            <span className="size-1.5 rounded-full bg-violet-700" />
+            <span className="size-1.5 rounded-full bg-violet-700" />
+            <span className="size-1.5 rounded-full bg-violet-700" />
           </span>
         </span>
       </div>
-      <span className="absolute -right-1 top-2 text-xl">🇺🇸</span>
-      <span className="absolute -right-2 top-12 text-xl">🇬🇧</span>
-      <span className="absolute right-0 bottom-2 text-xl">🇨🇦</span>
+      <span className="absolute right-0 top-3 text-lg drop-shadow-[0_0_6px_#fff]">🇺🇸</span>
+      <span className="absolute right-1 top-11 text-lg drop-shadow-[0_0_6px_#fff]">🇬🇧</span>
+      <span className="absolute right-0 top-[4.6rem] text-lg drop-shadow-[0_0_6px_#fff]">🇨🇦</span>
     </div>
   );
 }
 
 function BigBen() {
   return (
-    <svg viewBox="0 0 80 70" className="h-16 w-20 text-violet-300/70" aria-hidden="true">
-      <path fill="currentColor" d="M38 4h8v6h6v8H32V10h6V4zm-8 16h24v34H30V20zm8 6h8v8h-8v-8zm-14 30h36v6H24v-6zM18 62h48v4H18z" />
+    <svg viewBox="0 0 120 150" className="h-28 w-24 text-violet-300 drop-shadow-[0_0_18px_#c084fc]" aria-hidden="true">
+      <path fill="currentColor" d="M52 6h16v10h10v14H42V16h10V6zm-16 28h48v78H36V34zm14 12h20v22H50V46zM28 116h64v10H28zm-10 14h84v8H18z" />
+      <path fill="#1e0b3a" d="M56 52h8v10h-8z" />
+      <path fill="currentColor" opacity=".45" d="M8 132h18l8-18 10 22 12-28 8 24h48v8H8z" />
     </svg>
   );
 }
@@ -62,35 +64,37 @@ function DashHome() {
   const tiles = open ? quick : quick.slice(0, 8);
   return (
     <div className="min-w-0 space-y-4">
-      <section className="tier-card rise relative overflow-hidden rounded-[1.6rem] p-4">
-        <div className="flex items-center gap-2">
+      <section className="tier-card rise relative overflow-hidden rounded-[1.7rem] p-4">
+        <div className="pointer-events-none absolute -left-8 -top-10 size-32 rounded-full bg-fuchsia-500/40 blur-2xl" />
+        <div className="pointer-events-none absolute -right-6 bottom-0 size-28 rounded-full bg-cyan-400/30 blur-2xl" />
+        <div className="relative flex items-center gap-1">
           <PhoneArt />
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1 rounded-full bg-black/30 px-2 py-1 text-[11px] font-extrabold">
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/40 bg-black/40 px-2 py-1 text-[11px] font-extrabold shadow-[0_0_12px_#fbbf24]">
                 <Crown className="size-3 text-amber-300" /> Tier 1 / 3
               </span>
-              <Link to="/dashboard/wallet" className="rounded-full bg-violet-600 px-3 py-1 text-[11px] font-extrabold">Upgrade →</Link>
+              <Link to="/dashboard/wallet" className="rounded-full bg-violet-500 px-3 py-1 text-[11px] font-extrabold shadow-[0_0_16px_#a855f7]">Upgrade →</Link>
             </div>
-            <h2 className="mt-3 text-xl font-extrabold leading-tight">Upgrade to <span className="text-amber-300">Tier 2</span></h2>
-            <p className="mt-1 text-sm font-medium text-white/75">Get more features, higher limits and better rates.</p>
-            <Link to="/dashboard/wallet" className="mt-3 inline-flex items-center gap-2 rounded-full bg-violet-600 px-4 py-2 text-sm font-extrabold shadow-[0_8px_20px_rgba(109,40,217,.45)]">
+            <h2 className="mt-3 text-[1.35rem] font-extrabold leading-tight drop-shadow-[0_0_12px_#c084fc]">Upgrade to <span className="text-amber-300 drop-shadow-[0_0_10px_#fbbf24]">Tier 2</span></h2>
+            <p className="mt-1 text-sm font-semibold text-white/85">Get more features, higher limits and better rates.</p>
+            <Link to="/dashboard/wallet" className="mt-3 inline-flex items-center gap-2 rounded-full bg-violet-500 px-5 py-2.5 text-sm font-extrabold shadow-[0_0_22px_#a855f7,0_8px_18px_#6d28d9]">
               <Zap className="size-4" /> Upgrade Now
             </Link>
           </div>
         </div>
       </section>
 
-      <Link to="/dashboard/numbers" search={ukSearch} className="uk-card relative flex items-center gap-3 overflow-hidden rounded-[1.4rem] p-4">
-        <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-violet-600 text-white shadow-[0_0_16px_#7c3aed]">
-          <Zap className="size-6" />
+      <Link to="/dashboard/numbers" search={ukSearch} className="uk-card relative flex items-center gap-3 overflow-hidden rounded-[1.5rem] p-4">
+        <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-violet-500 text-white shadow-[0_0_22px_#a855f7]">
+          <Zap className="size-7" />
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-lg font-extrabold">Cheap UK Line</span>
-          <span className="mt-0.5 block text-sm font-medium text-white/70">Fast UK numbers for verification at the best rates.</span>
-          <span className="mt-2 inline-flex rounded-full bg-violet-600 px-3 py-1 text-xs font-extrabold">Buy Now</span>
+        <span className="relative z-10 min-w-0 flex-1 pr-16">
+          <span className="block text-xl font-extrabold drop-shadow-[0_0_10px_#c084fc]">Cheap UK Line</span>
+          <span className="mt-0.5 block text-sm font-semibold text-white/80">Fast UK numbers for verification at the best rates.</span>
+          <span className="mt-2 inline-flex rounded-full bg-violet-500 px-4 py-1.5 text-xs font-extrabold shadow-[0_0_16px_#a855f7]">Buy Now</span>
         </span>
-        <span className="pointer-events-none absolute bottom-0 right-2 opacity-80"><BigBen /></span>
+        <span className="pointer-events-none absolute -bottom-1 right-0 opacity-95"><BigBen /></span>
       </Link>
 
       <section>
@@ -100,9 +104,9 @@ function DashHome() {
         </div>
         <div className="mt-3 grid grid-cols-4 gap-2.5">
           {tiles.map((q) => (
-            <Link key={q.label} to={q.to} search={"search" in q ? q.search : undefined} className="relative flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border border-violet-800/80 bg-[#1a1033] px-1 py-3 text-center shadow-[0_8px_18px_rgba(76,29,149,.25)]">
+            <Link key={q.label} to={q.to} search={"search" in q ? q.search : undefined} className="relative flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border border-fuchsia-400/70 bg-[#24104a] px-1 py-3 text-center shadow-[0_0_16px_#7c3aed66,inset_0_0_12px_#6d28d933]">
               {"popular" in q && q.popular ? <span className="absolute -top-2 rounded-full bg-amber-300 px-1.5 py-0.5 text-[9px] font-extrabold text-black">Popular</span> : null}
-              <span className="grid size-11 place-items-center rounded-full bg-violet-600/30 text-violet-200">
+              <span className="grid size-11 place-items-center rounded-full bg-violet-500/50 text-white shadow-[0_0_14px_#a855f7]">
                 <q.icon className="size-5" strokeWidth={2.4} />
               </span>
               <span className="text-[11px] font-extrabold leading-tight">{q.label}</span>
