@@ -1,6 +1,19 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { Data, SyncReport } from "@/lib/catalog";
 
+export type ImportStep = {
+  error: string | null;
+  jobId: string;
+  total: number;
+  saved: number;
+  batch: number;
+  batches: number;
+  batchSize: number;
+  done: boolean;
+  report: SyncReport | null;
+  state: Data | null;
+};
+
 type ShopPayload = { error: string | null; state: Data; report: SyncReport | null };
 
 async function core() {
@@ -40,6 +53,31 @@ export const confirmPaystack = createServerFn({ method: "POST" })
     if (!data.reference) return { error: "Missing payment reference." as string };
     const { creditPaystack } = await core();
     return creditPaystack(data.reference, "session");
+  });
+
+export const beginCatalogImport = createServerFn({ method: "POST" })
+  .validator((input: { url?: string; payload?: unknown; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean }) => ({
+    url: String(input?.url || ""),
+    payload: input?.payload,
+    apiKey: input?.apiKey ? String(input.apiKey) : "",
+    providerId: input?.providerId ? String(input.providerId) : "",
+    name: input?.name ? String(input.name) : "",
+    baseUrl: input?.baseUrl ? String(input.baseUrl) : "",
+    currency: input?.currency === "USD" ? "USD" : "NGN",
+    usdRate: Number(input?.usdRate) || 0,
+    markup: Number(input?.markup) || 0,
+    publish: !!input?.publish,
+  }))
+  .handler(async ({ data }): Promise<ImportStep> => {
+    const { beginCatalogImport } = await core();
+    return beginCatalogImport(data);
+  });
+
+export const stepCatalogImport = createServerFn({ method: "POST" })
+  .validator((input: { jobId: string }) => ({ jobId: String(input?.jobId || "") }))
+  .handler(async ({ data }): Promise<ImportStep> => {
+    const { stepCatalogImport } = await core();
+    return stepCatalogImport(data.jobId);
   });
 
 export const importUrl = createServerFn({ method: "POST" })
