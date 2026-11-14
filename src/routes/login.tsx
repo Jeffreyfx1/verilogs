@@ -31,7 +31,7 @@ function LoginPage() {
       const err = await login(email, password);
       if (err) toast.error(err);
     } catch {
-      toast.error("The shop is busy saving the catalogue. Wait a minute and try again.");
+      toast.error("Could not reach the shop. Try again.");
     } finally {
       setBusy(false);
     }

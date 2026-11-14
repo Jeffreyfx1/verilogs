@@ -48,7 +48,21 @@ const globalRef = globalThis as typeof globalThis & {
   __pgSqlPromise__?: Promise<Sql>;
   __pgliteInstance__?: Promise<import("@electric-sql/pglite").PGlite>;
   __pgliteMigrateChain__?: Promise<void>;
+  __pgDropGuard?: boolean;
 };
+
+if (!globalRef.__pgDropGuard && typeof process !== "undefined" && process.on) {
+  globalRef.__pgDropGuard = true;
+  process.on("uncaughtException", (err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/Connection terminated/i.test(message)) {
+      console.error("Postgres connection dropped:", message);
+      return;
+    }
+    console.error(err);
+    process.exit(1);
+  });
+}
 
 /**
  * Result-type parity: Postgres sends every value as text plus a type OID — the
@@ -93,10 +107,28 @@ function createNeonSql(): Promise<Sql> {
     types.setTypeParser(OID_INT8, Number);
     types.setTypeParser(OID_DATE, identity);
     types.setTypeParser(OID_INTERVAL, identity);
-    const pool = new Pool({ connectionString: databaseUrl });
-    return toSql(async <T>(text: string, params: unknown[]) => {
+    const pool = new Pool({
+      connectionString: databaseUrl,
+      max: 10,
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 10_000,
+      keepAlive: true,
+    });
+    pool.on("error", (err) => {
+      console.error("Postgres connection dropped:", err.message);
+    });
+    const once = async <T>(text: string, params: unknown[]) => {
       const res = await pool.query(text, params);
       return res.rows as T[];
+    };
+    return toSql(async <T>(text: string, params: unknown[]) => {
+      try {
+        return await once<T>(text, params);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "";
+        if (!/terminated|ECONNRESET|EPIPE|not queryable|Connection ended/i.test(message)) throw err;
+        return once<T>(text, params);
+      }
     });
   })().catch((err) => {
     globalRef.__pgSqlPromise__ = undefined;

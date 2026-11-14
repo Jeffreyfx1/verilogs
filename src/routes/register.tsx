@@ -34,7 +34,7 @@ function RegisterPage() {
       if (err) toast.error(err);
       else nav({ to: "/dashboard" });
     } catch {
-      toast.error("The shop is busy saving the catalogue. Wait a minute and try again.");
+      toast.error("Could not reach the shop. Try again.");
     } finally {
       setBusy(false);
     }
