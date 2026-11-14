@@ -156,6 +156,32 @@ function countryOf(key: string): string {
   return COUNTRIES[squashed] || "";
 }
 
+export function isCountrySlug(key: string) {
+  const name = key.trim().toLowerCase();
+  return name === "any" || !!countryOf(name);
+}
+
+export function fiveSimCategoryUrl(raw: string) {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return { url: raw, product: "" };
+  }
+  if (!url.hostname.endsWith("5sim.net")) return { url: raw, product: "" };
+  const parts = url.pathname.split("/").filter(Boolean);
+  const at = parts.findIndex((part) => part === "products");
+  const queryProduct = url.searchParams.get("product") || "";
+  if (at < 0) return { url: raw, product: queryProduct };
+  const first = (parts[at + 1] || "").toLowerCase();
+  const second = (parts[at + 2] || "any").toLowerCase();
+  if (!first || isCountrySlug(first)) return { url: raw, product: "" };
+  const next = new URL("https://5sim.net/v1/guest/prices");
+  next.searchParams.set("product", first);
+  if (second !== "any" && isCountrySlug(second)) next.searchParams.set("country", second);
+  return { url: next.toString(), product: first };
+}
+
 function titleCase(s: string) {
   if (!s) return "";
   if (/[A-Z]/.test(s) && /[a-z]/.test(s)) return s;
@@ -285,8 +311,8 @@ function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedI
   const sms = rent || hint === "numbers" || hint === "activation";
   const looksData = !sms && (hint === "data" || /data|\d+(\.\d+)?\s?(gb|mb)|bundle|sme|gifting|\bcg\b/.test(blob));
   let category: Category = "other";
-  if (rent) category = "rent";
   else if (sms) category = "numbers";
+  if (rent) category = "rent";
   else if (/\b(exam|waec|neco|nabteb|jamb|result checker)\b/.test(blob) || hint === "exam") category = "exam";
   else if (/\b(electricity|electric|disco|ikedc|ekedc|aedc|phed|kedco|ibedc|kaedco|eedc)\b/.test(blob) || hint === "electricity") category = "electricity";
   else if (/\b(cable|dstv|gotv|startimes|cabletv)\b/.test(blob) || hint === "cable") category = "cable";
@@ -342,9 +368,39 @@ export function slimFiveSim(payload: unknown, hint = "", allow: string[] = [], p
     }
     return rows.length ? rows : payload;
   }
-  for (const [country, services] of entries) {
-    if (!services || typeof services !== "object" || Array.isArray(services)) continue;
-    for (const [service, operators] of Object.entries(services as Record<string, unknown>)) {
+  for (const [top, nested] of entries) {
+    if (!nested || typeof nested !== "object" || Array.isArray(nested)) continue;
+    const table = nested as Record<string, unknown>;
+    const keys = Object.keys(table);
+    const countryKeys = keys.filter((key) => key.toLowerCase() !== "any" && !!countryOf(key)).length;
+    const byProduct = keys.length > 0 && countryKeys >= Math.ceil(keys.length * 0.6);
+    if (byProduct) {
+      if (allow.length && !serviceAllowed(top, allow)) continue;
+      for (const [country, operators] of Object.entries(table)) {
+        if (!operators || typeof operators !== "object" || Array.isArray(operators)) continue;
+        for (const [operator, row] of Object.entries(operators as Record<string, unknown>)) {
+          if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+          const rec = row as Record<string, unknown>;
+          const cost = Number(rec.cost ?? rec.price ?? 0);
+          const count = Number(rec.count ?? rec.qty ?? 0);
+          if (!Number.isFinite(cost) || !Number.isFinite(count) || count <= 0 || cost <= 0) continue;
+          rows.push({
+            id: `${country}|${top}|${operator}`,
+            service: top,
+            name: top,
+            country,
+            operator,
+            cost,
+            count: Math.round(count),
+            rate: Math.round(Number(rec.rate ?? rec.rate1) || 0),
+            rates: "",
+            category: hint || "activation",
+          });
+        }
+      }
+      continue;
+    }
+    for (const [service, operators] of Object.entries(table)) {
       if (allow.length && !serviceAllowed(service, allow)) continue;
       if (!operators || typeof operators !== "object" || Array.isArray(operators)) continue;
       for (const [operator, row] of Object.entries(operators as Record<string, unknown>)) {
@@ -362,10 +418,10 @@ export function slimFiveSim(payload: unknown, hint = "", allow: string[] = [], p
           ["30d", rec.rate720],
         ];
         rows.push({
-          id: `${country}|${service}|${operator}`,
+          id: `${top}|${service}|${operator}`,
           service,
           name: service,
-          country,
+          country: top,
           operator,
           cost,
           count: Math.round(count),

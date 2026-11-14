@@ -272,7 +272,7 @@ function ImportPage() {
           <Field label="API key" hint="Stored on the server for this provider. It is not shown again.">
             <input className={inputClass} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Optional until you pull a live URL" />
           </Field>
-          <Field label="Catalogue URL">
+          <Field label="Catalogue URL" hint="A country list is /products/canada/any. A service is /products/telegram/any, imported for every country. One service does not wipe the others.">
             <input className={inputClass} value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="https://provider.example/api/services" />
           </Field>
           <Button tone="soft" disabled={busy || !apiUrl.trim()} onClick={() => void runJob(undefined, apiUrl)}>{busy ? "Importing…" : "Pull and import this API"}</Button>
