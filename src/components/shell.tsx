@@ -42,7 +42,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
   const userNav: Item[] = [
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, end: true },
     { to: "/dashboard/wallet", label: "Fund wallet", icon: Wallet },
-    { to: "/dashboard/numbers", label: "Virtual numbers", icon: Hash },
+    { to: "/dashboard/numbers", label: "All countries", icon: Hash },
     { to: "/dashboard/data", label: "Data", icon: Radio },
     { to: "/dashboard/airtime", label: "Airtime", icon: Smartphone },
     { to: "/dashboard/bills", label: "Bills", icon: Receipt },

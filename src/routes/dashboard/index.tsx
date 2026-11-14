@@ -1,26 +1,26 @@
 import { useMemo, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { Crown, FileText, Hash, History, Megaphone, Play, Radio, Receipt, Send, Smartphone, Tv, Users, Zap } from "lucide-react";
+import { Crown, FileText, Hash, History, Megaphone, MessageCircle, Play, Radio, Receipt, Send, Smartphone, Tv, Users, Wallet, Zap } from "lucide-react";
 import { naira, when } from "@/lib/money";
 import { useStore, useUser } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/")({ component: DashHome });
 
 const ukSearch = { server: "", country: "United Kingdom", kind: "", service: "WhatsApp" } as const;
-const rentSearch = { server: "", country: "", kind: "rent", service: "" } as const;
+const tgSearch = { server: "", country: "", kind: "", service: "Telegram" } as const;
 
 const quick = [
   { to: "/dashboard/airtime", label: "Airtime", icon: Smartphone, popular: true },
   { to: "/dashboard/data", label: "Data", icon: Radio, popular: true },
   { to: "/dashboard/bills", label: "TV Sub", icon: Tv },
   { to: "/dashboard/bills", label: "Electricity", icon: Zap },
+  { to: "/dashboard/numbers", label: "Telegram", icon: Send, search: tgSearch },
   { to: "/dashboard/numbers", label: "Buy Number", icon: FileText },
-  { to: "/dashboard/numbers", label: "Buy Logs", icon: Hash },
-  { to: "/dashboard/numbers", label: "Rent Number", icon: Crown, search: rentSearch },
+  { to: "/dashboard/history", label: "Buy Logs", icon: Hash },
   { to: "/dashboard/announcements", label: "Posts", icon: Megaphone },
   { to: "/faq", label: "Tutorials", icon: Play },
   { to: "/dashboard/profile", label: "Refer", icon: Users },
-  { to: "/community", label: "Channel", icon: Send },
+  { to: "/community", label: "Channel", icon: MessageCircle },
 ] as const;
 
 function PhoneArt() {
@@ -111,14 +111,30 @@ function DashHome() {
         </div>
       </section>
 
-      <section className="rounded-[1.4rem] border border-violet-900 bg-[#160c2c] p-4">
+      <section className="space-y-2">
+        <h2 className="flex items-center gap-2 text-lg font-extrabold"><History className="size-4 text-primary" /> History</h2>
+        <Link to="/dashboard/history" hash="deposits" className="flex items-center gap-3 rounded-2xl border border-line bg-card px-3 py-3">
+          <span className="grid size-11 place-items-center rounded-2xl bg-violet-600 text-white"><Wallet className="size-4" /></span>
+          <span><span className="block text-sm font-extrabold">Deposit history</span><span className="text-xs text-muted">Wallet deposits</span></span>
+        </Link>
+        <Link to="/dashboard/history" hash="numbers" className="flex items-center gap-3 rounded-2xl border border-line bg-card px-3 py-3">
+          <span className="grid size-11 place-items-center rounded-2xl bg-violet-600 text-white"><Hash className="size-4" /></span>
+          <span><span className="block text-sm font-extrabold">Number history</span><span className="text-xs text-muted">Numbers, codes and active orders</span></span>
+        </Link>
+        <Link to="/dashboard/history" hash="bills" className="flex items-center gap-3 rounded-2xl border border-line bg-card px-3 py-3">
+          <span className="grid size-11 place-items-center rounded-2xl bg-violet-600 text-white"><Receipt className="size-4" /></span>
+          <span><span className="block text-sm font-extrabold">Bills history</span><span className="text-xs text-muted">Airtime, data and TV</span></span>
+        </Link>
+      </section>
+
+      <section className="rounded-[1.4rem] border border-line bg-card p-4">
         <div className="flex items-center justify-between">
-          <h2 className="flex items-center gap-2 text-lg font-extrabold"><History className="size-4 text-primary" /> History</h2>
-          <Link to="/dashboard/history" className="text-sm font-extrabold text-primary">View All →</Link>
+          <h2 className="text-lg font-extrabold">Recent transactions</h2>
+          <Link to="/dashboard/history" hash="deposits" className="text-sm font-extrabold text-primary">View all</Link>
         </div>
         <div className="mt-3 space-y-2">
           {txns.slice(0, 4).map((t) => (
-            <div key={t.id} className="flex items-center gap-3 rounded-2xl bg-[#241244] px-3 py-3">
+            <div key={t.id} className="flex items-center gap-3 rounded-2xl bg-paper px-3 py-3">
               <span className="grid size-11 place-items-center rounded-2xl bg-violet-600 text-white"><Receipt className="size-4" /></span>
               <span className="min-w-0 flex-1">
                 <p className="truncate text-sm font-extrabold">{t.note}</p>
@@ -127,16 +143,7 @@ function DashHome() {
               <span className={`text-sm font-extrabold ${t.amount < 0 ? "text-danger" : "text-ok"}`}>{naira(t.amount)}</span>
             </div>
           ))}
-          {!txns.length ? (
-            <div className="flex items-center gap-3 rounded-2xl bg-[#241244] px-3 py-3">
-              <span className="grid size-11 place-items-center rounded-2xl bg-violet-600 text-white"><Receipt className="size-4" /></span>
-              <span className="min-w-0 flex-1">
-                <p className="text-sm font-extrabold">Transaction History</p>
-                <p className="text-xs font-medium text-muted">Your recent transactions will appear here.</p>
-              </span>
-              <span className="text-primary">›</span>
-            </div>
-          ) : null}
+          {!txns.length ? <p className="py-4 text-center text-sm text-muted">No recent transactions yet.</p> : null}
         </div>
       </section>
     </div>
