@@ -6,8 +6,12 @@ export function naira(value: number) {
 
 export function parseMoney(raw: unknown): number | null {
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const rec = raw as Record<string, unknown>;
+    return parseMoney(rec.USD ?? rec.usd ?? rec.NGN ?? rec.ngn ?? rec.cost ?? rec.price ?? rec.Price);
+  }
   if (typeof raw !== "string") return null;
-  const cleaned = raw.replace(/[₦$,\s]/g, "");
+  const cleaned = raw.replace(/[₦$,\s]/g, "").replace(/[a-z]/gi, "");
   if (!cleaned) return null;
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;

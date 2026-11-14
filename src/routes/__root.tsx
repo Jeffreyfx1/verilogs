@@ -14,7 +14,7 @@ export const Route = createRootRoute({
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "VeriLogs — SMS numbers, data and bills" },
       { name: "description", content: "Virtual numbers for SMS verification, data, airtime and bills in naira. Fund a wallet, pick a server, and get a code." },
-      { name: "theme-color", content: "#2a1848" },
+      { name: "theme-color", content: "#0e071c" },
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
