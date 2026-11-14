@@ -1,7 +1,7 @@
 import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/react-start/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
-import { freshData, isLive, normalizeData, repairCatalog, sellPrice, serverLabel, topupQuote, withAdminLogin, applyImportSlice, type Data, type Product, type SyncReport } from "@/lib/catalog";
+import { freshData, isLive, normalizeData, quoteProduct, repairCatalog, sellPrice, serverLabel, topupQuote, withAdminLogin, applyImportSlice, type Data, type Product, type SyncReport } from "@/lib/catalog";
 import { extractCatalog, slimFiveSim, serviceAllowed, fiveSimCategoryUrl, MAJOR_SERVICES, type ParsedItem } from "@/lib/categorize";
 import { IMPORT_BATCH, importBatchCount } from "@/lib/import-batch";
 import { uid } from "@/lib/money";
@@ -377,7 +377,10 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
       error = out.error;
     } else if (op === "buy") {
       const product = await readProduct(str("productId"));
-      if (product) doc = { ...doc, products: [product, ...doc.products.filter((item) => item.id !== product.id)] };
+      if (product) {
+        const quoted = quoteProduct(product, doc);
+        doc = { ...doc, products: [quoted, ...doc.products.filter((item) => item.id !== quoted.id)] };
+      }
       const out = buyProduct(doc, userId, str("productId"), { phone: str("phone"), amount: num("amount"), detail: str("detail") });
       doc = out.data;
       error = out.error;
@@ -480,8 +483,9 @@ export async function connectGoogle(profile: { email: string; name: string }) {
 
 async function finishPaidNumber(doc: Data, userId: string, productId: string) {
   if (!productId) return { data: doc, bought: false, error: null as string | null };
-  const product = await readProduct(productId);
-  if (!product?.enabled) return { data: doc, bought: false, error: "Payment is in your wallet, but that number is no longer available." };
+  const found = await readProduct(productId);
+  if (!found?.enabled) return { data: doc, bought: false, error: "Payment is in your wallet, but that number is no longer available." };
+  const product = quoteProduct(found, doc);
   const withProduct = { ...doc, products: [product, ...doc.products.filter((item) => item.id !== product.id)] };
   const bought = buyProduct(withProduct, userId, productId, {});
   if (bought.error) return { data: doc, bought: false, error: `Payment is in your wallet. ${bought.error}` };
@@ -494,8 +498,9 @@ export async function purchasePreview(productId: string) {
   const doc = await loadLight();
   const user = doc.users.find((item) => item.id === session.userId);
   if (!user) return { error: "Sign in first." as string };
-  const product = await readProduct(productId);
-  if (!product || !product.enabled) return { error: "That number is no longer available." as string };
+  const found = await readProduct(productId);
+  if (!found || !found.enabled) return { error: "That number is no longer available." as string };
+  const product = quoteProduct(found, doc);
   const short = Math.max(0, product.price - user.balance);
   const credit = short > 0 && short < 100 ? 100 : short;
   const quote = topupQuote(credit, doc.settings);
@@ -1017,10 +1022,30 @@ export async function browseNumbers(input: { providerId?: string; category?: str
     enabledProviderIds,
   };
   if (!admin && input.providerId && !enabledProviderIds.includes(input.providerId)) return empty;
-  if (input.list === "countries") return { ...empty, countries: await queryCountries({ ...query, service: "", q: "" }) };
-  if (input.detail && input.service && input.country) return { ...empty, operators: await queryOperators(query) };
-  if (input.list === "services" || !input.service) return { ...empty, services: await queryServices(query) };
-  return { ...empty, countries: await queryCountries(query) };
+  const serviceList = async () => {
+    const rows = await queryServices(query);
+    const best = new Map<string, number>();
+    for (const row of rows) {
+      const price = quoteProduct(
+        { id: "", providerId: row.providerId, externalId: "", category: want, name: row.service, service: row.service, country: "", network: "", price: row.price, cost: row.cost, stock: 0, operator: "", rate: 0, rates: "", enabled: true, validity: "", variable: false, description: "" },
+        doc,
+      ).price;
+      const prev = best.get(row.service);
+      if (price > 0 && (prev == null || price < prev)) best.set(row.service, price);
+    }
+    return [...best.entries()].map(([service, price]) => ({ service, price })).sort((a, b) => a.service.localeCompare(b.service)).slice(0, 100);
+  };
+  if (input.list === "countries") {
+    const countries = (await queryCountries({ ...query, service: "", q: "" })).map((row) => quoteProduct(row, doc)).sort((a, b) => a.price - b.price || a.country.localeCompare(b.country));
+    return { ...empty, countries };
+  }
+  if (input.detail && input.service && input.country) {
+    const operators = (await queryOperators(query)).map((row) => quoteProduct(row, doc)).sort((a, b) => a.price - b.price);
+    return { ...empty, operators };
+  }
+  if (input.list === "services" || !input.service) return { ...empty, services: await serviceList() };
+  const countries = (await queryCountries(query)).map((row) => quoteProduct(row, doc));
+  return { ...empty, countries };
 }
 
 export async function browseCatalog(input: { q?: string; category?: string; providerId?: string; only?: string; page?: number }) {

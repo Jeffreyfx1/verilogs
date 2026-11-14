@@ -336,6 +336,17 @@ export function sellPrice(cost: number, currency: "NGN" | "USD", rate: number, m
   return Math.ceil((ngn * factor) / 5) * 5;
 }
 
+export function quoteProduct(product: Product, doc: Pick<Data, "providers" | "settings">): Product {
+  const provider = doc.providers.find((item) => item.id === product.providerId);
+  if (!provider || !(product.cost > 0) || product.variable) return product;
+  if (provider.currency === "USD" && product.cost > 500) return product;
+  const five = /5sim/i.test(`${provider.name} ${provider.baseUrl}`);
+  const rate = provider.usdRate > 0 ? provider.usdRate : five ? 2646 : doc.settings.usdNgn;
+  const markup = provider.markup > 0 ? provider.markup : five ? 1.6 : 1 + doc.settings.margin / 100;
+  const price = sellPrice(product.cost, provider.currency, rate, markup);
+  return price > 0 ? { ...product, price } : product;
+}
+
 export function topupQuote(credit: number, settings: Pick<Settings, "paystackPercent" | "paystackFlat">) {
   const base = Math.round(Number(credit) || 0);
   const percent = Math.max(0, Number(settings.paystackPercent) || 0);
