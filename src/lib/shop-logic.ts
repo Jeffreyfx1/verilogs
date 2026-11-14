@@ -181,9 +181,9 @@ export function buyProduct(data: Data, userId: string | null, productId: string,
     server,
     network: product.network,
     amount,
-    phone: product.category === "numbers" ? virtualPhone(product.country) : (extra.phone || "").trim(),
+    phone: product.category === "numbers" || product.category === "rent" ? virtualPhone(product.country) : (extra.phone || "").trim(),
     code: "",
-    status: product.category === "numbers" ? "waiting" : "completed",
+    status: product.category === "numbers" || product.category === "rent" ? "waiting" : "completed",
     detail: extra.detail || product.description,
     createdAt: new Date().toISOString(),
   };
@@ -211,7 +211,8 @@ export function refundOrder(data: Data, userId: string | null, orderId: string) 
       txns: [{ id: uid("txn"), userId: order.userId, kind: "refund" as const, amount: order.amount, note: "Refund · " + order.title, createdAt: new Date().toISOString() }, ...data.txns],
     },
     order.userId,
-    "Refund sent", `${order.title} is back in your wallet.`,
+    "Refund sent",
+    `${order.title} is back in your wallet.`,
     "wallet",
   );
   return { error: null, data: next };
@@ -298,6 +299,10 @@ export function saveSettings(data: Data, userId: string | null, patch: Partial<S
   if (denied) return { error: denied, data };
   if (patch.logo && (!patch.logo.startsWith("data:image/") || patch.logo.length > 180000)) {
     return { error: "Use a small PNG, JPG or SVG under 120KB.", data };
+  }
+  const pictures = [patch.home?.image, ...(patch.home?.cards || []).map((card) => card.image)].filter(Boolean) as string[];
+  if (pictures.some((img) => !img.startsWith("data:image/") || img.length > 180000)) {
+    return { error: "Each homepage image must be a PNG, JPG or WebP under 120KB.", data };
   }
   const banners = patch.banners ? patch.banners.slice(0, 6) : data.settings.banners;
   return { error: null, data: { ...data, settings: { ...data.settings, ...patch, banners, home: { ...data.settings.home, ...patch.home }, popup: { ...data.settings.popup, ...patch.popup } } } };
