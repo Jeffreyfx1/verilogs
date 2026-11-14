@@ -32,8 +32,8 @@ function Home() {
             <p className="rise inline-flex items-center gap-2 rounded-full border border-line bg-card px-3 py-1 text-xs font-bold text-primary">
               <BadgeCheck className="size-3.5" /> {home.eyebrow}
             </p>
-            <h1 className="hero-title rise mt-5 max-w-xl text-4xl font-extrabold text-ink sm:text-5xl">{home.title}</h1>
-            <p className="rise mt-4 max-w-xl text-base font-medium leading-relaxed text-muted">{home.body}</p>
+            <h1 className="hero-title rise mt-5 max-w-xl text-4xl font-extrabold text-white sm:text-5xl">{home.title}</h1>
+            <p className="rise mt-4 max-w-xl text-base font-medium leading-relaxed text-white/75">{home.body}</p>
             <div className="rise mt-7 flex flex-wrap gap-3">
               <Link to="/register" className="btn-gradient rounded-2xl px-6 py-3.5 text-sm font-extrabold">Create free account</Link>
               <a href="#offer" className="rounded-2xl border border-line bg-card px-6 py-3.5 text-sm font-extrabold text-ink shadow-card">Explore services</a>

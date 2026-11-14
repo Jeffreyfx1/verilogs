@@ -3,7 +3,7 @@
 
 @theme {
   --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
-  --color-paper: #e4dcf6;
+  --color-paper: #2a1848;
   --color-card: #ffffff;
   --color-ink: #1b1630;
   --color-muted: #655d7c;
@@ -30,9 +30,14 @@
   }
   body {
     font-family: var(--font-sans);
-    background: var(--color-paper);
-    color: var(--color-ink);
+    background: #2a1848;
+    color: #f4f1fb;
+    --color-muted: #d9d3ec;
     min-height: 100%;
+  }
+  .bg-card {
+    color: #1b1630;
+    --color-muted: #655d7c;
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {
@@ -108,10 +113,7 @@
 }
 
 .hero-wash {
-  background:
-    radial-gradient(36rem 20rem at 100% 0%, #cfc4f4, transparent 58%),
-    radial-gradient(28rem 16rem at 0% 100%, #c9ddf8, transparent 55%),
-    #e4dcf6;
+  background: #2a1848;
 }
 
 .stat-row {
