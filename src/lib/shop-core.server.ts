@@ -1,7 +1,7 @@
 import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/react-start/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
-import { freshData, normalizeData, repairCatalog, topupQuote, withAdminLogin, type Data, type SyncReport } from "@/lib/catalog";
+import { freshData, isLive, normalizeData, repairCatalog, topupQuote, withAdminLogin, type Data, type Product, type SyncReport } from "@/lib/catalog";
 import { slimFiveSim } from "@/lib/categorize";
 import {
   addAnnouncement,
@@ -105,7 +105,7 @@ function withoutSampleCatalog(doc: Data): Data {
   };
 }
 
-async function loadDoc(): Promise<Data> {
+async function loadDoc(withCatalog = false): Promise<Data> {
   const sql = await getSql();
   const rows = await sql<{ doc: string }>`select doc from shop_state where id = 'main'`;
   if (!rows[0]) {
@@ -113,22 +113,67 @@ async function loadDoc(): Promise<Data> {
     await sql`insert into shop_state (id, doc) values ('main', ${JSON.stringify(doc)})`;
     return doc;
   }
-  try {
-    const parsed = normalizeData(JSON.parse(rows[0].doc) as Data);
-    const cleaned = repairCatalog(withAdminLogin(withoutSampleCatalog(parsed)));
-    if (cleaned !== parsed) await saveDoc(cleaned);
-    return cleaned;
-  } catch {
-    return freshData();
+  const parsed = normalizeData(JSON.parse(rows[0].doc) as Data);
+  let doc = withAdminLogin(withoutSampleCatalog(parsed));
+  const stuck = doc.products.filter(isHeavy);
+  if (stuck.length) {
+    const prev = await readCatalog();
+    const ids = new Set(stuck.map((p) => p.id));
+    const catalog = [...prev.filter((p) => !ids.has(p.id)), ...stuck];
+    await writeCatalog(catalog);
+    doc = { ...doc, products: doc.products.filter((p) => !isHeavy(p)) };
+    await writeState(doc);
+    if (withCatalog) doc = { ...doc, products: [...doc.products, ...catalog] };
+  } else if (withCatalog) {
+    doc = { ...doc, products: [...doc.products, ...(await readCatalog())] };
   }
+  const cleaned = repairCatalog(doc);
+  if (cleaned !== doc) {
+    await writeState(cleaned);
+    if (withCatalog) await writeCatalog(cleaned.products.filter(isHeavy));
+  }
+  return cleaned;
 }
 
-async function saveDoc(doc: Data) {
+function isHeavy(product: Product) {
+  return product.category === "numbers" || product.category === "rent";
+}
+
+let catalogCache: Product[] | null = null;
+
+async function readCatalog(): Promise<Product[]> {
+  if (catalogCache) return catalogCache;
   const sql = await getSql();
-  const text = JSON.stringify(doc);
+  const rows = await sql<{ doc: string }>`select doc from shop_catalog where id = 'main'`;
+  if (!rows[0]?.doc) return [];
+  try {
+    catalogCache = JSON.parse(rows[0].doc) as Product[];
+  } catch {
+    catalogCache = [];
+  }
+  return catalogCache;
+}
+
+async function writeCatalog(products: Product[]) {
+  catalogCache = products;
+  const sql = await getSql();
+  const text = JSON.stringify(products);
+  const existing = await sql`select id from shop_catalog where id = 'main'`;
+  if (existing[0]) await sql`update shop_catalog set doc = ${text}, updated_at = now() where id = 'main'`;
+  else await sql`insert into shop_catalog (id, doc) values ('main', ${text})`;
+}
+
+async function writeState(doc: Data) {
+  const sql = await getSql();
+  const text = JSON.stringify({ ...doc, products: doc.products.filter((p) => !isHeavy(p)) });
   const existing = await sql`select id from shop_state where id = 'main'`;
   if (existing[0]) await sql`update shop_state set doc = ${text}, updated_at = now() where id = 'main'`;
   else await sql`insert into shop_state (id, doc) values ('main', ${text})`;
+}
+
+async function saveDoc(doc: Data, catalog = false) {
+  await writeState(doc);
+  if (catalog) await writeCatalog(doc.products.filter(isHeavy));
 }
 
 export async function sendMail(mail: Mail | Mail[] | undefined) {
@@ -183,7 +228,8 @@ export async function currentShop(): Promise<ApplyResult> {
 
 export async function applyAct(op: string, payload: Record<string, unknown>): Promise<ApplyResult> {
   return locked(async () => {
-    let doc = await loadDoc();
+    const catalog = op === "buy" || op === "import" || op === "setEnabled" || op === "setProvider" || op === "reset";
+    let doc = await loadDoc(catalog);
     const session = await readSession();
     let userId = session.userId;
     let draft = session.draft;
@@ -327,12 +373,12 @@ export async function applyAct(op: string, payload: Record<string, unknown>): Pr
       error = "Unknown action.";
     }
 
-    if (!error) await saveDoc(doc);
+    if (!error) await saveDoc(doc, catalog);
     if (!error && mail) {
       const mailError = await sendMail(mail);
       if (mailError) error = `Saved in the app. Email failed: ${mailError}`;
     }
-    return result(await loadDoc(), userId, draft, error, report);
+    return result(doc, userId, draft, error, report);
   });
 }
 
@@ -500,6 +546,57 @@ export async function importFromUrl(input: { url: string; apiKey?: string; provi
     publish: !!input.publish,
     apiKey: input.apiKey || "",
   });
+}
+
+export async function browseNumbers(input: { providerId?: string; category?: string; country?: string; service?: string; q?: string }) {
+  const doc = await loadDoc(true);
+  const session = await readSession();
+  const me = doc.users.find((u) => u.id === session.userId);
+  const admin = me?.role === "admin";
+  const want = input.category === "rent" ? "rent" : "numbers";
+  let rows = doc.products.filter((p) => (!input.providerId || p.providerId === input.providerId) && p.category === want && p.country && p.country !== "Any");
+  if (!admin) rows = rows.filter((p) => isLive(p, doc.providers));
+  if (input.country) rows = rows.filter((p) => p.country === input.country);
+  const hidden = admin ? doc.products.filter((p) => (!input.providerId || p.providerId === input.providerId) && p.category === want && !p.enabled).length : 0;
+  if (input.service) {
+    const map = new Map<string, Product>();
+    for (const product of rows) {
+      if (product.service !== input.service) continue;
+      const cur = map.get(product.country);
+      if (!cur || (product.price > 0 && product.price < cur.price)) map.set(product.country, product);
+    }
+    return { services: [] as { service: string; price: number }[], countries: [...map.values()].sort((a, b) => a.price - b.price || a.country.localeCompare(b.country)), hidden };
+  }
+  const q = (input.q || "").trim().toLowerCase();
+  const map = new Map<string, { service: string; price: number }>();
+  for (const product of rows) {
+    if (q && !product.service.toLowerCase().includes(q)) continue;
+    const cur = map.get(product.service);
+    if (!cur || product.price < cur.price) map.set(product.service, { service: product.service, price: product.price });
+  }
+  return { services: [...map.values()].sort((a, b) => a.service.localeCompare(b.service)).slice(0, 100), countries: [] as Product[], hidden };
+}
+
+export async function browseCatalog(input: { q?: string; category?: string; providerId?: string; only?: string; page?: number }) {
+  const doc = await loadDoc(true);
+  const session = await readSession();
+  const me = doc.users.find((u) => u.id === session.userId);
+  if (me?.role !== "admin") return { rows: [] as Product[], total: 0, live: 0 };
+  const q = (input.q || "").trim().toLowerCase();
+  const filtered = doc.products.filter((p) => {
+    if (input.category && p.category !== input.category) return false;
+    if (input.providerId && p.providerId !== input.providerId) return false;
+    if (input.only === "on" && !p.enabled) return false;
+    if (input.only === "off" && p.enabled) return false;
+    if (q && !`${p.name} ${p.service} ${p.country} ${p.network}`.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const page = Math.max(0, Number(input.page) || 0);
+  return {
+    rows: filtered.slice(page * 40, page * 40 + 40),
+    total: filtered.length,
+    live: doc.products.filter((p) => p.enabled).length,
+  };
 }
 
 export async function askSupport(question: string) {
