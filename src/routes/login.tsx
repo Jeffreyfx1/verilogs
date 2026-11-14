@@ -71,9 +71,6 @@ function LoginPage() {
               <Link to="/community" className="inline-block font-semibold text-primary">Join the community</Link>
             </div>
           ) : null}
-          <p className="mt-4 rounded-xl bg-paper px-3 py-2 text-xs text-muted">
-            Admin preview: admin@verilogs.app · Verilogs#2026
-          </p>
         </div>
       </div>
     </div>

@@ -48,9 +48,9 @@ function HostingPage() {
         body="In Cloudflare DNS, point veri-logs.com at the Render service (CNAME to the onrender.com host Render gives you, proxy on). SSL mode Full. APP_URL must be https://veri-logs.com so Paystack and Google send people back to the right place."
       />
       <Row
-        on={false}
-        title="Render Pro"
-        body="Create a Render Postgres database and a web service from this project. Build command: npm install && NITRO_PRESET=node-server npm run build. Start command: node .output/server/index.mjs. Environment: DATABASE_URL from the Render database, NODE_VERSION 22, NITRO_PRESET=node-server, plus the Paystack, Resend and Google variables above. The starter admin is admin@verilogs.app. Change that password from Profile after the first login. A render.yaml in the project lists the same service."
+        on={!!status.appUrl}
+        title="This site"
+        body={status.appUrl ? `The live address is ${status.appUrl}. Paystack and Google send people back to that address.` : "Set APP_URL on the host to the public site address."}
       />
       <Row
         on={status.ai}

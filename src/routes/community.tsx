@@ -16,10 +16,12 @@ function CommunityPage() {
             <p className="font-bold">Telegram</p>
             <p className="mt-1 text-sm text-muted">Join the channel</p>
           </a>
-          <a href={settings.whatsapp} className="rounded-card border border-line bg-card p-5 shadow-card" target="_blank" rel="noreferrer">
-            <p className="font-bold">WhatsApp</p>
-            <p className="mt-1 text-sm text-muted">Message support</p>
-          </a>
+          {settings.whatsapp && !settings.whatsapp.includes("2348000000000") ? (
+            <a href={settings.whatsapp} className="rounded-card border border-line bg-card p-5 shadow-card" target="_blank" rel="noreferrer">
+              <p className="font-bold">WhatsApp</p>
+              <p className="mt-1 text-sm text-muted">Message support</p>
+            </a>
+          ) : null}
         </div>
       </div>
     </PublicFrame>

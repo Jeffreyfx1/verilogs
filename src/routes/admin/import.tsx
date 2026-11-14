@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
-import { CATEGORY_LABEL, mixedPayload, smsPayload, vtuPayload, type SyncReport } from "@/lib/catalog";
+import { CATEGORY_LABEL, type SyncReport } from "@/lib/catalog";
 import { extractCatalog } from "@/lib/categorize";
 import { fetchCatalogue } from "@/lib/shop-fns";
 import { useStore } from "@/lib/store";
@@ -66,7 +66,7 @@ function ImportPage() {
       <div>
         <h1 className="text-2xl font-extrabold">Import services</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Paste a provider catalogue, pull a live URL, or load a sample. A catalogue with numbers, data, airtime and bills is filed into those shelves. New rows stay off until you enable them. A second SMS API becomes the next server. Data plans keep their SIM.
+          Paste a provider catalogue or pull a live URL. A catalogue with numbers, data, airtime and bills is filed into those shelves. New rows stay off until you enable them. A second SMS API becomes the next server. Data plans keep their SIM.
         </p>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
@@ -100,11 +100,6 @@ function ImportPage() {
             <input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} className="mt-1" />
             <span>Put new services live immediately. Leave this off if you want to review first. Already-enabled rows stay as they are.</span>
           </label>
-          <div className="flex flex-wrap gap-2">
-            <Button tone="soft" onClick={() => run(smsPayload(1), "Sample SMS")}>Import SMS catalogue</Button>
-            <Button tone="soft" onClick={() => run(vtuPayload(), "Sample VTU", "https://vtu.provider.example/api")}>Import VTU catalogue</Button>
-            <Button tone="soft" onClick={() => run(mixedPayload(), "Mixed API", "https://mixed.provider.example/api")}>Import mixed API</Button>
-          </div>
           <Field label="Or paste the provider JSON">
             <textarea className={`${inputClass} font-mono text-xs`} rows={8} value={text} onChange={(e) => setText(e.target.value)} placeholder='{"sms":{...},"dataplans":{...}}' />
           </Field>
@@ -112,7 +107,7 @@ function ImportPage() {
         </section>
         <section className="rounded-card border border-line bg-card p-4 shadow-card">
           <h2 className="font-bold">Before it lands</h2>
-          {!preview ? <p className="mt-3 text-sm text-muted">Paste JSON to see how it will be filed, or use a sample button. Samples import straight away.</p> : null}
+          {!preview ? <p className="mt-3 text-sm text-muted">Paste JSON to see how it will be filed before you import it.</p> : null}
           {preview && !preview.ok ? <p className="mt-3 text-sm text-danger">{preview.error}</p> : null}
           {preview && preview.ok ? <Report items={preview.items.length} by={countCats(preview.items)} networks={countNets(preview.items)} note={`${preview.items.length} services understood. ${preview.skipped} wrapper rows ignored.`} /> : null}
           {report ? (
