@@ -66,7 +66,7 @@ function ImportPage() {
       <div>
         <h1 className="text-2xl font-extrabold">Import services</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Paste a provider catalogue or pull a live URL. A catalogue with numbers, data, airtime and bills is filed into those shelves. New rows stay off until you enable them. A second SMS API becomes the next server. Data plans keep their SIM.
+          Paste a provider catalogue or pull a live URL. For 5sim prices use https://5sim.net/v1/guest/prices and set the currency to USD, or every row stays at ₦0. New rows stay off until you enable them.
         </p>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
