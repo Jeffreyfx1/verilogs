@@ -548,7 +548,7 @@ export async function importFromUrl(input: { url: string; apiKey?: string; provi
   });
 }
 
-export async function browseNumbers(input: { providerId?: string; category?: string; country?: string; service?: string; q?: string }) {
+export async function browseNumbers(input: { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean }) {
   const doc = await loadDoc(true);
   const session = await readSession();
   const me = doc.users.find((u) => u.id === session.userId);
@@ -558,6 +558,13 @@ export async function browseNumbers(input: { providerId?: string; category?: str
   if (!admin) rows = rows.filter((p) => isLive(p, doc.providers));
   if (input.country) rows = rows.filter((p) => p.country === input.country);
   const hidden = admin ? doc.products.filter((p) => (!input.providerId || p.providerId === input.providerId) && p.category === want && !p.enabled).length : 0;
+  const empty = { services: [] as { service: string; price: number }[], countries: [] as Product[], operators: [] as Product[], hidden };
+  if (input.detail && input.service && input.country) {
+    const operators = rows
+      .filter((product) => product.service === input.service)
+      .sort((a, b) => (b.rate || 0) - (a.rate || 0) || a.price - b.price || (a.operator || "").localeCompare(b.operator || ""));
+    return { ...empty, operators };
+  }
   if (input.service) {
     const map = new Map<string, Product>();
     for (const product of rows) {
@@ -565,7 +572,7 @@ export async function browseNumbers(input: { providerId?: string; category?: str
       const cur = map.get(product.country);
       if (!cur || (product.price > 0 && product.price < cur.price)) map.set(product.country, product);
     }
-    return { services: [] as { service: string; price: number }[], countries: [...map.values()].sort((a, b) => a.price - b.price || a.country.localeCompare(b.country)), hidden };
+    return { ...empty, countries: [...map.values()].sort((a, b) => a.price - b.price || a.country.localeCompare(b.country)) };
   }
   const q = (input.q || "").trim().toLowerCase();
   const map = new Map<string, { service: string; price: number }>();
@@ -574,7 +581,7 @@ export async function browseNumbers(input: { providerId?: string; category?: str
     const cur = map.get(product.service);
     if (!cur || product.price < cur.price) map.set(product.service, { service: product.service, price: product.price });
   }
-  return { services: [...map.values()].sort((a, b) => a.service.localeCompare(b.service)).slice(0, 100), countries: [] as Product[], hidden };
+  return { ...empty, services: [...map.values()].sort((a, b) => a.service.localeCompare(b.service)).slice(0, 100) };
 }
 
 export async function browseCatalog(input: { q?: string; category?: string; providerId?: string; only?: string; page?: number }) {

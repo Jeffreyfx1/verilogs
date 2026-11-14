@@ -60,12 +60,13 @@ export const importUrl = createServerFn({ method: "POST" })
   });
 
 export const browseNumbers = createServerFn({ method: "POST" })
-  .validator((input: { providerId?: string; category?: string; country?: string; service?: string; q?: string }) => ({
+  .validator((input: { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean }) => ({
     providerId: String(input?.providerId || ""),
     category: input?.category === "rent" ? "rent" : "numbers",
     country: String(input?.country || ""),
     service: String(input?.service || ""),
     q: String(input?.q || "").slice(0, 60),
+    detail: !!input?.detail,
   }))
   .handler(async ({ data }) => {
     const { browseNumbers } = await core();

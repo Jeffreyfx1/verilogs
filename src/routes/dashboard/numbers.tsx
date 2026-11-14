@@ -17,6 +17,13 @@ export const Route = createFileRoute("/dashboard/numbers")({
   component: NumbersPage,
 });
 
+function serverName(operator?: string) {
+  if (!operator || operator.toLowerCase() === "any") return "Any server";
+  const match = operator.match(/^(virtual|route)(\d+)$/i);
+  if (!match) return operator;
+  return `${match[1][0].toUpperCase()}${match[1].slice(1).toLowerCase()} ${match[2]}`;
+}
+
 function NumbersPage() {
   const { server, country: lockedCountry, kind } = Route.useSearch();
   const user = useUser();
@@ -34,6 +41,8 @@ function NumbersPage() {
   const [country, setCountry] = useState("");
   const [services, setServices] = useState<{ service: string; price: number }[]>([]);
   const [countries, setCountries] = useState<Product[]>([]);
+  const [operators, setOperators] = useState<Product[]>([]);
+  const [operatorId, setOperatorId] = useState("");
   const [hidden, setHidden] = useState(0);
   const [loading, setLoading] = useState(false);
   const want = kind === "rent" ? "rent" : "numbers";
@@ -78,7 +87,28 @@ function NumbersPage() {
       stop = true;
     };
   }, [activeId, want, lockedCountry, service]);
-  const picked = countries.find((p) => p.country === country) || null;
+  const chosen = country || lockedCountry;
+  useEffect(() => {
+    if (!service || !chosen) {
+      setOperators([]);
+      setOperatorId("");
+      return;
+    }
+    let stop = false;
+    browseNumbers({ data: { providerId: activeId, category: want, country: chosen, service, detail: true } })
+      .then((res) => {
+        if (stop) return;
+        setOperators(res.operators);
+        setOperatorId(res.operators[0]?.id || "");
+      })
+      .catch(() => {
+        if (!stop) setOperators([]);
+      });
+    return () => {
+      stop = true;
+    };
+  }, [activeId, want, chosen, service]);
+  const picked = operators.find((p) => p.id === operatorId) || null;
 
   const copy = async (value: string) => {
     try {
@@ -148,15 +178,34 @@ function NumbersPage() {
           <p className="mt-1 text-xs text-muted">{service ? service : "Choose a service to see countries."}</p>
           <div className="mt-3 max-h-[70vh] space-y-1 overflow-y-auto pr-1">
             {countries.map((p) => (
-              <button key={p.id} type="button" onClick={() => setCountry(p.country)} className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm ${country === p.country ? "bg-primary text-on-primary" : "hover:bg-paper"}`}>
+              <button key={p.country} type="button" onClick={() => { setCountry(p.country); setOperatorId(""); }} className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm ${chosen === p.country ? "bg-primary text-on-primary" : "hover:bg-paper"}`}>
                 <span>{p.country}</span>
-                <span className="text-xs">{naira(p.price)}{p.stock > 0 && p.stock < 10000 ? ` · ${p.stock}` : ""}</span>
+                <span className="text-xs">from {naira(p.price)}</span>
               </button>
             ))}
             {service && !countries.length ? <p className="px-2 py-6 text-sm text-muted">No countries for that service.</p> : null}
           </div>
+          {chosen && service ? (
+            <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+              <h3 className="text-sm font-bold">Servers</h3>
+              {operators.map((op) => (
+                <button key={op.id} type="button" onClick={() => setOperatorId(op.id)} className={`w-full rounded-xl border px-3 py-2 text-left ${operatorId === op.id ? "border-primary bg-primary/15" : "border-line"}`}>
+                  <span className="flex items-center justify-between gap-2 text-sm font-semibold">
+                    <span>{serverName(op.operator)}</span>
+                    <span>{naira(op.price)}</span>
+                  </span>
+                  <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-paper">
+                    <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, op.rate || 0))}%` }} />
+                  </span>
+                  <span className="mt-1 block text-xs text-muted">{op.rate ? `${op.rate}% success now` : "No recent success rate"}{op.stock > 0 ? ` · ${op.stock} in stock` : ""}</span>
+                  {op.rates ? <span className="mt-1 block text-xs text-muted">{op.rates}</span> : null}
+                </button>
+              ))}
+              {!operators.length ? <p className="text-sm text-muted">No servers for that country yet. Pull the 5sim prices again.</p> : null}
+            </div>
+          ) : null}
           <Button className="mt-3 w-full" disabled={!picked} onClick={purchase}>
-            {picked ? `Buy ${picked.country} · ${naira(picked.price)}` : "Select a country"}
+            {picked ? `Buy ${serverName(picked.operator)} · ${naira(picked.price)}` : "Select a server"}
           </Button>
         </section>
         <section className="rounded-card border border-line bg-card p-4 shadow-card">

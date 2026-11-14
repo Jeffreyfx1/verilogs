@@ -12,6 +12,8 @@ export type ParsedItem = {
   operator: string;
   price: number;
   stock: number;
+  rate: number;
+  rates: string;
   validity: string;
   variable: boolean;
   description: string;
@@ -233,6 +235,8 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
     operator,
     price: price ?? 0,
     stock: stockRaw == null ? 0 : Math.max(0, Math.round(stockRaw)),
+    rate: Math.round(Number(obj.rate) || 0),
+    rates: text(obj.rates),
     validity,
     variable: price == null || price === 0,
     description: [text(pick(obj, ["description", "desc", "plan_type", "type"])), operator && operator !== display ? operator : ""].filter(Boolean).join(" · "),
@@ -283,30 +287,33 @@ export function slimFiveSim(payload: unknown, hint = ""): unknown {
     if (!services || typeof services !== "object" || Array.isArray(services)) return payload;
     for (const [service, operators] of Object.entries(services as Record<string, unknown>)) {
       if (!operators || typeof operators !== "object" || Array.isArray(operators)) return payload;
-      let best: { cost: number; count: number; operator: string } | null = null;
-      let leaf = false;
       for (const [operator, row] of Object.entries(operators as Record<string, unknown>)) {
         if (!row || typeof row !== "object" || Array.isArray(row)) continue;
         const rec = row as Record<string, unknown>;
-        if (!("cost" in rec) && !("count" in rec)) continue;
-        leaf = true;
         const cost = Number(rec.cost ?? rec.price ?? 0);
         const count = Number(rec.count ?? rec.qty ?? 0);
         if (!Number.isFinite(cost) || !Number.isFinite(count) || count <= 0 || cost <= 0) continue;
-        if (!best || cost < best.cost) best = { cost, count, operator };
+        const windows: Array<[string, unknown]> = [
+          ["1h", rec.rate1 ?? rec.rate],
+          ["3h", rec.rate3],
+          ["24h", rec.rate24],
+          ["3d", rec.rate72],
+          ["7d", rec.rate168],
+          ["30d", rec.rate720],
+        ];
+        rows.push({
+          id: `${country}|${service}|${operator}`,
+          service,
+          name: service,
+          country,
+          operator,
+          cost,
+          count: Math.round(count),
+          rate: Math.round(Number(rec.rate ?? rec.rate1) || 0),
+          rates: windows.filter(([, n]) => Number(n) > 0).map(([label, n]) => `${label} ${Math.round(Number(n))}%`).join(" · "),
+          category: hint || "activation",
+        });
       }
-      if (!leaf) continue;
-      if (!best) continue;
-      rows.push({
-        id: `${country}|${service}`,
-        service,
-        name: service,
-        country,
-        operator: best.operator,
-        cost: best.cost,
-        count: Math.round(best.count),
-        category: hint || "activation",
-      });
     }
   }
   return rows.length ? rows : payload;
@@ -343,13 +350,15 @@ export function extractCatalog(payload: unknown): CatalogExtract {
         operator: next.operator,
         price: value,
         stock: 0,
+        rate: 0,
+        rates: "",
         validity: "",
         variable: false,
         description: "",
         hint: next.section || "activation",
       };
       const priced = finalize(raw);
-      const pricedKey = [priced.externalId, priced.category, priced.country, priced.network].join("|");
+      const pricedKey = [priced.externalId, priced.category, priced.country, priced.network, priced.operator].join("|");
       if (seen.has(pricedKey)) continue;
       seen.add(pricedKey);
       out.push(priced);
@@ -364,7 +373,7 @@ export function extractCatalog(payload: unknown): CatalogExtract {
       skipped++;
       return;
     }
-    const key = [item.externalId, item.category, item.country, item.network].join("|");
+    const key = [item.externalId, item.category, item.country, item.network, item.operator].join("|");
     if (seen.has(key)) return;
     seen.add(key);
     out.push(item);

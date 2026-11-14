@@ -103,7 +103,7 @@ function ImportPage() {
       <div>
         <h1 className="text-2xl font-extrabold">Import services</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Paste a provider catalogue or pull a live URL. The 5sim price list is large, so the pull keeps the cheapest in-stock operator for each country and service. Use https://5sim.net/v1/guest/prices with currency USD. For rentals use https://5sim.net/v1/guest/prices?category=hosting. New rows stay off until you enable them.
+          Paste a provider catalogue or pull a live URL. A 5sim pull keeps every in-stock operator, with its price and success rate. Use https://5sim.net/v1/guest/prices with currency USD. Pull again after changing the rate or markup. For rentals use https://5sim.net/v1/guest/prices?category=hosting. New rows stay off until you enable them.
         </p>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">

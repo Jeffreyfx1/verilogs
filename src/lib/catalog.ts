@@ -51,6 +51,9 @@ export type Product = {
   price: number;
   cost: number;
   stock: number;
+  operator: string;
+  rate: number;
+  rates: string;
   enabled: boolean;
   validity: string;
   variable: boolean;
@@ -421,6 +424,9 @@ export function ingest(
       existing.variable = item.variable;
       existing.description = item.description;
       existing.category = item.category;
+      existing.operator = item.operator || "";
+      existing.rate = item.rate || 0;
+      existing.rates = item.rates || "";
       updated++;
     } else {
       products.push({
@@ -435,7 +441,10 @@ export function ingest(
         price,
         cost: item.price,
         stock: item.stock,
-        enabled: input.enable ? input.enable(item) : false,
+        operator: item.operator || "",
+        rate: item.rate || 0,
+        rates: item.rates || "",
+        enabled: (input.enable ? input.enable(item) : false) || products.some((product) => product.providerId === provider.id && product.enabled && product.country === item.country && product.service === item.service),
         validity: item.validity,
         variable: item.variable,
         description: item.description,
@@ -443,9 +452,17 @@ export function ingest(
       created++;
     }
   }
-  provider.servesNumbers = products.some((p) => p.providerId === provider!.id && (p.category === "numbers" || p.category === "rent"));
   provider.lastSync = { at: now, imported: items.length, created, updated, skipped: extracted.skipped, byCategory, byNetwork };
-  const next = { ...data, providers, products };
+  const touched = new Set(items.map((item) => `${item.country}|${item.service}`));
+  const freshIds = new Set(items.map((item) => item.externalId));
+  const kept = products.filter((product) => {
+    if (product.providerId !== provider!.id || (product.category !== "numbers" && product.category !== "rent")) return true;
+    const key = `${product.country}|${product.service}`;
+    if (!touched.has(key)) return true;
+    return freshIds.has(product.externalId);
+  });
+  provider.servesNumbers = kept.some((p) => p.providerId === provider!.id && (p.category === "numbers" || p.category === "rent"));
+  const next = { ...data, providers, products: kept };
   return {
     data: next,
     report: {
