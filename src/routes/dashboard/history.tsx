@@ -12,8 +12,8 @@ function HistoryPage() {
   const session = useStore((s) => s.sessionUserId);
   const orders = useMemo(() => allOrders.filter((o) => o.userId === session), [allOrders, session]);
   const txns = useMemo(() => allTxns.filter((t) => t.userId === session), [allTxns, session]);
-  const numbers = orders.filter((o) => o.category === "numbers");
-  const bills = orders.filter((o) => o.category !== "numbers");
+  const numbers = orders.filter((o) => o.category === "numbers" || o.category === "rent");
+  const bills = orders.filter((o) => o.category !== "numbers" && o.category !== "rent");
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-extrabold">History</h1>

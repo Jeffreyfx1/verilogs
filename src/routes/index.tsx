@@ -1,17 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import { createFileRoute } from "@tanstack/react-router";
-import { BadgeCheck, Globe, Headphones, Lock, Radio, Shield, Smartphone, Zap } from "lucide-react";
+import { BadgeCheck, Globe, Headphones, Lock, Shield, Zap } from "lucide-react";
 import { PublicFrame } from "@/components/chrome";
 import { bills, hero, sim } from "@/components/site-art";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/")({ component: Home });
 
-const offers = [
-  { img: hero, icon: Smartphone, title: "Virtual numbers", body: "SMS codes for WhatsApp, Telegram, Google and the other services you connect. Each API stays on its own server." },
-  { img: sim, icon: Radio, title: "Data and airtime", body: "MTN, Airtel, Glo, 9mobile and Smile stay as separate catalogues, with the price you set." },
-  { img: bills, icon: Globe, title: "Bills", body: "Cable, electricity and exam PINs from the same naira wallet." },
-];
+const fallbackArt = [hero, sim, bills];
 
 const why = [
   { icon: Shield, title: "Wallet stays in naira", body: "Fund once. Spend on numbers, data, airtime and bills." },
@@ -24,6 +20,8 @@ const why = [
 
 function Home() {
   const home = useStore((s) => s.settings.home);
+  const cards = home.cards?.length ? home.cards : [];
+  const picture = (image: string, index: number) => image || fallbackArt[index % fallbackArt.length];
   return (
     <PublicFrame>
       <section className="hero-wash relative overflow-hidden">
@@ -44,18 +42,18 @@ function Home() {
               ))}
             </ul>
           </div>
-          <img src={hero} alt="A phone ready for an SMS code, next to a naira wallet card" className="w-full rounded-card object-cover shadow-card" />
+          <img src={picture(home.image, 0)} alt="" className="w-full rounded-card object-cover shadow-card" />
         </div>
       </section>
 
-      <section className="marquee-wrap py-6">
-        <div className="marquee px-4">
-          {[...offers, ...offers].map((o, i) => (
-            <Link key={o.title + i} to="/register" className="flex w-72 shrink-0 items-center gap-3 rounded-card border border-line bg-card p-3 shadow-card">
-              <img src={o.img} alt="" className="size-16 rounded-xl object-cover" />
+      <section className="overflow-hidden py-6">
+        <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1">
+          {cards.map((o, i) => (
+            <Link key={o.id} to="/register" className="flex w-[85%] max-w-sm shrink-0 snap-start items-center gap-3 rounded-card border border-line bg-card p-3 shadow-card">
+              <img src={picture(o.image, i)} alt="" className="size-16 rounded-xl object-cover" />
               <span>
                 <span className="block font-extrabold">{o.title}</span>
-                <span className="mt-1 block text-xs font-medium text-muted">Open</span>
+                <span className="mt-1 block text-xs font-medium text-muted">{o.body}</span>
               </span>
             </Link>
           ))}
@@ -80,12 +78,11 @@ function Home() {
         <h2 className="text-center text-3xl font-extrabold">What we offer</h2>
         <p className="mx-auto mt-2 max-w-xl text-center text-sm font-medium text-muted">Numbers, data, airtime and bills, filed the way people buy them.</p>
         <div className="mt-8 grid gap-4 md:grid-cols-3">
-          {offers.map((o) => (
-            <article key={o.title} className="overflow-hidden rounded-card border border-line bg-card shadow-card">
-              <img src={o.img} alt="" className="h-40 w-full object-cover" />
+          {cards.map((o, i) => (
+            <article key={o.id} className="overflow-hidden rounded-card border border-line bg-card shadow-card">
+              <img src={picture(o.image, i)} alt="" className="h-40 w-full object-cover" />
               <div className="p-5">
-                <span className="grid size-11 place-items-center rounded-2xl bg-primary text-on-primary"><o.icon className="size-5" /></span>
-                <h3 className="mt-4 text-xl font-extrabold">{o.title}</h3>
+                <h3 className="text-xl font-extrabold">{o.title}</h3>
                 <p className="mt-2 text-sm font-medium leading-relaxed text-muted">{o.body}</p>
                 <Link to="/register" className="mt-4 inline-block text-sm font-extrabold text-primary">Get started</Link>
               </div>
