@@ -487,6 +487,11 @@ export function repairCatalog(doc: Data): Data {
       changed = true;
       continue;
     }
+    const rent = /\b(hosting|rent)\b/i.test(`${product.description} ${product.name}`);
+    if ((product.category === "numbers" || product.category === "rent" || product.category === "other") && (!product.country || product.country === "Any")) {
+      changed = true;
+      continue;
+    }
     const country = product.country === "Any" ? "" : product.country;
     let category = product.category;
     if (category === "other") category = rent ? "rent" : "numbers";
