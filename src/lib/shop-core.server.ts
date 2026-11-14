@@ -186,7 +186,7 @@ async function readCatalog(): Promise<Product[]> {
 async function clearNumberImports() {
   const sql = await getSql();
   try {
-    await sql`delete from shop_products where category in ('numbers', 'rent')`;
+    await sql`delete from shop_products where category in ('numbers', 'rent') or (category = 'other' and price <= 0)`;
   } catch {
     // The products table is created by the next migration.
   }
@@ -201,6 +201,7 @@ async function clearNumberImports() {
   const providers = doc.providers.map((provider) => ({ ...provider, servesNumbers: false }));
   await writeState({ ...doc, products, providers });
 }
+
 
 export async function clearNumberCatalog() {
   const session = await readSession();
@@ -499,7 +500,7 @@ export async function creditPaystack(reference: string, expectedUserId?: string 
   const credit = Math.round(Number(body.data.metadata?.credit || charged));
   const amount = credit > 0 && credit <= charged ? credit : charged;
   return locked(async () => {
-    const doc = await loadDoc();
+    const doc = await loadLight();
     const out = creditVerified(doc, userId, amount, reference);
     if (out.error) return { error: out.error };
     await saveDoc(out.data);
@@ -522,7 +523,7 @@ export async function creditFromWebhook(raw: string, signature: string | null) {
   const credit = Math.round(Number(event.data.metadata.credit || charged));
   const amount = credit > 0 && credit <= charged ? credit : charged;
   await locked(async () => {
-    const doc = await loadDoc();
+    const doc = await loadLight();
     const out = creditVerified(doc, event.data!.metadata!.userId!, amount, event.data!.reference!);
     if (!out.error) {
       await saveDoc(out.data);
@@ -539,7 +540,7 @@ export async function startPaystack(amount: number) {
   if (!secret) return { error: "Paystack is not connected yet. Add the secret key on Render, then try again." };
   const session = await readSession();
   if (!session.userId) return { error: "Sign in first." };
-  const doc = await loadDoc();
+  const doc = await loadLight();
   const user = doc.users.find((u) => u.id === session.userId);
   if (!user) return { error: "Sign in first." };
   const quote = topupQuote(n, doc.settings);
@@ -575,7 +576,7 @@ export function integrationStatus() {
 
 export async function pullRemote(input: { url: string; apiKey?: string; providerId?: string; allow?: string[] }) {
   const session = await readSession();
-  const doc = await loadDoc();
+  const doc = await loadLight();
   const me = doc.users.find((u) => u.id === session.userId);
   if (me?.role !== "admin") return { ok: false as const, error: "Only an admin can pull an API." };
   let url: URL;
@@ -596,6 +597,27 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 90000);
   try {
+    const allow = [...new Set([...(input.allow || []), routed.product].filter(Boolean))];
+    const barePrices = url.hostname.endsWith("5sim.net") && /\/v1\/guest\/prices\/?$/.test(url.pathname) && !url.searchParams.get("product") && !routed.product;
+    if (barePrices) {
+      if (!allow.length) return { ok: false as const, error: "Save the service names first." };
+      const merged: Record<string, unknown> = {};
+      for (const name of allow) {
+        const slug = name.toLowerCase().replace(/[^a-z0-9.]+/g, "");
+        if (!slug) continue;
+        const one = new URL(`${url.origin}/v1/guest/prices?product=${encodeURIComponent(slug)}`);
+        try {
+          const res = await fetch(one, { headers, signal: ctrl.signal });
+          if (!res.ok) continue;
+          const parsed = (await res.json()) as Record<string, unknown>;
+          if (parsed && typeof parsed === "object") Object.assign(merged, parsed);
+        } catch {
+          continue;
+        }
+      }
+      if (!Object.keys(merged).length) return { ok: false as const, error: "None of the saved services came back from 5sim." };
+      return { ok: true as const, payload: slimFiveSim(merged, "", allow, {}) };
+    }
     const res = await fetch(url, { headers, signal: ctrl.signal });
     const text = await res.text();
     if (text.length > 16_000_000) return { ok: false as const, error: "That catalogue is larger than 16MB." };
@@ -608,7 +630,6 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     const parts = url.pathname.split("/").filter(Boolean);
     const at = parts.findIndex((part) => part === "products");
     const place = at >= 0 ? { country: parts[at + 1] || "", operator: parts[at + 2] || "any" } : {};
-    const allow = [...new Set([...(input.allow || []), routed.product].filter(Boolean))];
     const payload = url.hostname.endsWith("5sim.net") ? slimFiveSim(parsed, hint, allow, place) : parsed;
     return { ok: true as const, payload };
   } catch {
@@ -652,7 +673,11 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
   }
   if (payload == null) return emptyImport("Add a catalogue URL or paste JSON.");
   const extracted = extractCatalog(payload);
-  const items = extracted.items.filter((item) => (item.category !== "numbers" && item.category !== "rent") || serviceAllowed(item.service || item.name, wantedForPull));
+  const items = extracted.items.filter((item) => {
+    if (item.category === "other" && item.price <= 0) return false;
+    if (item.category === "numbers" || item.category === "rent") return item.price > 0 && serviceAllowed(item.service || item.name, wantedForPull);
+    return true;
+  });
   if (!items.length) return emptyImport("None of the service names you saved were in that catalogue.");
   if (!routed.product && items.some((item) => item.category === "numbers" || item.category === "rent")) await clearNumberImports();
   const jobId = crypto.randomUUID();
@@ -915,7 +940,7 @@ export async function importFromUrl(input: { url: string; apiKey?: string; provi
   const fetched = await pullRemote({ url: input.url, apiKey: input.apiKey, providerId: input.providerId });
   if (!fetched.ok) {
     return locked(async () => {
-      const doc = await loadDoc();
+      const doc = await loadLight();
       const session = await readSession();
       return result(doc, session.userId, session.draft, fetched.error, null);
     });
@@ -975,7 +1000,7 @@ export async function browseCatalog(input: { q?: string; category?: string; prov
 export async function askSupport(question: string) {
   const q = question.trim().slice(0, 500);
   if (!q) return { text: "Type a question first." };
-  const doc = await loadDoc();
+  const doc = await loadLight();
   const faq = doc.faqs.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join("\n");
   const local = localAnswer(q, doc);
   const apiKey = process.env.XAI_API_KEY;
