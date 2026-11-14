@@ -29,7 +29,7 @@ function HostingPage() {
       <Row on={status.resend} title="Email" body={status.resend ? "Account and wallet messages are emailed." : "Email is off. Customers still get notices inside the app."} />
       <Row on={status.google} title="Google sign-in" body={status.google ? "Customers can continue with Google." : "Google sign-in is off. Email and password still work."} />
       <Row on={!!status.appUrl} title="Public address" body={status.appUrl ? status.appUrl : "The public address is not set on the host."} />
-      <Row on={status.ai} title="Support chat" body="Vera answers from your FAQs. Signed-in complaints are saved as tickets."} />
+      <Row on={status.ai} title="Support chat" body="Vera answers from your FAQs. Signed-in complaints are saved as tickets." />
     </div>
   );
 }
