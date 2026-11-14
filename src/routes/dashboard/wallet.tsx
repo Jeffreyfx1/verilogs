@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
@@ -20,11 +20,38 @@ function WalletPage() {
   const txns = useMemo(() => allTxns.filter((t) => t.userId === session && t.kind === "topup"), [allTxns, session]);
   const [amount, setAmount] = useState(5000);
   const [custom, setCustom] = useState("");
+  const [item, setItem] = useState("");
   const [paystack, setPaystack] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
+  const started = useRef(false);
   useEffect(() => {
-    hostStatus().then((s) => setPaystack(s.paystack)).catch(() => setPaystack(false));
-    const reference = new URLSearchParams(window.location.search).get("reference") || new URLSearchParams(window.location.search).get("trxref");
+    const params = new URLSearchParams(window.location.search);
+    const due = Math.round(Number(params.get("amount")) || 0);
+    const label = params.get("item") || "";
+    const reference = params.get("reference") || params.get("trxref");
+    if (due >= 100 && due <= 500000) {
+      setCustom(String(due));
+      setItem(label);
+    }
+    hostStatus()
+      .then((s) => {
+        setPaystack(s.paystack);
+        if (!s.paystack || due < 100 || due > 500000 || reference || started.current) return;
+        started.current = true;
+        setBusy(true);
+        beginPaystack({ data: { amount: due } })
+          .then((res) => {
+            if (res.error || !res.url) {
+              setBusy(false);
+              toast.error(res.error || "Paystack did not return a checkout link.");
+            } else window.location.href = res.url;
+          })
+          .catch(() => {
+            setBusy(false);
+            toast.error("Could not start Paystack.");
+          });
+      })
+      .catch(() => setPaystack(false));
     if (!reference) return;
     confirmPaystack({ data: { reference } })
       .then((res) => {
@@ -55,8 +82,8 @@ function WalletPage() {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <section className="rounded-card border border-line bg-card p-5 shadow-card">
-        <h1 className="text-2xl font-extrabold">Fund wallet</h1>
-        <p className="mt-1 text-sm text-muted">Balance {naira(user.balance)}. Paystack adds the wallet amount after the charge succeeds. The site charge is not added to the wallet.</p>
+        <h1 className="text-2xl font-extrabold">{item ? "Pay for this number" : "Fund wallet"}</h1>
+        <p className="mt-1 text-sm text-muted">{item ? `${item}. Your wallet is short, so Paystack opens for the exact amount this purchase needs.` : `Balance ${naira(user.balance)}. Paystack adds the wallet amount after the charge succeeds. The site charge is not added to the wallet.`}</p>
         <div className="preset-grid mt-4 grid grid-cols-3 gap-2">
           {PRESETS.map((n) => (
             <button key={n} type="button" onClick={() => { setAmount(n); setCustom(""); }} className={`min-h-11 rounded-xl border px-2 py-3 text-sm font-semibold ${!custom && amount === n ? "border-primary bg-paper text-primary" : "border-line"}`}>
@@ -70,7 +97,7 @@ function WalletPage() {
           </Field>
         </div>
         <Button className="mt-4 w-full" disabled={busy || paystack === false} onClick={() => void pay()}>
-          {busy ? "Opening Paystack…" : `Pay ${naira(quote.pay)} with Paystack`}
+          {busy ? "Opening Paystack…" : item ? `Pay ${naira(quote.pay)} for this number` : `Pay ${naira(quote.pay)} with Paystack`}
         </Button>
         {quote.fee > 0 ? <p className="mt-2 text-sm text-muted">Wallet receives {naira(quote.credit)}. Site charge {naira(quote.fee)}.</p> : null}
         {paystack === false ? (

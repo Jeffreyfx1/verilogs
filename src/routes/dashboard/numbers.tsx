@@ -31,7 +31,7 @@ function NumbersPage() {
   const liveServers = servers.filter((s) => s.enabled);
   const allOrders = useStore((s) => s.orders);
   const session = useStore((s) => s.sessionUserId);
-  const orders = useMemo(() => allOrders.filter((o) => o.userId === session && (o.category === "numbers" || o.category === "rent")), [allOrders, session]);
+  const orders = useMemo(() => allOrders.filter((o) => o.userId === session && (o.category === "numbers" || o.category === "rent") && o.status === "waiting"), [allOrders, session]);
   const buy = useStore((s) => s.buy);
   const refund = useStore((s) => s.refund);
   const activeId = liveServers.some((s) => s.id === server) ? server : liveServers[0]?.id || "";
@@ -119,8 +119,15 @@ function NumbersPage() {
   };
 
   const buyOperator = async (id: string) => {
+    const op = operators.find((p) => p.id === id);
     setOperatorId(id);
     const err = await buy(id, {});
+    if (err?.includes("does not cover") && op) {
+      const due = Math.max(100, op.price - (user?.balance || 0));
+      const label = `${serverName(op.operator)} · ${op.service || service}`;
+      window.location.href = `/dashboard/wallet?amount=${due}&item=${encodeURIComponent(label)}`;
+      return;
+    }
     if (err) toast.error(err);
     else toast.success("Number reserved. The code appears on the card.");
   };
