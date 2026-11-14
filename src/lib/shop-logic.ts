@@ -171,7 +171,7 @@ export function buyProduct(data: Data, userId: string | null, productId: string,
   if (product.category === "airtime" && (amount < 50 || amount > 50000)) return { error: "Airtime must be between ₦50 and ₦50,000.", data };
   if (product.category === "electricity" && (amount < 1000 || amount > 200000)) return { error: "Electricity must be between ₦1,000 and ₦200,000.", data };
   if (!product.variable && amount <= 0) return { error: "This item has no price yet.", data };
-  if (user.balance < amount) return { error: "Your wallet does not cover this. Fund it first.", data };
+  if (user.balance < amount) return { error: "Insufficient balance. Top up your balance to make this purchase.", data };
   const server = serverLabel(data.providers, provider.id) || provider.name;
   const order: Order = {
     id: uid("ord"),
@@ -212,7 +212,8 @@ export function refundOrder(data: Data, userId: string | null, orderId: string) 
       txns: [{ id: uid("txn"), userId: order.userId, kind: "refund" as const, amount: order.amount, note: "Refund · " + order.title, createdAt: new Date().toISOString() }, ...data.txns],
     },
     order.userId,
-    "Refund sent", `${order.title} is back in your wallet.`,
+    "Refund sent",
+    `${order.title} is back in your wallet.`,
     "wallet",
   );
   return { error: null, data: next };

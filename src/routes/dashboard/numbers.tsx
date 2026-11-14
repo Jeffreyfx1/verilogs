@@ -51,6 +51,8 @@ function NumbersPage() {
   const orders = useMemo(() => allOrders.filter((o) => o.userId === session && (o.category === "numbers" || o.category === "rent") && o.status === "waiting"), [allOrders, session]);
   const bought = useMemo(() => allOrders.filter((o) => o.userId === session && (o.category === "numbers" || o.category === "rent")).length, [allOrders, session]);
   const refund = useStore((s) => s.refund);
+  const buy = useStore((s) => s.buy);
+  const [buying, setBuying] = useState("");
   const activeId = liveServers.some((s) => s.id === server) ? server : liveServers[0]?.id || "";
   const active = servers.find((s) => s.id === activeId);
   const serverNo = Math.max(1, liveServers.findIndex((s) => s.id === activeId) + 1);
@@ -213,7 +215,18 @@ function NumbersPage() {
               <article key={op.id} className="rounded-2xl border border-line bg-paper p-3">
                 <p className="font-extrabold">{op.operator || "any"} <span className="text-sm font-bold text-ok">Stock: {op.stock.toLocaleString("en-US")}</span></p>
                 <p className="text-lg font-extrabold text-ok">{naira(op.price)}</p>
-                <button type="button" className="mt-2 inline-flex items-center gap-2 rounded-xl bg-violet-700 px-5 py-2 text-sm font-extrabold text-white" onClick={() => { window.location.href = `/dashboard/wallet?product=${encodeURIComponent(op.id)}`; }}>
+                <button type="button" disabled={buying === op.id} className="mt-2 inline-flex items-center gap-2 rounded-xl bg-violet-700 px-5 py-2 text-sm font-extrabold text-white disabled:opacity-60" onClick={() => {
+                  if ((user?.balance || 0) < op.price) {
+                    toast.error("Insufficient balance. Top up your balance to make this purchase.");
+                    return;
+                  }
+                  setBuying(op.id);
+                  void buy(op.id, {}).then((err) => {
+                    setBuying("");
+                    if (err) toast.error(err);
+                    else toast.success("Number reserved. Waiting for the SMS.");
+                  });
+                }}>
                   <ShoppingCart className="size-4" /> BUY
                 </button>
               </article>
