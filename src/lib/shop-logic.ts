@@ -62,7 +62,7 @@ export function projectShop(doc: Data, userId: string | null, draft: Draft | nul
     txns: admin ? clean.txns : clean.txns.filter((t) => t.userId === userId),
     tickets: admin ? clean.tickets : clean.tickets.filter((t) => t.userId === userId),
     notifications: (clean.notifications || []).filter((n) => n.userId === userId),
-    products: admin ? clean.products : clean.products.filter((p) => isLive(p, clean.providers)),
+    products: (admin ? clean.products : clean.products.filter((p) => isLive(p, clean.providers))).filter((p) => p.category !== "numbers" && p.category !== "rent"),
   };
 }
 
@@ -212,7 +212,8 @@ export function refundOrder(data: Data, userId: string | null, orderId: string) 
       txns: [{ id: uid("txn"), userId: order.userId, kind: "refund" as const, amount: order.amount, note: "Refund · " + order.title, createdAt: new Date().toISOString() }, ...data.txns],
     },
     order.userId,
-    "Refund sent", `${order.title} is back in your wallet.`,
+    "Refund sent",
+    `${order.title} is back in your wallet.`,
     "wallet",
   );
   return { error: null, data: next };
