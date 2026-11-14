@@ -130,20 +130,26 @@ async function saveDoc(doc: Data) {
   else await sql`insert into shop_state (id, doc) values ('main', ${text})`;
 }
 
-export async function sendMail(mail: Mail | undefined) {
-  if (!mail) return;
+export async function sendMail(mail: Mail | Mail[] | undefined) {
+  const list = Array.isArray(mail) ? mail : mail ? [mail] : [];
+  if (!list.length) return null;
   const key = process.env.RESEND_API_KEY;
-  if (!key) return;
+  if (!key) return "Resend is not connected on the server.";
   const from = process.env.RESEND_FROM || "VeriLogs <notifications@veri-logs.com>";
-  try {
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: [mail.to], subject: mail.subject, text: mail.text }),
-    });
-  } catch {
-    /* in-app notice still stands */
+  let failed = "";
+  for (const item of list) {
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ from, to: [item.to], subject: item.subject, text: item.text }),
+      });
+      if (!res.ok) failed = (await res.text()).slice(0, 180) || "Resend refused the email.";
+    } catch {
+      failed = "Could not reach Resend.";
+    }
   }
+  return failed || null;
 }
 
 async function rememberKey(providerId: string | undefined, apiKey: string | undefined) {
@@ -182,7 +188,7 @@ export async function applyAct(op: string, payload: Record<string, unknown>): Pr
     let draft = session.draft;
     let error: string | null = null;
     let report: SyncReport | null = null;
-    let mail: Mail | undefined;
+    let mail: Mail | Mail[] | undefined;
     const token = session.token || crypto.randomUUID();
 
     const str = (k: string) => (typeof payload[k] === "string" ? (payload[k] as string) : "");
@@ -299,6 +305,7 @@ export async function applyAct(op: string, payload: Record<string, unknown>): Pr
       const out = addAnnouncement(doc, userId, str("title"), str("body"));
       doc = out.data;
       error = out.error;
+      if (!error && "mails" in out) mail = out.mails;
     } else if (op === "markNotes") {
       doc = markNotes(doc, userId);
     } else if (op === "mailUser") {
@@ -315,7 +322,10 @@ export async function applyAct(op: string, payload: Record<string, unknown>): Pr
     }
 
     if (!error) await saveDoc(doc);
-    if (!error && mail) await sendMail(mail);
+    if (!error && mail) {
+      const mailError = await sendMail(mail);
+      if (mailError) error = `Saved in the app. Email failed: ${mailError}`;
+    }
     return result(await loadDoc(), userId, draft, error, report);
   });
 }
@@ -383,7 +393,7 @@ export async function creditFromWebhook(raw: string, signature: string | null) {
 
 export async function startPaystack(amount: number) {
   const n = Math.round(amount);
-  if (n < 100 || n > 500000) return { error: "Amount must be between ₦100 and ₦500,000." };
+  if (n < 100 || n > 500000) return { error: "Amount must be between \u20a6100 and \u20a6500,000." };
   const secret = process.env.PAYSTACK_SECRET_KEY;
   if (!secret) return { error: "Paystack is not connected yet. Add the secret key on Render, then try again." };
   const session = await readSession();
