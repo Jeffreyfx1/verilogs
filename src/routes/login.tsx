@@ -27,9 +27,14 @@ function LoginPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    const err = await login(email, password);
-    setBusy(false);
-    if (err) toast.error(err);
+    try {
+      const err = await login(email, password);
+      if (err) toast.error(err);
+    } catch {
+      toast.error("The shop is busy saving the catalogue. Wait a minute and try again.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (

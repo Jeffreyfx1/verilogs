@@ -29,10 +29,15 @@ function RegisterPage() {
     if (form.password !== form.confirm) return toast.error("Passwords do not match.");
     if (form.phone.trim().length < 8) return toast.error("Enter a real phone number.");
     setBusy(true);
-    const err = await register(form);
-    setBusy(false);
-    if (err) toast.error(err);
-    else nav({ to: "/dashboard" });
+    try {
+      const err = await register(form);
+      if (err) toast.error(err);
+      else nav({ to: "/dashboard" });
+    } catch {
+      toast.error("The shop is busy saving the catalogue. Wait a minute and try again.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (

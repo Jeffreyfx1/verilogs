@@ -59,6 +59,32 @@ export const importUrl = createServerFn({ method: "POST" })
     return importFromUrl(data);
   });
 
+export const browseNumbers = createServerFn({ method: "POST" })
+  .validator((input: { providerId?: string; category?: string; country?: string; service?: string; q?: string }) => ({
+    providerId: String(input?.providerId || ""),
+    category: input?.category === "rent" ? "rent" : "numbers",
+    country: String(input?.country || ""),
+    service: String(input?.service || ""),
+    q: String(input?.q || "").slice(0, 60),
+  }))
+  .handler(async ({ data }) => {
+    const { browseNumbers } = await core();
+    return browseNumbers(data);
+  });
+
+export const browseCatalog = createServerFn({ method: "POST" })
+  .validator((input: { q?: string; category?: string; providerId?: string; only?: string; page?: number }) => ({
+    q: String(input?.q || "").slice(0, 60),
+    category: String(input?.category || ""),
+    providerId: String(input?.providerId || ""),
+    only: input?.only === "on" || input?.only === "off" ? input.only : "all",
+    page: Number(input?.page) || 0,
+  }))
+  .handler(async ({ data }) => {
+    const { browseCatalog } = await core();
+    return browseCatalog(data);
+  });
+
 export const supportAsk = createServerFn({ method: "POST" })
   .validator((input: { question: string }) => ({ question: String(input?.question || "").slice(0, 500) }))
   .handler(async ({ data }) => {
