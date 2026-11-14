@@ -3,7 +3,7 @@
 
 @theme {
   --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
-  --color-paper: #ffffff;
+  --color-paper: #e4dcf6;
   --color-card: #ffffff;
   --color-ink: #1b1630;
   --color-muted: #655d7c;
@@ -105,6 +105,23 @@
 @keyframes floaty {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-8px); }
+}
+
+.hero-wash {
+  background:
+    radial-gradient(36rem 20rem at 100% 0%, #cfc4f4, transparent 58%),
+    radial-gradient(28rem 16rem at 0% 100%, #c9ddf8, transparent 55%),
+    #e4dcf6;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+html[data-form="phone"] .stat-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
 }
 
 .marquee-wrap {
