@@ -43,13 +43,15 @@ export const confirmPaystack = createServerFn({ method: "POST" })
   });
 
 export const importUrl = createServerFn({ method: "POST" })
-  .validator((input: { url: string; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; publish?: boolean }) => ({
+  .validator((input: { url: string; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean }) => ({
     url: String(input?.url || ""),
     apiKey: input?.apiKey ? String(input.apiKey) : "",
     providerId: input?.providerId ? String(input.providerId) : "",
     name: input?.name ? String(input.name) : "",
     baseUrl: input?.baseUrl ? String(input.baseUrl) : "",
     currency: input?.currency === "USD" ? "USD" : "NGN",
+    usdRate: Number(input?.usdRate) || 0,
+    markup: Number(input?.markup) || 0,
     publish: !!input?.publish,
   }))
   .handler(async ({ data }) => {

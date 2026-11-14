@@ -56,8 +56,8 @@ function ContentPage() {
         </section>
         <section className="space-y-3 rounded-card border border-line bg-card p-4 shadow-card">
           <h2 className="text-xl font-extrabold">Rates and community</h2>
-          <Field label="Naira per 1 USD" hint="Used when a catalogue is imported as USD. 4 USDT at 1650 becomes ₦6,600 before margin."><input className={inputClass} value={draft.usdNgn} onChange={(e) => setDraft({ ...draft, usdNgn: Number(e.target.value) })} /></Field>
-          <Field label="Service margin percent" hint="Added on top of the naira cost the next time you import. 12% on ₦6,600 becomes about ₦7,395. Existing prices stay until you sync again."><input className={inputClass} value={draft.margin} onChange={(e) => setDraft({ ...draft, margin: Number(e.target.value) })} /></Field>
+          <Field label="Fallback naira per 1 USD" hint="Used only for an API that has no rate of its own. 5sim is set on that API, not here."><input className={inputClass} value={draft.usdNgn} onChange={(e) => setDraft({ ...draft, usdNgn: Number(e.target.value) })} /></Field>
+          <Field label="Fallback markup percent" hint="Used only for an API that has no markup of its own. 12 means ×1.12. Set 5sim to ×1.6 on the import page."><input className={inputClass} value={draft.margin} onChange={(e) => setDraft({ ...draft, margin: Number(e.target.value) })} /></Field>
           <Field label="Paystack site charge percent" hint="Extra percent the customer pays when funding the wallet. The wallet only receives the amount they chose."><input className={inputClass} value={draft.paystackPercent ?? 0} onChange={(e) => setDraft({ ...draft, paystackPercent: Number(e.target.value) })} /></Field>
           <Field label="Paystack flat charge (₦)" hint="Added on top of the percent. Set both to 0 to charge the wallet amount only."><input className={inputClass} value={draft.paystackFlat ?? 0} onChange={(e) => setDraft({ ...draft, paystackFlat: Number(e.target.value) })} /></Field>
           <Field label="Community name"><input className={inputClass} value={draft.community} onChange={(e) => setDraft({ ...draft, community: e.target.value })} /></Field>

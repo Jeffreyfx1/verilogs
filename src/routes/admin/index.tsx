@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { CATEGORY_LABEL } from "@/lib/catalog";
+import { CATEGORY_LABEL, type Provider } from "@/lib/catalog";
+import { Button, Field, inputClass } from "@/components/ui";
 import { naira, when } from "@/lib/money";
 import { useServers, useStore } from "@/lib/store";
 
@@ -74,11 +76,27 @@ function AdminHome() {
                   {p.lastSync.byNetwork && Object.keys(p.lastSync.byNetwork).length ? ` · networks ${Object.entries(p.lastSync.byNetwork).map(([n, c]) => `${n} ${c}`).join(", ")}` : ""}
                 </p>
               ) : null}
+              <ProviderMargin provider={p} />
             </article>
           );
         })}
       </section>
       <p className="text-xs text-muted">{users.filter((u) => u.role === "customer").length} customers · {orders.length} orders · wallet float {naira(users.reduce((s, u) => s + u.balance, 0))}</p>
+    </div>
+  );
+}
+
+function ProviderMargin({ provider }: { provider: Provider }) {
+  const setProvider = useStore((s) => s.setProvider);
+  const [rate, setRate] = useState(provider.usdRate || 2646);
+  const [markup, setMarkup] = useState(provider.markup || 1.6);
+  const sample = Math.ceil((0.1 * (Number(rate) || 0) * (Number(markup) || 1)) / 5) * 5;
+  return (
+    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <Field label="Naira per 1 USD"><input className={inputClass} inputMode="decimal" value={rate} onChange={(e) => setRate(Number(e.target.value))} /></Field>
+      <Field label="Markup"><input className={inputClass} inputMode="decimal" value={markup} onChange={(e) => setMarkup(Number(e.target.value))} /></Field>
+      <p className="text-xs text-muted sm:col-span-2">$0.10 from this API sells at {naira(sample)}. Pull the catalogue again after saving so every row uses it.</p>
+      <Button tone="soft" onClick={() => setProvider(provider.id, { usdRate: Number(rate) || 2646, markup: Number(markup) || 1, currency: provider.currency === "NGN" ? "NGN" : "USD" })}>Save this API margin</Button>
     </div>
   );
 }
