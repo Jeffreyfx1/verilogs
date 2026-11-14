@@ -25,6 +25,8 @@ export type Provider = {
   servesNumbers: boolean;
   enabled: boolean;
   currency: "NGN" | "USD";
+  usdRate: number;
+  markup: number;
   createdAt: string;
   lastSync: {
     at: string;
@@ -47,6 +49,7 @@ export type Product = {
   country: string;
   network: string;
   price: number;
+  cost: number;
   stock: number;
   enabled: boolean;
   validity: string;
@@ -198,7 +201,14 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
     users: src.users ?? [],
     sessionUserId: src.sessionUserId ?? null,
     googleDraft: src.googleDraft ?? null,
-    providers: src.providers ?? [],
+    providers: (src.providers ?? []).map((provider) => {
+      const five = /5sim/i.test(`${provider.name || ""} ${provider.baseUrl || ""}`);
+      return {
+        ...provider,
+        usdRate: provider.usdRate > 0 ? provider.usdRate : five ? 2646 : base.usdNgn,
+        markup: provider.markup > 0 ? provider.markup : five ? 1.6 : 1 + base.margin / 100,
+      };
+    }),
     products: src.products ?? [],
     orders: src.orders ?? [],
     txns: src.txns ?? [],
@@ -311,10 +321,11 @@ export function mixedPayload() {
   return { ...smsPayload(0.92), ...vtuPayload() };
 }
 
-function sellPrice(cost: number, currency: "NGN" | "USD", settings: Data["settings"]) {
-  const ngn = currency === "USD" ? cost * settings.usdNgn : cost;
+export function sellPrice(cost: number, currency: "NGN" | "USD", rate: number, markup: number) {
+  const ngn = currency === "USD" ? cost * (rate > 0 ? rate : 1) : cost;
   if (ngn <= 0) return 0;
-  return Math.ceil((ngn * (1 + settings.margin / 100)) / 5) * 5;
+  const factor = markup > 0 ? markup : 1;
+  return Math.ceil((ngn * factor) / 5) * 5;
 }
 
 export function topupQuote(credit: number, settings: Pick<Settings, "paystackPercent" | "paystackFlat">) {
@@ -352,6 +363,8 @@ export function ingest(
     baseUrl: string;
     hasKey?: boolean;
     currency: "NGN" | "USD";
+    usdRate?: number;
+    markup?: number;
     payload: unknown;
     enable?: (item: ParsedItem) => boolean;
   },
@@ -370,6 +383,8 @@ export function ingest(
       servesNumbers: false,
       enabled: true,
       currency: input.currency,
+      usdRate: input.usdRate && input.usdRate > 0 ? input.usdRate : /5sim/i.test(input.name + input.baseUrl) ? 2646 : data.settings.usdNgn,
+      markup: input.markup && input.markup > 0 ? input.markup : /5sim/i.test(input.name + input.baseUrl) ? 1.6 : 1 + data.settings.margin / 100,
       createdAt: now,
       lastSync: null,
     };
@@ -378,6 +393,10 @@ export function ingest(
     provider.name = input.name || provider.name;
     provider.baseUrl = input.baseUrl || provider.baseUrl;
     provider.currency = input.currency;
+    if (input.usdRate && input.usdRate > 0) provider.usdRate = input.usdRate;
+    if (input.markup && input.markup > 0) provider.markup = input.markup;
+    if (!provider.usdRate) provider.usdRate = /5sim/i.test(provider.name + provider.baseUrl) ? 2646 : data.settings.usdNgn;
+    if (!provider.markup) provider.markup = /5sim/i.test(provider.name + provider.baseUrl) ? 1.6 : 1 + data.settings.margin / 100;
     if (input.hasKey) provider.hasKey = true;
   }
   const products = data.products.map((p) => ({ ...p }));
@@ -388,13 +407,14 @@ export function ingest(
   for (const item of items) {
     byCategory[item.category] = (byCategory[item.category] || 0) + 1;
     if (item.network) byNetwork[item.network] = (byNetwork[item.network] || 0) + 1;
-    const price = sellPrice(item.price, input.currency, data.settings);
+    const price = sellPrice(item.price, provider.currency, provider.usdRate, provider.markup);
     const existing = products.find((p) => p.providerId === provider!.id && p.externalId === item.externalId);
     if (existing) {
       existing.name = item.name;
       existing.service = item.service;
       existing.country = item.country;
       existing.network = item.network;
+      if (item.price > 0) existing.cost = item.price;
       if (price > 0) existing.price = price;
       existing.stock = item.stock;
       existing.validity = item.validity;
@@ -413,6 +433,7 @@ export function ingest(
         country: item.country,
         network: item.network,
         price,
+        cost: item.price,
         stock: item.stock,
         enabled: input.enable ? input.enable(item) : false,
         validity: item.validity,
@@ -501,12 +522,29 @@ export function repairCatalog(doc: Data): Data {
       products.push({ ...product, category, country, service: product.service || product.name });
     } else products.push(product);
   }
-  if (!changed) return doc;
   const providers = doc.providers.map((provider) => {
+    const five = /5sim/i.test(`${provider.name} ${provider.baseUrl}`);
+    const usdRate = provider.usdRate > 0 ? provider.usdRate : five ? 2646 : doc.settings.usdNgn;
+    const markup = provider.markup > 0 ? provider.markup : five ? 1.6 : 1 + doc.settings.margin / 100;
     const servesNumbers = products.some((p) => p.providerId === provider.id && (p.category === "numbers" || p.category === "rent"));
-    return servesNumbers === provider.servesNumbers ? provider : { ...provider, servesNumbers };
+    if (usdRate !== provider.usdRate || markup !== provider.markup || servesNumbers !== provider.servesNumbers) {
+      changed = true;
+      return { ...provider, usdRate, markup, servesNumbers };
+    }
+    return provider;
   });
-  return { ...doc, products, providers };
+  const priced = products.map((product) => {
+    const provider = providers.find((item) => item.id === product.providerId);
+    if (!provider || !(product.cost > 0)) return product;
+    const price = sellPrice(product.cost, provider.currency, provider.usdRate, provider.markup);
+    if (price > 0 && price !== product.price) {
+      changed = true;
+      return { ...product, price };
+    }
+    return product;
+  });
+  if (!changed) return doc;
+  return { ...doc, products: priced, providers };
 }
 
 export function isLive(product: Product, providers: Provider[]) {
