@@ -11,12 +11,13 @@ export const Route = createFileRoute("/dashboard/numbers")({
   validateSearch: (search: Record<string, unknown>) => ({
     server: typeof search.server === "string" ? search.server : "",
     country: typeof search.country === "string" ? search.country : "",
+    kind: search.kind === "rent" ? "rent" : "",
   }),
   component: NumbersPage,
 });
 
 function NumbersPage() {
-  const { server, country: lockedCountry } = Route.useSearch();
+  const { server, country: lockedCountry, kind } = Route.useSearch();
   const user = useUser();
   const servers = useServers();
   const liveServers = servers.filter((s) => s.enabled);
@@ -24,7 +25,7 @@ function NumbersPage() {
   const providers = useStore((s) => s.providers);
   const allOrders = useStore((s) => s.orders);
   const session = useStore((s) => s.sessionUserId);
-  const orders = useMemo(() => allOrders.filter((o) => o.userId === session && o.category === "numbers"), [allOrders, session]);
+  const orders = useMemo(() => allOrders.filter((o) => o.userId === session && (o.category === "numbers" || o.category === "rent")), [allOrders, session]);
   const buy = useStore((s) => s.buy);
   const refund = useStore((s) => s.refund);
   const activeId = liveServers.some((s) => s.id === server) ? server : liveServers[0]?.id || "";
@@ -33,8 +34,10 @@ function NumbersPage() {
   const [service, setService] = useState("");
   const [country, setCountry] = useState("");
 
-  const pool = products.filter((p) => p.providerId === activeId && (p.category === "numbers" || p.category === "other") && isLive(p, providers));
-  const hidden = products.filter((p) => p.providerId === activeId && p.category === "numbers" && !p.enabled).length;
+  const want = kind === "rent" ? "rent" : "numbers";
+  const pool = products.filter((p) => p.providerId === activeId && p.category === want && isLive(p, providers) && p.country && p.country !== "Any");
+  const unfiled = products.some((p) => p.providerId === activeId && (p.category === "numbers" || p.category === "rent") && isLive(p, providers) && (!p.country || p.country === "Any"));
+  const hidden = products.filter((p) => p.providerId === activeId && p.category === want && !p.enabled).length;
   const services = useMemo(() => {
     const map = new Map<string, { service: string; price: number }>();
     for (const p of pool) {
@@ -45,9 +48,16 @@ function NumbersPage() {
     }
     return [...map.values()].sort((a, b) => a.service.localeCompare(b.service));
   }, [pool, q, lockedCountry]);
-  const countries = pool
-    .filter((p) => p.service === service && (!lockedCountry || p.country === lockedCountry))
-    .sort((a, b) => a.price - b.price || a.country.localeCompare(b.country));
+  const countries = useMemo(() => {
+    const map = new Map<string, (typeof pool)[number]>();
+    for (const p of pool) {
+      if (p.service !== service) continue;
+      if (lockedCountry && p.country !== lockedCountry) continue;
+      const cur = map.get(p.country);
+      if (!cur || (p.price > 0 && p.price < cur.price)) map.set(p.country, p);
+    }
+    return [...map.values()].sort((a, b) => a.price - b.price || a.country.localeCompare(b.country));
+  }, [pool, service, lockedCountry]);
   const picked = countries.find((p) => p.country === country) || null;
 
   const copy = async (value: string) => {
@@ -70,7 +80,7 @@ function NumbersPage() {
     <div className="space-y-4">
       <section className="balance-card flex flex-wrap items-center justify-between gap-3 rounded-card px-5 py-4">
         <div>
-          <h1 className="text-2xl font-extrabold">{lockedCountry === "United States" ? "USA numbers" : "Buy numbers"}</h1>
+          <h1 className="text-2xl font-extrabold">{lockedCountry === "United States" ? (kind === "rent" ? "Rent USA numbers" : "USA numbers") : kind === "rent" ? "Rent numbers" : "Buy numbers"}</h1>
           <p className="text-sm text-on-deep/80">{active ? `${active.label} · ${active.name}` : "No SMS server is switched on yet."}</p>
         </div>
         <div className="rounded-xl bg-deep/30 px-4 py-2 text-right">
@@ -83,12 +93,16 @@ function NumbersPage() {
           <Link
             key={s.id}
             to="/dashboard/numbers"
-            search={{ server: s.id, country: lockedCountry }}
+            search={{ server: s.id, country: lockedCountry, kind }}
             className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${s.id === activeId ? "bg-primary text-on-primary" : "border border-line bg-card"}`}
           >
             {s.label}
           </Link>
         ))}
+      </div>
+      <div className="flex gap-2">
+        <Link to="/dashboard/numbers" search={{ server: activeId, country: lockedCountry, kind: "" }} className={`rounded-full px-4 py-2 text-sm font-extrabold ${kind !== "rent" ? "bg-primary text-on-primary" : "border border-line bg-card"}`}>Buy number</Link>
+        <Link to="/dashboard/numbers" search={{ server: activeId, country: lockedCountry, kind: "rent" }} className={`rounded-full px-4 py-2 text-sm font-extrabold ${kind === "rent" ? "bg-primary text-on-primary" : "border border-line bg-card"}`}>Rent number</Link>
       </div>
       {user?.role === "admin" && hidden > 0 ? (
         <p className="rounded-xl border border-line bg-card px-3 py-2 text-sm">
@@ -106,7 +120,7 @@ function NumbersPage() {
                 <span className="text-xs">from {naira(s.price)}</span>
               </button>
             ))}
-            {!services.length ? <p className="px-2 py-6 text-sm text-muted">Nothing is live on this server yet.</p> : null}
+            {!services.length ? <p className="px-2 py-6 text-sm text-muted">{unfiled ? "Imported rows have no country, so they are hidden. Pull https://5sim.net/v1/guest/prices with currency USD." : kind === "rent" ? "No rentals are live on this server. Import a catalogue whose category is hosting or rent." : "Nothing is live on this server yet."}</p> : null}
           </div>
         </section>
         <section className="rounded-card border border-line bg-card p-4 shadow-card">
@@ -116,7 +130,7 @@ function NumbersPage() {
             {countries.map((p) => (
               <button key={p.id} type="button" onClick={() => setCountry(p.country)} className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm ${country === p.country ? "bg-primary text-on-primary" : "hover:bg-paper"}`}>
                 <span>{p.country}</span>
-                <span className="text-xs">{naira(p.price)} · {p.stock}</span>
+                <span className="text-xs">{naira(p.price)}{p.stock > 0 && p.stock < 10000 ? ` · ${p.stock}` : ""}</span>
               </button>
             ))}
             {service && !countries.length ? <p className="px-2 py-6 text-sm text-muted">No countries for that service.</p> : null}
