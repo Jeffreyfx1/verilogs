@@ -106,7 +106,7 @@
 
 @keyframes floaty {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-8px); }
+  50% { transform: translateY(-7px); }
 }
 
 @keyframes spin-slow {
@@ -121,19 +121,20 @@
   position: relative;
   background:
     radial-gradient(80% 100% at 5% 100%, #9333ea 0%, transparent 65%),
-    radial-gradient(60% 80% at 100% 0%, #22d3ee44, transparent 60%),
+    radial-gradient(60% 80% at 100% 0%, #a855f755, transparent 60%),
     linear-gradient(145deg, #391078 0%, #1a0840 48%, #0c0420 100%);
-  border: 1px solid #d8a5ff;
+  border: 1px solid #c084fc;
   box-shadow:
     0 0 0 1px #7c3aed,
-    0 0 20px #a855f7,
+    0 0 20px #9333ea,
     0 0 45px #6d28d977,
     inset 0 0 35px #7c3aed44;
 }
 
 .tier-photo {
-  border: 1px solid #d8a5ff80;
-  box-shadow: 0 0 18px #a855f7, inset 0 0 20px #7c3aed;
+  border: 1px solid #c084fc80;
+  box-shadow: 0 0 18px #9333ea, inset 0 0 20px #7c3aed;
+  animation: floaty 5.5s ease-in-out infinite;
 }
 
 .uk-card {
@@ -142,7 +143,7 @@
   border: 1px solid #c084fc;
   box-shadow:
     0 0 0 1px #7c3aed,
-    0 0 24px #a855f799,
+    0 0 24px #9333ea99,
     inset 0 0 30px #6d28d944;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
@@ -153,13 +154,23 @@
 
 .service-card {
   position: relative;
+  background: linear-gradient(145deg, #24103f, #160a2b 70%, #10051f);
+  border: 1px solid #9333ea;
+  box-shadow: 0 0 12px #9333ea33, inset 0 0 15px #7c3aed22;
   transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
   backdrop-filter: blur(12px);
 }
 
 .service-card:active {
   transform: scale(0.95);
-  box-shadow: 0 0 22px #a855f7, inset 0 0 15px #a855f744;
+  border-color: #d8b4fe;
+  box-shadow: 0 0 22px #a855f7, inset 0 0 18px #a855f744;
+}
+
+.popular-badge {
+  background: linear-gradient(135deg, #7c3aed, #a855f7, #c026d3);
+  border: 1px solid #d8b4fe;
+  box-shadow: 0 0 10px #a855f7aa, 0 0 18px #9333ea55;
 }
 
 .history-card {
@@ -170,7 +181,7 @@
   border: 1px solid #a855f7;
   box-shadow:
     0 0 0 1px #7c3aed66,
-    0 0 22px #7c3aed55,
+    0 0 22px #9333ea66,
     inset 0 0 25px #6d28d933;
 }
 
@@ -182,12 +193,25 @@
   object-fit: cover;
 }
 
+.tier-card a,
+.uk-card,
+.service-card {
+  -webkit-tap-highlight-color: transparent;
+}
+
 @media (max-width: 380px) {
   .tier-card { padding: 12px; }
   .tier-photo { width: 34%; height: 145px; }
   .tier-card h2 { font-size: 17px; }
   .tier-card p { font-size: 11px; }
   .service-card { min-height: 90px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .tier-photo { animation: none; }
+  .service-card,
+  .uk-card { transition: none; }
 }
 
 .hero-wash {
