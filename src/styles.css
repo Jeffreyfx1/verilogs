@@ -3,13 +3,13 @@
 
 @theme {
   --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
-  --color-paper: #2a1848;
-  --color-card: #ffffff;
-  --color-ink: #1b1630;
-  --color-muted: #655d7c;
-  --color-line: #e3def0;
-  --color-primary: #5b4ce0;
-  --color-deep: #2a2348;
+  --color-paper: #0e071c;
+  --color-card: #1a1030;
+  --color-ink: #f7f4ff;
+  --color-muted: #c9bfdc;
+  --color-line: #3d2d66;
+  --color-primary: #8b5cf6;
+  --color-deep: #070412;
   --color-accent: #3c86ea;
   --color-on-primary: #f7f6ff;
   --color-on-deep: #f4f2fb;
@@ -30,14 +30,9 @@
   }
   body {
     font-family: var(--font-sans);
-    background: #2a1848;
-    color: #f4f1fb;
-    --color-muted: #d9d3ec;
+    background: #0e071c;
+    color: #f7f4ff;
     min-height: 100%;
-  }
-  .bg-card {
-    color: #1b1630;
-    --color-muted: #655d7c;
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {
@@ -71,13 +66,15 @@
 
 .promo-card {
   display: block;
+  box-sizing: border-box;
   border-radius: var(--radius-card);
   padding: 1.15rem 1.2rem;
   color: #f7f5ff;
+  border: 1px solid #6d28d9;
   background:
-    radial-gradient(80% 120% at 100% 0%, color-mix(in srgb, #8ea2ff 45%, transparent), transparent 55%),
-    linear-gradient(135deg, #5348c4, #322a62);
-  box-shadow: 0 14px 30px color-mix(in srgb, #322a62 18%, transparent);
+    radial-gradient(80% 120% at 100% 0%, color-mix(in srgb, #a78bfa 45%, transparent), transparent 55%),
+    linear-gradient(145deg, #4c1d95, #1e1038 70%);
+  box-shadow: 0 14px 30px color-mix(in srgb, #4c1d95 35%, transparent);
 }
 
 .promo-card-alt {
@@ -113,7 +110,9 @@
 }
 
 .hero-wash {
-  background: #2a1848;
+  background:
+    radial-gradient(32rem 18rem at 100% 0%, #4c1d95, transparent 58%),
+    #0e071c;
 }
 
 .stat-row {
