@@ -33,7 +33,7 @@ function NumbersPage() {
   const [service, setService] = useState("");
   const [country, setCountry] = useState("");
 
-  const pool = products.filter((p) => p.providerId === activeId && p.category === "numbers" && isLive(p, providers));
+  const pool = products.filter((p) => p.providerId === activeId && (p.category === "numbers" || p.category === "other") && isLive(p, providers));
   const hidden = products.filter((p) => p.providerId === activeId && p.category === "numbers" && !p.enabled).length;
   const services = useMemo(() => {
     const map = new Map<string, { service: string; price: number }>();
@@ -99,7 +99,7 @@ function NumbersPage() {
         <section className="rounded-card border border-line bg-card p-4 shadow-card">
           <h2 className="font-bold">Service</h2>
           <input className={`${inputClass} mt-3`} placeholder="Search service" value={q} onChange={(e) => setQ(e.target.value)} />
-          <div className="scroll-pane mt-3 space-y-1 pr-1">
+          <div className="mt-3 max-h-[70vh] space-y-1 overflow-y-auto pr-1">
             {services.map((s) => (
               <button key={s.service} type="button" onClick={() => { setService(s.service); setCountry(""); }} className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm ${service === s.service ? "bg-primary text-on-primary" : "hover:bg-paper"}`}>
                 <span>{s.service}</span>
@@ -112,7 +112,7 @@ function NumbersPage() {
         <section className="rounded-card border border-line bg-card p-4 shadow-card">
           <h2 className="font-bold">Country</h2>
           <p className="mt-1 text-xs text-muted">{service ? service : "Choose a service to see countries."}</p>
-          <div className="scroll-pane mt-3 space-y-1 pr-1">
+          <div className="mt-3 max-h-[70vh] space-y-1 overflow-y-auto pr-1">
             {countries.map((p) => (
               <button key={p.id} type="button" onClick={() => setCountry(p.country)} className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm ${country === p.country ? "bg-primary text-on-primary" : "hover:bg-paper"}`}>
                 <span>{p.country}</span>
