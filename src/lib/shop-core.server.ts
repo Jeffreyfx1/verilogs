@@ -202,7 +202,6 @@ async function clearNumberImports() {
   await writeState({ ...doc, products, providers });
 }
 
-
 export async function clearNumberCatalog() {
   const session = await readSession();
   const doc = await loadLight();
