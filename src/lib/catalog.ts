@@ -137,7 +137,7 @@ export function defaultSettings(): Settings {
     margin: 12,
     community: "VeriLogs Community",
     telegram: "https://t.me/verilogs",
-    whatsapp: "https://wa.me/2348000000000",
+    whatsapp: "",
     logo: "",
     brand: "VeriLogs",
     supportWelcome: "Hi, I am Vera. Ask about numbers, data, your wallet, or how to reach the Telegram channel.",
@@ -268,9 +268,6 @@ export function vtuPayload() {
 export function mixedPayload() {
   return { ...smsPayload(0.92), ...vtuPayload() };
 }
-
-const POPULAR_SERVICES = new Set(["whatsapp", "whatsapp2", "telegram", "google", "instagram", "facebook", "tiktok"]);
-const POPULAR_COUNTRIES = new Set(["Nigeria", "United States", "United Kingdom", "Canada", "Ghana", "Kenya", "India"]);
 
 function sellPrice(cost: number, currency: "NGN" | "USD", settings: Data["settings"]) {
   const ngn = currency === "USD" ? cost * settings.usdNgn : cost;
@@ -417,7 +414,7 @@ export function freshData(): Data {
       id: "usr_admin",
       name: "VeriLogs Admin",
       email: "admin@verilogs.app",
-      phone: "+2348000000000",
+      phone: "",
       passwordHash: "1e16d6e9cfbb52596211577ad84a169944b6951c47703d65fa7800309d086b89",
       google: false,
       role: "admin",
@@ -447,30 +444,5 @@ export function freshData(): Data {
     paidRefs: [],
     settings,
   };
-  data = ingest(data, {
-    name: "SwiftSMS",
-    baseUrl: "https://sms.provider.example/api",
-    hasKey: true,
-    currency: "NGN",
-    payload: smsPayload(1),
-    enable: (item) => item.category === "numbers" && POPULAR_SERVICES.has(item.service.toLowerCase()) && POPULAR_COUNTRIES.has(item.country),
-  }).data;
-  data = ingest(data, {
-    name: "NovaOTP",
-    baseUrl: "https://otp.provider.example/v1",
-    hasKey: true,
-    currency: "NGN",
-    payload: smsPayload(1.15),
-    enable: (item) => item.category === "numbers" && ["whatsapp", "telegram", "google"].includes(item.service.toLowerCase()) && ["Nigeria", "United States", "United Kingdom"].includes(item.country),
-  }).data;
-  data = ingest(data, {
-    name: "NaijaVTU",
-    baseUrl: "https://vtu.provider.example/api",
-    hasKey: true,
-    currency: "NGN",
-    payload: vtuPayload(),
-    enable: (item) => item.category !== "other",
-  }).data;
-  data.providers = data.providers.map((p, i) => ({ ...p, createdAt: `2026-02-0${i + 1}T08:00:00.000Z` }));
   return data;
 }
