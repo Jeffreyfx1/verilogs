@@ -3,6 +3,7 @@ import {
   ingest,
   isLive,
   normalizeData,
+  sellPrice,
   serverLabel,
   type Announcement,
   type Data,
@@ -211,7 +212,8 @@ export function refundOrder(data: Data, userId: string | null, orderId: string) 
       txns: [{ id: uid("txn"), userId: order.userId, kind: "refund" as const, amount: order.amount, note: "Refund · " + order.title, createdAt: new Date().toISOString() }, ...data.txns],
     },
     order.userId,
-    "Refund sent", `${order.title} is back in your wallet.`,
+    "Refund sent",
+    `${order.title} is back in your wallet.`,
     "wallet",
   );
   return { error: null, data: next };
@@ -224,7 +226,7 @@ export function tickWaiting(data: Data) {
 export function importServices(
   data: Data,
   userId: string | null,
-  input: { providerId?: string; name: string; baseUrl: string; currency: "NGN" | "USD"; payload: unknown; hasKey?: boolean; publish?: boolean },
+  input: { providerId?: string; name: string; baseUrl: string; currency: "NGN" | "USD"; usdRate?: number; markup?: number; payload: unknown; hasKey?: boolean; publish?: boolean },
 ) {
   const denied = adminGuard(data, userId);
   if (denied) return { error: denied, data };
@@ -239,10 +241,19 @@ export function setEnabled(data: Data, userId: string | null, ids: string[], ena
   return { error: null, data: { ...data, products: data.products.map((p) => (setIds.has(p.id) ? { ...p, enabled } : p)) } };
 }
 
-export function setProvider(data: Data, userId: string | null, id: string, patch: { enabled?: boolean; name?: string }) {
+export function setProvider(data: Data, userId: string | null, id: string, patch: { enabled?: boolean; name?: string; usdRate?: number; markup?: number; currency?: "NGN" | "USD" }) {
   const denied = adminGuard(data, userId);
   if (denied) return { error: denied, data };
-  return { error: null, data: { ...data, providers: data.providers.map((p) => (p.id === id ? { ...p, ...patch } : p)) } };
+  const providers = data.providers.map((p) => (p.id === id ? { ...p, ...patch } : p));
+  const provider = providers.find((p) => p.id === id);
+  const products = provider
+    ? data.products.map((product) => {
+        if (product.providerId !== id || !(product.cost > 0)) return product;
+        const price = sellPrice(product.cost, provider.currency, provider.usdRate, provider.markup);
+        return price > 0 && price !== product.price ? { ...product, price } : product;
+      })
+    : data.products;
+  return { error: null, data: { ...data, providers, products } };
 }
 
 export function adjustBalance(data: Data, actorId: string | null, userId: string, amount: number, note: string) {

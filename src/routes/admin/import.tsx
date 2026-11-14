@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
@@ -15,12 +15,28 @@ function ImportPage() {
   const [name, setName] = useState("");
   const [baseUrl, setBaseUrl] = useState("https://");
   const [currency, setCurrency] = useState<"NGN" | "USD">("NGN");
+  const [usdRate, setUsdRate] = useState(1650);
+  const [markup, setMarkup] = useState(1);
   const [providerId, setProviderId] = useState("");
   const [publish, setPublish] = useState(false);
   const [text, setText] = useState("");
   const [apiUrl, setApiUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [report, setReport] = useState<SyncReport | null>(null);
+  useEffect(() => {
+    const existing = providers.find((p) => p.id === providerId);
+    if (existing) {
+      setCurrency(existing.currency);
+      setUsdRate(existing.usdRate || 2646);
+      setMarkup(existing.markup || 1.6);
+      return;
+    }
+    if (/5sim/i.test(apiUrl + name)) {
+      setCurrency("USD");
+      setUsdRate(2646);
+      setMarkup(1.6);
+    }
+  }, [providerId, apiUrl, name, providers]);
 
   const preview = useMemo(() => {
     if (!text.trim()) return null;
@@ -41,6 +57,8 @@ function ImportPage() {
         name: label,
         baseUrl: url || apiUrl || baseUrl || existing?.baseUrl || "https://provider.example/api",
         currency: existing?.currency || currency,
+        usdRate,
+        markup,
         payload,
         hasKey: true,
         publish,
@@ -65,7 +83,9 @@ function ImportPage() {
           providerId,
           name: label,
           baseUrl: apiUrl || baseUrl,
-          currency: existing?.currency || currency,
+          currency: currency,
+          usdRate,
+          markup,
           publish,
         },
       });
@@ -109,10 +129,17 @@ function ImportPage() {
           <Button tone="soft" onClick={() => void pull()}>Pull and import this API</Button>
           <Field label="Price currency">
             <select className={inputClass} value={currency} onChange={(e) => setCurrency(e.target.value as "NGN" | "USD")}>
-              <option value="NGN">NGN</option>
-              <option value="USD">USD, converted with your naira rate</option>
+              <option value="NGN">NGN, already in naira</option>
+              <option value="USD">USD, convert with this API's rate</option>
             </select>
           </Field>
+          <Field label="Naira per 1 USD" hint="5sim uses 2,646. Each API keeps its own rate.">
+            <input className={inputClass} inputMode="decimal" value={usdRate} onChange={(e) => setUsdRate(Number(e.target.value))} />
+          </Field>
+          <Field label="Markup" hint="5sim uses 1.6. A $0.10 number becomes 0.10 × rate × markup.">
+            <input className={inputClass} inputMode="decimal" value={markup} onChange={(e) => setMarkup(Number(e.target.value))} />
+          </Field>
+          <p className="text-xs text-muted">Example: $0.10 sells at ₦{Math.ceil((0.1 * (usdRate || 0) * (markup || 1)) / 5) * 5}. Prices update on the next import.</p>
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} className="mt-1" />
             <span>Put new services live immediately. Leave this off if you want to review first. Already-enabled rows stay as they are.</span>
