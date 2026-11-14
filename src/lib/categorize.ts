@@ -311,8 +311,8 @@ function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedI
   const sms = rent || hint === "numbers" || hint === "activation";
   const looksData = !sms && (hint === "data" || /data|\d+(\.\d+)?\s?(gb|mb)|bundle|sme|gifting|\bcg\b/.test(blob));
   let category: Category = "other";
-  else if (sms) category = "numbers";
   if (rent) category = "rent";
+  else if (sms) category = "numbers";
   else if (/\b(exam|waec|neco|nabteb|jamb|result checker)\b/.test(blob) || hint === "exam") category = "exam";
   else if (/\b(electricity|electric|disco|ikedc|ekedc|aedc|phed|kedco|ibedc|kaedco|eedc)\b/.test(blob) || hint === "electricity") category = "electricity";
   else if (/\b(cable|dstv|gotv|startimes|cabletv)\b/.test(blob) || hint === "cable") category = "cable";
