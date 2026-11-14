@@ -109,6 +109,30 @@
   50% { transform: translateY(-8px); }
 }
 
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+
+.orbit-ring {
+  animation: spin-slow 9s linear infinite;
+}
+
+.tier-card {
+  background:
+    radial-gradient(90% 80% at 0% 100%, color-mix(in srgb, #7c3aed 55%, transparent), transparent 55%),
+    radial-gradient(70% 80% at 100% 0%, color-mix(in srgb, #22d3ee 28%, transparent), transparent 50%),
+    linear-gradient(160deg, #2a1460, #14082e 70%);
+  border: 1px solid #6d28d9;
+  box-shadow: 0 16px 40px color-mix(in srgb, #6d28d9 35%, transparent);
+}
+
+.uk-card {
+  background:
+    radial-gradient(80% 140% at 100% 80%, color-mix(in srgb, #4c1d95 70%, transparent), transparent 60%),
+    linear-gradient(160deg, #241048, #120826);
+  border: 1px solid #5b21b6;
+}
+
 .hero-wash {
   background:
     radial-gradient(32rem 18rem at 100% 0%, #4c1d95, transparent 58%),
@@ -220,14 +244,14 @@ html[data-form="phone"] .hero-title {
   line-height: 1.15;
 }
 
-html[data-form="phone"] .lg\:grid-cols-2,
-html[data-form="phone"] .lg\:grid-cols-3,
-html[data-form="phone"] .md\:grid-cols-2,
-html[data-form="phone"] .md\:grid-cols-3,
-html[data-form="phone"] .md\:grid-cols-\[10rem_1fr\],
-html[data-form="phone"] .sm\:grid-cols-2,
-html[data-form="phone"] .sm\:grid-cols-3,
-html[data-form="phone"] .sm\:grid-cols-4,
+html[data-form="phone"] .lg\\:grid-cols-2,
+html[data-form="phone"] .lg\\:grid-cols-3,
+html[data-form="phone"] .md\\:grid-cols-2,
+html[data-form="phone"] .md\\:grid-cols-3,
+html[data-form="phone"] .md\\:grid-cols-\\[10rem_1fr\\],
+html[data-form="phone"] .sm\\:grid-cols-2,
+html[data-form="phone"] .sm\\:grid-cols-3,
+html[data-form="phone"] .sm\\:grid-cols-4,
 html[data-form="phone"] .grid-cols-3 {
   grid-template-columns: minmax(0, 1fr) !important;
 }

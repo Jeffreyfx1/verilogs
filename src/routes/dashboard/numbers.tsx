@@ -13,6 +13,7 @@ export const Route = createFileRoute("/dashboard/numbers")({
     server: typeof search.server === "string" ? search.server : "",
     country: typeof search.country === "string" ? search.country : "",
     kind: search.kind === "rent" ? "rent" : "",
+    service: typeof search.service === "string" ? search.service : "",
   }),
   component: NumbersPage,
 });
@@ -25,7 +26,7 @@ function serverName(operator?: string) {
 }
 
 function NumbersPage() {
-  const { server, country: lockedCountry, kind } = Route.useSearch();
+  const { server, country: lockedCountry, kind, service: preset } = Route.useSearch();
   const user = useUser();
   const servers = useServers();
   const liveServers = servers.filter((s) => s.enabled);
@@ -36,7 +37,7 @@ function NumbersPage() {
   const activeId = liveServers.some((s) => s.id === server) ? server : liveServers[0]?.id || "";
   const active = servers.find((s) => s.id === activeId);
   const [q, setQ] = useState("");
-  const [service, setService] = useState("");
+  const [service, setService] = useState(preset);
   const [country, setCountry] = useState("");
   const [services, setServices] = useState<{ service: string; price: number }[]>([]);
   const [countries, setCountries] = useState<Product[]>([]);
@@ -134,7 +135,7 @@ function NumbersPage() {
           <Link
             key={s.id}
             to="/dashboard/numbers"
-            search={{ server: s.id, country: lockedCountry, kind }}
+            search={{ server: s.id, country: lockedCountry, kind, service: preset }}
             className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${s.id === activeId ? "bg-primary text-on-primary" : "border border-line bg-card"}`}
           >
             {s.label}
@@ -142,8 +143,8 @@ function NumbersPage() {
         ))}
       </div>
       <div className="flex gap-2">
-        <Link to="/dashboard/numbers" search={{ server: activeId, country: lockedCountry, kind: "" }} className={`rounded-full px-4 py-2 text-sm font-extrabold ${kind !== "rent" ? "bg-primary text-on-primary" : "border border-line bg-card"}`}>Buy number</Link>
-        <Link to="/dashboard/numbers" search={{ server: activeId, country: lockedCountry, kind: "rent" }} className={`rounded-full px-4 py-2 text-sm font-extrabold ${kind === "rent" ? "bg-primary text-on-primary" : "border border-line bg-card"}`}>Rent number</Link>
+        <Link to="/dashboard/numbers" search={{ server: activeId, country: lockedCountry, kind: "", service: preset }} className={`rounded-full px-4 py-2 text-sm font-extrabold ${kind !== "rent" ? "bg-primary text-on-primary" : "border border-line bg-card"}`}>Buy number</Link>
+        <Link to="/dashboard/numbers" search={{ server: activeId, country: lockedCountry, kind: "rent", service: preset }} className={`rounded-full px-4 py-2 text-sm font-extrabold ${kind === "rent" ? "bg-primary text-on-primary" : "border border-line bg-card"}`}>Rent number</Link>
       </div>
       {user?.role === "admin" && hidden > 0 ? (
         <p className="rounded-xl border border-line bg-card px-3 py-2 text-sm">

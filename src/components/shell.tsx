@@ -114,7 +114,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
                 <Link
                   key={s.id}
                   to="/dashboard/numbers"
-                  search={{ server: s.id, country: "", kind: "" }}
+                  search={{ server: s.id, country: "", kind: "", service: "" }}
                   onClick={() => setOpen(false)}
                   className="flex items-center justify-between rounded-xl px-3 py-2 text-sm hover:bg-paper"
                 >
@@ -122,13 +122,13 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
                   <span className="truncate pl-2 text-xs text-muted">{s.name}</span>
                 </Link>
               ))}
-              <Link to="/dashboard/numbers" search={{ server: "", country: "United States", kind: "" }} onClick={() => setOpen(false)} className="block rounded-xl px-3 py-2 text-sm hover:bg-paper">
+              <Link to="/dashboard/numbers" search={{ server: "", country: "United States", kind: "", service: "" }} onClick={() => setOpen(false)} className="block rounded-xl px-3 py-2 text-sm hover:bg-paper">
                 USA numbers
               </Link>
-              <Link to="/dashboard/numbers" search={{ server: "", country: "", kind: "rent" }} onClick={() => setOpen(false)} className="block rounded-xl px-3 py-2 text-sm hover:bg-paper">
+              <Link to="/dashboard/numbers" search={{ server: "", country: "", kind: "rent", service: "" }} onClick={() => setOpen(false)} className="block rounded-xl px-3 py-2 text-sm hover:bg-paper">
                 Rent numbers
               </Link>
-              <Link to="/dashboard/numbers" search={{ server: "", country: "United States", kind: "rent" }} onClick={() => setOpen(false)} className="block rounded-xl px-3 py-2 text-sm hover:bg-paper">
+              <Link to="/dashboard/numbers" search={{ server: "", country: "United States", kind: "rent", service: "" }} onClick={() => setOpen(false)} className="block rounded-xl px-3 py-2 text-sm hover:bg-paper">
                 Rent USA numbers
               </Link>
             </div>
