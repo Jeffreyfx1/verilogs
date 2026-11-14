@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
 import { CATEGORY_LABEL, type SyncReport } from "@/lib/catalog";
 import { extractCatalog } from "@/lib/categorize";
-import { fetchCatalogue } from "@/lib/shop-fns";
+import { importUrl } from "@/lib/shop-fns";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/import")({ component: ImportPage });
@@ -53,12 +53,29 @@ function ImportPage() {
     }
   };
 
+  const adopt = useStore((s) => s.adopt);
   const pull = async () => {
-    const res = await fetchCatalogue({ data: { url: apiUrl, apiKey, providerId } });
-    if (!res.ok) return toast.error(res.error);
-    const parsed = extractCatalog(res.payload);
-    toast.success(`${parsed.items.length} services understood across ${new Set(parsed.items.map((i) => i.category)).size} categories`);
-    await run(res.payload, name || "New API", apiUrl);
+    const existing = providerId ? providers.find((p) => p.id === providerId) : undefined;
+    const label = (existing?.name || name).trim() || "New API";
+    try {
+      const res = await importUrl({
+        data: {
+          url: apiUrl,
+          apiKey,
+          providerId,
+          name: label,
+          baseUrl: apiUrl || baseUrl,
+          currency: existing?.currency || currency,
+          publish,
+        },
+      });
+      if (res.error || !res.report) return toast.error(res.error || "Import failed");
+      adopt(res.state);
+      setReport(res.report);
+      toast.success(`${res.report.imported} services filed under ${res.report.serverLabel || label}`);
+    } catch {
+      toast.error("Could not pull that API.");
+    }
   };
 
   return (
@@ -66,7 +83,7 @@ function ImportPage() {
       <div>
         <h1 className="text-2xl font-extrabold">Import services</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Paste a provider catalogue or pull a live URL. For 5sim prices use https://5sim.net/v1/guest/prices and set the currency to USD, or every row stays at ₦0. New rows stay off until you enable them.
+          Paste a provider catalogue or pull a live URL. The 5sim price list is large, so the pull keeps the cheapest in-stock operator for each country and service. Use https://5sim.net/v1/guest/prices with currency USD. For rentals use https://5sim.net/v1/guest/prices?category=hosting. New rows stay off until you enable them.
         </p>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
