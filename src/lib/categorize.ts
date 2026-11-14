@@ -113,6 +113,26 @@ const COUNTRIES: Record<string, string> = {
   zambia: "Zambia", zimbabwe: "Zimbabwe", uae: "United Arab Emirates", emirates: "United Arab Emirates",
 };
 
+const EXTRA_COUNTRIES: Record<string, string> = {
+  antiguaandbarbuda: "Antigua and Barbuda", aruba: "Aruba", bahamas: "Bahamas", barbados: "Barbados",
+  belize: "Belize", benin: "Benin", bhutane: "Bhutan", bih: "Bosnia and Herzegovina", bolivia: "Bolivia",
+  botswana: "Botswana", burkinafaso: "Burkina Faso", burundi: "Burundi", capeverde: "Cape Verde", chad: "Chad",
+  comoros: "Comoros", congo: "Congo", costarica: "Costa Rica", djibouti: "Djibouti", dominicana: "Dominican Republic",
+  easttimor: "East Timor", ecuador: "Ecuador", equatorialguinea: "Equatorial Guinea", frenchguiana: "French Guiana",
+  gabon: "Gabon", gambia: "Gambia", guadeloupe: "Guadeloupe", guatemala: "Guatemala", guinea: "Guinea",
+  guineabissau: "Guinea-Bissau", guyana: "Guyana", haiti: "Haiti", honduras: "Honduras", jamaica: "Jamaica",
+  lesotho: "Lesotho", liberia: "Liberia", luxembourg: "Luxembourg", macau: "Macau", madagascar: "Madagascar",
+  malawi: "Malawi", maldives: "Maldives", mauritania: "Mauritania", mauritius: "Mauritius", mongolia: "Mongolia",
+  montenegro: "Montenegro", namibia: "Namibia", newcaledonia: "New Caledonia", nicaragua: "Nicaragua",
+  northmacedonia: "North Macedonia", oman: "Oman", panama: "Panama", papuanewguinea: "Papua New Guinea",
+  paraguay: "Paraguay", puertorico: "Puerto Rico", reunion: "Reunion", rwanda: "Rwanda",
+  saintkittsandnevis: "Saint Kitts and Nevis", saintlucia: "Saint Lucia",
+  saintvincentandgrenadines: "Saint Vincent and the Grenadines", salvador: "El Salvador", samoa: "Samoa",
+  seychelles: "Seychelles", sierraleone: "Sierra Leone", solomonislands: "Solomon Islands", suriname: "Suriname",
+  swaziland: "Eswatini", tajikistan: "Tajikistan", tit: "Trinidad and Tobago", togo: "Togo",
+  turkmenistan: "Turkmenistan", uruguay: "Uruguay", venezuela: "Venezuela",
+};
+
 const NETWORKS: Array<{ name: string; test: RegExp }> = [
   { name: "MTN", test: /\bmtn\b/i },
   { name: "Airtel", test: /\bairtel\b/i },
@@ -153,7 +173,7 @@ function countryOf(key: string): string {
   const normalized = key.trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
   if (COUNTRIES[normalized]) return COUNTRIES[normalized];
   const squashed = normalized.replace(/\s+/g, "");
-  return COUNTRIES[squashed] || "";
+  return COUNTRIES[squashed] || EXTRA_COUNTRIES[normalized] || EXTRA_COUNTRIES[squashed] || "";
 }
 
 export function isCountrySlug(key: string) {
@@ -333,106 +353,87 @@ function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedI
   return { ...raw, category, name, country, network, variable: variable || raw.price <= 0, price: variable ? 0 : raw.price };
 }
 
-function isProductQuote(row: unknown): row is Record<string, unknown> {
+function isOperatorQuote(row: unknown): row is Record<string, unknown> {
   if (!row || typeof row !== "object" || Array.isArray(row)) return false;
   const rec = row as Record<string, unknown>;
-  return ("Price" in rec || "price" in rec) && ("Qty" in rec || "qty" in rec || "Category" in rec || "count" in rec);
+  if (Object.values(rec).some((value) => value && typeof value === "object")) return false;
+  const cost = Number(rec.cost ?? rec.Price ?? rec.price);
+  const count = Number(rec.count ?? rec.Qty ?? rec.qty ?? rec.stock);
+  return Number.isFinite(cost) && Number.isFinite(count);
+}
+
+function isOperatorMap(node: unknown): node is Record<string, unknown> {
+  if (!node || typeof node !== "object" || Array.isArray(node)) return false;
+  const kids = Object.values(node as Record<string, unknown>).filter((value) => value && typeof value === "object");
+  return kids.length > 0 && kids.every(isOperatorQuote);
+}
+
+function pushQuote(rows: Array<Record<string, unknown>>, service: string, country: string, operator: string, rec: Record<string, unknown>, hint: string) {
+  const cost = Number(rec.cost ?? rec.Price ?? rec.price ?? 0);
+  const count = Number(rec.count ?? rec.Qty ?? rec.qty ?? 0);
+  if (!Number.isFinite(cost) || !Number.isFinite(count) || count <= 0 || cost <= 0) return;
+  const windows: Array<[string, unknown]> = [
+    ["1h", rec.rate1 ?? rec.rate],
+    ["3h", rec.rate3],
+    ["24h", rec.rate24],
+    ["3d", rec.rate72],
+    ["7d", rec.rate168],
+    ["30d", rec.rate720],
+  ];
+  rows.push({
+    id: `${country}|${service}|${operator}`,
+    service,
+    name: service,
+    country,
+    operator,
+    cost,
+    count: Math.round(count),
+    rate: Math.round(Number(rec.rate ?? rec.rate1) || 0),
+    rates: windows.filter(([, n]) => Number(n) > 0).map(([label, n]) => `${label} ${Math.round(Number(n))}%`).join(" · "),
+    category: String(rec.Category || rec.category || hint || "activation"),
+  });
 }
 
 export function slimFiveSim(payload: unknown, hint = "", allow: string[] = [], place: { country?: string; operator?: string } = {}): unknown {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
   const rows: Array<Record<string, unknown>> = [];
-  const entries = Object.entries(payload as Record<string, unknown>);
-  const quotes = entries.filter(([, value]) => value && typeof value === "object");
-  if (quotes.length && quotes.every(([, value]) => isProductQuote(value))) {
+  const entries = Object.entries(payload as Record<string, unknown>).filter(([, value]) => value && typeof value === "object" && !Array.isArray(value));
+  if (entries.length && entries.every(([, value]) => isOperatorQuote(value))) {
     const country = place.country || "";
     const operator = place.operator || "any";
-    for (const [service, row] of quotes) {
-      if (!isProductQuote(row)) continue;
+    for (const [service, row] of entries) {
       if (allow.length && !serviceAllowed(service, allow)) continue;
-      const cost = Number(row.Price ?? row.price ?? row.cost ?? 0);
-      const count = Number(row.Qty ?? row.qty ?? row.count ?? 0);
-      if (!Number.isFinite(cost) || !Number.isFinite(count) || count <= 0 || cost <= 0) continue;
-      rows.push({
-        id: `${country}|${service}|${operator}`,
-        service,
-        name: service,
-        country,
-        operator,
-        cost,
-        count: Math.round(count),
-        rate: 0,
-        rates: "",
-        category: String(row.Category || row.category || hint || "activation"),
-      });
+      pushQuote(rows, service, country, operator, row as Record<string, unknown>, hint);
     }
-    return rows.length ? rows : payload;
+    return rows;
   }
+  let understood = false;
   for (const [top, nested] of entries) {
-    if (!nested || typeof nested !== "object" || Array.isArray(nested)) continue;
     const table = nested as Record<string, unknown>;
-    const keys = Object.keys(table);
-    const countryKeys = keys.filter((key) => key.toLowerCase() !== "any" && !!countryOf(key)).length;
-    const byProduct = keys.length > 0 && countryKeys >= Math.ceil(keys.length * 0.6);
-    if (byProduct) {
+    const children = Object.entries(table).filter(([, value]) => value && typeof value === "object" && !Array.isArray(value));
+    if (!children.length) continue;
+    if (children.every(([, value]) => isOperatorMap(value))) {
+      understood = true;
       if (allow.length && !serviceAllowed(top, allow)) continue;
-      for (const [country, operators] of Object.entries(table)) {
-        if (!operators || typeof operators !== "object" || Array.isArray(operators)) continue;
+      for (const [country, operators] of children) {
         for (const [operator, row] of Object.entries(operators as Record<string, unknown>)) {
-          if (!row || typeof row !== "object" || Array.isArray(row)) continue;
-          const rec = row as Record<string, unknown>;
-          const cost = Number(rec.cost ?? rec.price ?? 0);
-          const count = Number(rec.count ?? rec.qty ?? 0);
-          if (!Number.isFinite(cost) || !Number.isFinite(count) || count <= 0 || cost <= 0) continue;
-          rows.push({
-            id: `${country}|${top}|${operator}`,
-            service: top,
-            name: top,
-            country,
-            operator,
-            cost,
-            count: Math.round(count),
-            rate: Math.round(Number(rec.rate ?? rec.rate1) || 0),
-            rates: "",
-            category: hint || "activation",
-          });
+          if (!isOperatorQuote(row)) continue;
+          pushQuote(rows, top, country, operator, row, hint);
         }
       }
       continue;
     }
-    for (const [service, operators] of Object.entries(table)) {
+    understood = true;
+    for (const [service, operators] of children) {
+      if (!isOperatorMap(operators)) continue;
       if (allow.length && !serviceAllowed(service, allow)) continue;
-      if (!operators || typeof operators !== "object" || Array.isArray(operators)) continue;
       for (const [operator, row] of Object.entries(operators as Record<string, unknown>)) {
-        if (!row || typeof row !== "object" || Array.isArray(row)) continue;
-        const rec = row as Record<string, unknown>;
-        const cost = Number(rec.cost ?? rec.price ?? 0);
-        const count = Number(rec.count ?? rec.qty ?? 0);
-        if (!Number.isFinite(cost) || !Number.isFinite(count) || count <= 0 || cost <= 0) continue;
-        const windows: Array<[string, unknown]> = [
-          ["1h", rec.rate1 ?? rec.rate],
-          ["3h", rec.rate3],
-          ["24h", rec.rate24],
-          ["3d", rec.rate72],
-          ["7d", rec.rate168],
-          ["30d", rec.rate720],
-        ];
-        rows.push({
-          id: `${top}|${service}|${operator}`,
-          service,
-          name: service,
-          country: top,
-          operator,
-          cost,
-          count: Math.round(count),
-          rate: Math.round(Number(rec.rate ?? rec.rate1) || 0),
-          rates: windows.filter(([, n]) => Number(n) > 0).map(([label, n]) => `${label} ${Math.round(Number(n))}%`).join(" · "),
-          category: hint || "activation",
-        });
+        if (!isOperatorQuote(row)) continue;
+        pushQuote(rows, service, top, operator, row, hint);
       }
     }
   }
-  return rows.length ? rows : payload;
+  return understood ? rows : payload;
 }
 
 export function extractCatalog(payload: unknown): CatalogExtract {
