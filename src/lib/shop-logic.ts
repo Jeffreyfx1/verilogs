@@ -167,8 +167,8 @@ export function buyProduct(data: Data, userId: string | null, productId: string,
   const provider = product && data.providers.find((p) => p.id === product.providerId && p.enabled);
   if (!product || !provider) return { error: "That service is not available.", data };
   const amount = product.variable ? Math.round(extra.amount || 0) : product.price;
-  if (product.category === "airtime" && (amount < 50 || amount > 50000)) return { error: "Airtime must be between ₦50 and ₦50,000.", data };
-  if (product.category === "electricity" && (amount < 1000 || amount > 200000)) return { error: "Electricity must be between ₦1,000 and ₦200,000.", data };
+  if (product.category === "airtime" && (amount < 50 || amount > 50000)) return { error: "Airtime must be between \u20a650 and \u20a650,000.", data };
+  if (product.category === "electricity" && (amount < 1000 || amount > 200000)) return { error: "Electricity must be between \u20a61,000 and \u20a6200,000.", data };
   if (!product.variable && amount <= 0) return { error: "This item has no price yet.", data };
   if (user.balance < amount) return { error: "Your wallet does not cover this. Fund it first.", data };
   const server = serverLabel(data.providers, provider.id) || provider.name;
@@ -194,7 +194,7 @@ export function buyProduct(data: Data, userId: string | null, productId: string,
     products: data.products.map((p) => (p.id === product.id && p.stock > 0 ? { ...p, stock: p.stock - 1 } : p)),
     txns: [{ id: uid("txn"), userId: user.id, kind: "purchase", amount: -amount, note: product.name, createdAt: order.createdAt }, ...data.txns],
   };
-  next = pushNote(next, user.id, "Order placed", `${product.name} · ₦${amount.toLocaleString("en-NG")}`, "order");
+  next = pushNote(next, user.id, "Order placed", `${product.name} \u00b7 \u20a6${amount.toLocaleString("en-NG")}`, "order");
   return { error: null, data: next };
 }
 
@@ -208,10 +208,11 @@ export function refundOrder(data: Data, userId: string | null, orderId: string) 
       ...data,
       orders: data.orders.map((o) => (o.id === order.id ? { ...o, status: "refunded" as const } : o)),
       users: data.users.map((u) => (u.id === order.userId ? { ...u, balance: u.balance + order.amount } : u)),
-      txns: [{ id: uid("txn"), userId: order.userId, kind: "refund" as const, amount: order.amount, note: "Refund · " + order.title, createdAt: new Date().toISOString() }, ...data.txns],
+      txns: [{ id: uid("txn"), userId: order.userId, kind: "refund" as const, amount: order.amount, note: "Refund \u00b7 " + order.title, createdAt: new Date().toISOString() }, ...data.txns],
     },
     order.userId,
-    "Refund sent", `${order.title} is back in your wallet.`,
+    "Refund sent",
+    `${order.title} is back in your wallet.`,
     "wallet",
   );
   return { error: null, data: next };
@@ -258,7 +259,7 @@ export function adjustBalance(data: Data, actorId: string | null, userId: string
     txns: [{ id: uid("txn"), userId, kind: n >= 0 ? "topup" as const : "purchase" as const, amount: n, note, createdAt: new Date().toISOString() }, ...data.txns],
   };
   next = pushNote(next, userId, n >= 0 ? "Wallet credited" : "Wallet adjusted", note, "wallet");
-  return { error: null, data: next, mail: { to: user.email, subject: "VeriLogs wallet update", text: `${note}. Change: ₦${n.toLocaleString("en-NG")}.` } };
+  return { error: null, data: next, mail: { to: user.email, subject: "VeriLogs wallet update", text: `${note}. Change: \u20a6${n.toLocaleString("en-NG")}.` } };
 }
 
 export function creditVerified(data: Data, userId: string, amount: number, reference: string) {
@@ -271,10 +272,10 @@ export function creditVerified(data: Data, userId: string, amount: number, refer
     ...data,
     paidRefs: [...data.paidRefs, reference].slice(-500),
     users: data.users.map((u) => (u.id === userId ? { ...u, balance: u.balance + n } : u)),
-    txns: [{ id: uid("txn"), userId, kind: "topup" as const, amount: n, note: "Paystack · " + reference, createdAt: new Date().toISOString() }, ...data.txns],
+    txns: [{ id: uid("txn"), userId, kind: "topup" as const, amount: n, note: "Paystack \u00b7 " + reference, createdAt: new Date().toISOString() }, ...data.txns],
   };
-  next = pushNote(next, userId, "Wallet funded", `Paystack added ₦${n.toLocaleString("en-NG")} to your wallet.`, "wallet");
-  return { data: next, mail: { to: user.email, subject: "VeriLogs wallet funded", text: `Paystack confirmed ₦${n.toLocaleString("en-NG")}. Reference ${reference}.` } };
+  next = pushNote(next, userId, "Wallet funded", `Paystack added \u20a6${n.toLocaleString("en-NG")} to your wallet.`, "wallet");
+  return { data: next, mail: { to: user.email, subject: "VeriLogs wallet funded", text: `Paystack confirmed \u20a6${n.toLocaleString("en-NG")}. Reference ${reference}.` } };
 }
 
 export function addTicket(data: Data, userId: string | null, input: { email: string; subject: string; body: string }) {
@@ -300,7 +301,7 @@ export function saveSettings(data: Data, userId: string | null, patch: Partial<S
     return { error: "Use a small PNG, JPG or SVG under 120KB.", data };
   }
   const banners = patch.banners ? patch.banners.slice(0, 6) : data.settings.banners;
-  return { error: null, data: { ...data, settings: { ...data.settings, ...patch, banners, home: { ...data.settings.home, ...patch.home } } } };
+  return { error: null, data: { ...data, settings: { ...data.settings, ...patch, banners, home: { ...data.settings.home, ...patch.home }, popup: { ...data.settings.popup, ...patch.popup } } } };
 }
 
 export function addAnnouncement(data: Data, userId: string | null, title: string, body: string) {
