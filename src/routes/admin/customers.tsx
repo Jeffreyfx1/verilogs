@@ -17,7 +17,7 @@ function CustomersPage() {
   return (
     <div className="space-y-3">
       <h1 className="text-2xl font-extrabold">Customers</h1>
-      <p className="text-sm text-muted">Wallet changes and messages also land in the customer's in-app notifications. Email goes out when Resend is connected.</p>
+      <p className="text-sm text-muted">Wallet changes and messages show up in the customer's notifications.</p>
       {users.map((u) => (
         <article key={u.id} className="space-y-3 rounded-card border border-line bg-card p-4 text-sm shadow-card">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -39,7 +39,7 @@ function CustomersPage() {
             <div className="flex flex-wrap gap-2">
               <input className={`${inputClass} min-w-40 flex-1`} value={subject} onChange={(e) => setSubject(e.target.value)} />
               <input className={`${inputClass} min-w-40 flex-1`} value={body} onChange={(e) => setBody(e.target.value)} placeholder="Message" />
-              <Button tone="soft" onClick={() => void mail(u.id, subject, body).then((err) => err ? toast.error(err) : toast.success("Sent in the app" + " and by email if Resend is on"))}>Message</Button>
+              <Button tone="soft" onClick={() => void mail(u.id, subject, body).then((err) => err ? toast.error(err) : toast.success("Sent"))}>Message</Button>
             </div>
           ) : null}
         </article>
