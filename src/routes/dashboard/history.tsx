@@ -1,12 +1,15 @@
-import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { naira, when } from "@/lib/money";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/history")({ component: HistoryPage });
 
 function HistoryPage() {
-  const [tab, setTab] = useState<"numbers" | "bills" | "txns">("numbers");
+  const hash = useRouterState({ select: (s) => s.location.hash });
+  const start = hash === "bills" ? "bills" : hash === "deposits" ? "txns" : "numbers";
+  const [tab, setTab] = useState<"numbers" | "bills" | "txns">(start);
+  useEffect(() => { setTab(start); }, [start]);
   const allOrders = useStore((s) => s.orders);
   const allTxns = useStore((s) => s.txns);
   const session = useStore((s) => s.sessionUserId);
@@ -18,7 +21,7 @@ function HistoryPage() {
     <div className="space-y-4">
       <h1 className="text-2xl font-extrabold">History</h1>
       <div className="flex flex-wrap gap-2">
-        {([["numbers", "Numbers"], ["bills", "Bills"], ["txns", "Transactions"]] as const).map(([id, label]) => (
+        {([["numbers", "Number history"], ["bills", "Bills history"], ["txns", "Deposit history"]] as const).map(([id, label]) => (
           <button key={id} type="button" onClick={() => setTab(id)} className={`rounded-full px-4 py-2 text-sm font-semibold ${tab === id ? "bg-primary text-on-primary" : "border border-line bg-card"}`}>{label}</button>
         ))}
       </div>
