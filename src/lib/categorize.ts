@@ -120,7 +120,7 @@ export function networkOf(blob: string): string {
   return "";
 }
 
-countryOf(key: string): string {
+function countryOf(key: string): string {
   const normalized = key.trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
   if (COUNTRIES[normalized]) return COUNTRIES[normalized];
   const squashed = normalized.replace(/\s+/g, "");
