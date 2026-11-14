@@ -1,5 +1,32 @@
 import { parseMoney } from "@/lib/money";
 
+export const MAJOR_SERVICES = [
+  "WhatsApp",
+  "Telegram",
+  "Facebook",
+  "Instagram",
+  "Threads",
+  "Amazon",
+  "Google",
+  "YouTube",
+  "Gmail",
+  "TikTok",
+  "Douyin",
+  "OpenAI",
+  "ChatGPT",
+];
+
+export function serviceAllowed(service: string, list: string[]) {
+  const name = service.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (name.length < 3) return false;
+  const source = list.length ? list : MAJOR_SERVICES;
+  const keys = source
+    .flatMap((item) => item.split(/[/|,]+/))
+    .map((item) => item.toLowerCase().replace(/[^a-z0-9]+/g, ""))
+    .filter((item) => item.length >= 3);
+  return keys.some((key) => name === key || name.startsWith(key) || (key.startsWith(name) && name.length >= 4));
+}
+
 export type Category = "numbers" | "rent" | "airtime" | "data" | "cable" | "electricity" | "exam" | "giftcard" | "betting" | "other";
 
 export type ParsedItem = {
@@ -280,12 +307,13 @@ function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedI
   return { ...raw, category, name, country, network, variable: variable || raw.price <= 0, price: variable ? 0 : raw.price };
 }
 
-export function slimFiveSim(payload: unknown, hint = ""): unknown {
+export function slimFiveSim(payload: unknown, hint = "", allow: string[] = []): unknown {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
   const rows: Array<Record<string, unknown>> = [];
   for (const [country, services] of Object.entries(payload as Record<string, unknown>)) {
     if (!services || typeof services !== "object" || Array.isArray(services)) return payload;
     for (const [service, operators] of Object.entries(services as Record<string, unknown>)) {
+      if (allow.length && !serviceAllowed(service, allow)) continue;
       if (!operators || typeof operators !== "object" || Array.isArray(operators)) return payload;
       for (const [operator, row] of Object.entries(operators as Record<string, unknown>)) {
         if (!row || typeof row !== "object" || Array.isArray(row)) continue;
