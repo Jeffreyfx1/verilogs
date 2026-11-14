@@ -372,7 +372,7 @@ export function ingest(
       existing.service = item.service;
       existing.country = item.country;
       existing.network = item.network;
-      existing.price = price;
+      if (price > 0) existing.price = price;
       existing.stock = item.stock;
       existing.validity = item.validity;
       existing.variable = item.variable;
@@ -455,11 +455,11 @@ export function withAdminLogin(doc: Data): Data {
 }
 
 export function repairCatalog(doc: Data): Data {
-  const junk = new Set(["iso", "prefix"]);
   let changed = false;
   const products: Product[] = [];
   for (const product of doc.products) {
-    if (junk.has(product.service.trim().toLowerCase())) {
+    const label = `${product.service} ${product.name}`.trim().toLowerCase();
+    if (/^(iso|prefix)\b/.test(label)) {
       changed = true;
       continue;
     }
