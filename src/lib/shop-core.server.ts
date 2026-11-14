@@ -135,6 +135,19 @@ async function loadDoc(withCatalog = false): Promise<Data> {
   return cleaned;
 }
 
+async function loadLight(): Promise<Data> {
+  const sql = await getSql();
+  const rows = await sql<{ doc: string }>`select doc from shop_state where id = 'main'`;
+  if (!rows[0]) {
+    const doc = freshData();
+    await sql`insert into shop_state (id, doc) values ('main', ${JSON.stringify(doc)})`;
+    return doc;
+  }
+  const parsed = normalizeData(JSON.parse(rows[0].doc) as Data);
+  const doc = withAdminLogin(withoutSampleCatalog(parsed));
+  return { ...doc, products: doc.products.filter((p) => !isHeavy(p)) };
+}
+
 function isHeavy(product: Product) {
   return product.category === "numbers" || product.category === "rent";
 }
@@ -172,8 +185,13 @@ async function writeState(doc: Data) {
 }
 
 async function saveDoc(doc: Data, catalog = false) {
-  await writeState(doc);
-  if (catalog) await writeCatalog(doc.products.filter(isHeavy));
+  if (!catalog) {
+    await writeState(doc);
+    return;
+  }
+  await writeCatalog(doc.products.filter(isHeavy));
+  const live = await loadLight();
+  await writeState({ ...live, providers: doc.providers, products: doc.products, settings: doc.settings });
 }
 
 export async function sendMail(mail: Mail | Mail[] | undefined) {
@@ -216,20 +234,22 @@ function result(doc: Data, userId: string | null, draft: Draft | null, error: st
   return { error, state: projectShop(doc, userId, draft), report };
 }
 
+const LIGHT = new Set(["login", "register", "logout", "resetPassword", "completeGoogle"]);
+
 export async function currentShop(): Promise<ApplyResult> {
-  return locked(async () => {
-    const loaded = await loadDoc();
-    const doc = tickWaiting(loaded);
-    if (doc !== loaded) await saveDoc(doc);
-    const session = await readSession();
-    return result(doc, session.userId, session.draft, null);
-  });
+  const doc = await loadLight();
+  const session = await readSession();
+  return result(doc, session.userId, session.draft, null);
 }
 
 export async function applyAct(op: string, payload: Record<string, unknown>): Promise<ApplyResult> {
-  return locked(async () => {
-    const catalog = op === "buy" || op === "import" || op === "setEnabled" || op === "setProvider" || op === "reset";
-    let doc = await loadDoc(catalog);
+  if (LIGHT.has(op)) return runAct(op, payload);
+  return locked(() => runAct(op, payload));
+}
+
+async function runAct(op: string, payload: Record<string, unknown>): Promise<ApplyResult> {
+    const catalog = !LIGHT.has(op) && (op === "buy" || op === "import" || op === "setEnabled" || op === "setProvider" || op === "reset");
+    let doc = LIGHT.has(op) ? await loadLight() : await loadDoc(catalog);
     const session = await readSession();
     let userId = session.userId;
     let draft = session.draft;
@@ -379,18 +399,15 @@ export async function applyAct(op: string, payload: Record<string, unknown>): Pr
       if (mailError) error = `Saved in the app. Email failed: ${mailError}`;
     }
     return result(doc, userId, draft, error, report);
-  });
-}
+  }
 
 export async function connectGoogle(profile: { email: string; name: string }) {
-  return locked(async () => {
-    const doc = await loadDoc();
-    const out = upsertGoogle(doc, profile);
-    const token = crypto.randomUUID();
-    await writeSession(token, out.userId, out.needsPhone ? out.draft : null);
-    touchCookie(token);
-    return { needsPhone: out.needsPhone, role: out.userId ? doc.users.find((u) => u.id === out.userId)?.role : "customer" };
-  });
+  const doc = await loadLight();
+  const out = upsertGoogle(doc, profile);
+  const token = crypto.randomUUID();
+  await writeSession(token, out.userId, out.needsPhone ? out.draft : null);
+  touchCookie(token);
+  return { needsPhone: out.needsPhone, role: out.userId ? doc.users.find((u) => u.id === out.userId)?.role : "customer" };
 }
 
 export async function creditPaystack(reference: string, expectedUserId?: string | null) {
