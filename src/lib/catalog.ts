@@ -1,4 +1,4 @@
-import { extractCatalog, type ParsedItem } from "@/lib/categorize";
+import { extractCatalog, MAJOR_SERVICES, serviceAllowed, type ParsedItem } from "@/lib/categorize";
 import { uid } from "@/lib/money";
 import type { Category } from "@/lib/categorize";
 
@@ -134,6 +134,7 @@ export type Settings = {
   home: HomeCopy;
   banners: Banner[];
   popup: WelcomePopup;
+  wantedServices: string[];
 };
 
 export type Data = {
@@ -180,6 +181,7 @@ export function defaultSettings(): Settings {
       { id: "b2", title: "SIMs stay apart", body: "MTN, Airtel, Glo, 9mobile and Smile are their own catalogues.", href: "/register" },
     ],
     popup: defaultPopup(),
+    wantedServices: [...MAJOR_SERVICES],
   };
 }
 
@@ -233,6 +235,9 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
       brand: incoming?.brand || base.brand,
       supportWelcome: incoming?.supportWelcome || base.supportWelcome,
       popup: { ...base.popup, ...incoming?.popup },
+      wantedServices: incoming?.wantedServices?.map((name) => name.trim()).filter(Boolean).slice(0, 80).length
+        ? incoming.wantedServices.map((name) => name.trim()).filter(Boolean).slice(0, 80)
+        : base.wantedServices,
     },
   };
 }
@@ -525,13 +530,15 @@ export function ingest(
   },
 ): { data: Data; report: SyncReport } {
   const extracted = extractCatalog(input.payload);
+  const wanted = data.settings.wantedServices?.length ? data.settings.wantedServices : MAJOR_SERVICES;
+  const items = extracted.items.filter((item) => (item.category !== "numbers" && item.category !== "rent") || serviceAllowed(item.service || item.name, wanted));
   const applied = applyImportSlice(data, {
     ...input,
-    items: extracted.items,
-    skipped: extracted.skipped,
+    items,
+    skipped: extracted.skipped + (extracted.items.length - items.length),
     finalize: true,
-    keepIds: extracted.items.map((item) => item.externalId),
-    touchedKeys: [...new Set(extracted.items.map((item) => `${item.country}|${item.service}`))],
+    keepIds: items.map((item) => item.externalId),
+    touchedKeys: [...new Set(items.map((item) => `${item.country}|${item.service}`))],
     tally: { created: 0, updated: 0, byCategory: {}, byNetwork: {} },
   });
   return { data: applied.data, report: applied.report };
