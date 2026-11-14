@@ -211,7 +211,8 @@ export function refundOrder(data: Data, userId: string | null, orderId: string) 
       txns: [{ id: uid("txn"), userId: order.userId, kind: "refund" as const, amount: order.amount, note: "Refund · " + order.title, createdAt: new Date().toISOString() }, ...data.txns],
     },
     order.userId,
-    "Refund sent", `${order.title} is back in your wallet.`,
+    "Refund sent",
+    `${order.title} is back in your wallet.`,
     "wallet",
   );
   return { error: null, data: next };
@@ -310,7 +311,10 @@ export function addAnnouncement(data: Data, userId: string | null, title: string
   const item: Announcement = { id: uid("ann"), title: title.trim(), body: body.trim(), createdAt: new Date().toISOString() };
   let next: Data = { ...data, announcements: [item, ...data.announcements] };
   for (const u of data.users) next = pushNote(next, u.id, item.title, item.body, "mail");
-  return { error: null, data: next };
+  const mails = data.users
+    .filter((u) => u.role !== "admin" && u.email)
+    .map((u) => ({ to: u.email, subject: item.title, text: item.body || item.title }));
+  return { error: null, data: next, mails };
 }
 
 export function markNotes(data: Data, userId: string | null) {
