@@ -12,7 +12,7 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "VeriLogs \u2014 SMS numbers, data and bills" },
+      { title: "VeriLogs — SMS numbers, data and bills" },
       { name: "description", content: "Virtual numbers for SMS verification, data, airtime and bills in naira. Fund a wallet, pick a server, and get a code." },
       { name: "theme-color", content: "#2a1848" },
     ],
