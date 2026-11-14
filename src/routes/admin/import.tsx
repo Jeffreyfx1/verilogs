@@ -272,10 +272,13 @@ function ImportPage() {
           <Field label="API key" hint="Stored on the server for this provider. It is not shown again.">
             <input className={inputClass} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Optional until you pull a live URL" />
           </Field>
-          <Field label="Catalogue URL" hint="A country list is /products/canada/any. A service is /products/telegram/any, imported for every country. One service does not wipe the others.">
+          <Field label="Catalogue URL" hint="Virtual numbers use the saved service list. Data, airtime and bills from another API still import in full.">
             <input className={inputClass} value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="https://provider.example/api/services" />
           </Field>
-          <Button tone="soft" disabled={busy || !apiUrl.trim()} onClick={() => void runJob(undefined, apiUrl)}>{busy ? "Importing…" : "Pull and import this API"}</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button tone="soft" disabled={busy || !apiUrl.trim()} onClick={() => void runJob(undefined, apiUrl)}>{busy ? "Importing…" : "Pull and import this API"}</Button>
+            <Button tone="soft" disabled={busy} onClick={() => void runJob(undefined, "https://5sim.net/v1/guest/prices")}>{busy ? "Importing…" : "Import saved services for every country"}</Button>
+          </div>
           <Field label="Price currency">
             <select className={inputClass} value={currency} onChange={(e) => setCurrency(e.target.value as "NGN" | "USD")}>
               <option value="NGN">NGN, already in naira</option>

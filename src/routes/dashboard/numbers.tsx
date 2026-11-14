@@ -121,15 +121,19 @@ function NumbersPage() {
   const buyOperator = async (id: string) => {
     const op = operators.find((p) => p.id === id);
     setOperatorId(id);
-    const err = await buy(id, {});
-    if (err?.includes("does not cover") && op) {
-      const due = Math.max(100, op.price - (user?.balance || 0));
-      const label = `${serverName(op.operator)} · ${op.service || service}`;
-      window.location.href = `/dashboard/wallet?amount=${due}&item=${encodeURIComponent(label)}`;
-      return;
+    try {
+      const err = await buy(id, {});
+      if (err?.includes("does not cover") && op) {
+        const due = Math.max(100, op.price - (user?.balance || 0));
+        const label = `${serverName(op.operator)} · ${op.service || service}`;
+        window.location.href = `/dashboard/wallet?amount=${due}&item=${encodeURIComponent(label)}`;
+        return;
+      }
+      if (err) toast.error(err);
+      else toast.success("Number reserved. The code appears on the card.");
+    } catch {
+      toast.error("Could not place that order. Try again.");
     }
-    if (err) toast.error(err);
-    else toast.success("Number reserved. The code appears on the card.");
   };
 
   return (

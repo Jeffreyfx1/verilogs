@@ -66,7 +66,7 @@ function WalletPage() {
   }, [adopt]);
   if (!user) return null;
   const value = custom ? Number(custom) : amount;
-  const quote = topupQuote(value, settings);
+  const quote = topupQuote(Number.isFinite(value) ? value : 0, settings || { paystackPercent: 0, paystackFlat: 0 });
   const pay = async () => {
     setBusy(true);
     try {
