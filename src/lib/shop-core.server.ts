@@ -1,9 +1,24 @@
 import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/react-start/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
-import { freshData, isLive, normalizeData, repairCatalog, topupQuote, withAdminLogin, applyImportSlice, type Data, type Product, type SyncReport } from "@/lib/catalog";
+import { freshData, isLive, normalizeData, repairCatalog, sellPrice, serverLabel, topupQuote, withAdminLogin, applyImportSlice, type Data, type Product, type SyncReport } from "@/lib/catalog";
 import { extractCatalog, slimFiveSim, type ParsedItem } from "@/lib/categorize";
-import { IMPORT_BATCH, importBatchCount, sliceImport } from "@/lib/import-batch";
+import { IMPORT_BATCH, importBatchCount } from "@/lib/import-batch";
+import { uid } from "@/lib/money";
+import {
+  clearProducts,
+  countExistingProducts,
+  pruneSyncedProducts,
+  providerIdsWithNumbers,
+  queryCatalogPage,
+  queryCountries,
+  queryHidden,
+  queryOperators,
+  queryServices,
+  readProduct,
+  setRowsEnabled,
+  upsertProductRows,
+} from "@/lib/product-rows.server";
 import {
   addAnnouncement,
   addTicket,
@@ -238,7 +253,24 @@ function result(doc: Data, userId: string | null, draft: Draft | null, error: st
 const LIGHT = new Set(["login", "register", "logout", "resetPassword", "completeGoogle"]);
 
 export async function currentShop(): Promise<ApplyResult> {
-  const doc = await loadLight();
+  let doc = await loadLight();
+  try {
+    const ids = new Set(await providerIdsWithNumbers());
+    if (ids.size) {
+      let changed = false;
+      const providers = doc.providers.map((provider) => {
+        if (!ids.has(provider.id) || provider.servesNumbers) return provider;
+        changed = true;
+        return { ...provider, servesNumbers: true, enabled: provider.enabled };
+      });
+      if (changed) {
+        doc = { ...doc, providers };
+        await writeState(doc);
+      }
+    }
+  } catch {
+    // Table appears after the next deploy migration.
+  }
   const session = await readSession();
   return result(doc, session.userId, session.draft, null);
 }
@@ -249,8 +281,8 @@ export async function applyAct(op: string, payload: Record<string, unknown>): Pr
 }
 
 async function runAct(op: string, payload: Record<string, unknown>): Promise<ApplyResult> {
-    const catalog = !LIGHT.has(op) && (op === "buy" || op === "import" || op === "setEnabled" || op === "setProvider" || op === "reset");
-    let doc = LIGHT.has(op) ? await loadLight() : await loadDoc(catalog);
+    const heavy = op === "import";
+    let doc = heavy ? await loadDoc(true) : await loadLight();
     const session = await readSession();
     let userId = session.userId;
     let draft = session.draft;
@@ -315,6 +347,8 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
       doc = out.data;
       error = out.error;
     } else if (op === "buy") {
+      const product = await readProduct(str("productId"));
+      if (product) doc = { ...doc, products: [product, ...doc.products.filter((item) => item.id !== product.id)] };
       const out = buyProduct(doc, userId, str("productId"), { phone: str("phone"), amount: num("amount"), detail: str("detail") });
       doc = out.data;
       error = out.error;
@@ -345,6 +379,7 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
       const out = setEnabled(doc, userId, ids as string[], !!payload.enabled);
       doc = out.data;
       error = out.error;
+      if (!error) await setRowsEnabled(ids as string[], !!payload.enabled);
     } else if (op === "setProvider") {
       const patch: { enabled?: boolean; name?: string; usdRate?: number; markup?: number; currency?: "NGN" | "USD" } = {};
       if (typeof payload.enabled === "boolean") patch.enabled = payload.enabled;
@@ -389,12 +424,15 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
     } else if (op === "reset") {
       const me = doc.users.find((u) => u.id === userId);
       if (me?.role !== "admin") error = "Only an admin can do that.";
-      else doc = resetShop();
+      else {
+        doc = resetShop();
+        await clearProducts();
+      }
     } else {
       error = "Unknown action.";
     }
 
-    if (!error) await saveDoc(doc, catalog);
+    if (!error) await saveDoc(doc, heavy);
     if (!error && mail) {
       const mailError = await sendMail(mail);
       if (mailError) error = `Saved in the app. Email failed: ${mailError}`;
@@ -545,6 +583,18 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
 
 type ImportMeta = { name: string; baseUrl: string; currency: "NGN" | "USD"; usdRate: number; markup: number; publish: boolean; hasKey: boolean; apiKey: string };
 
+type PendingImport = {
+  items: ParsedItem[];
+  cursor: number;
+  meta: ImportMeta;
+  providerId: string;
+  skipped: number;
+  touched: string[];
+  tally: { created: number; updated: number; byCategory: Record<string, number>; byNetwork: Record<string, number> };
+};
+
+const pendingImports = new Map<string, PendingImport>();
+
 function emptyImport(error: string | null) {
   return { error, jobId: "", total: 0, saved: 0, batch: 0, batches: 0, batchSize: IMPORT_BATCH, done: false, report: null as SyncReport | null, state: null as Data | null };
 }
@@ -563,7 +613,6 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
   if (payload == null) return emptyImport("Add a catalogue URL or paste JSON.");
   const extracted = extractCatalog(payload);
   if (!extracted.items.length) return emptyImport("That catalogue had no services to import.");
-  const chunks = sliceImport(extracted.items);
   const jobId = crypto.randomUUID();
   const meta: ImportMeta = {
     name: input.name || "New API",
@@ -576,16 +625,155 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
     apiKey: input.apiKey || "",
   };
   const touched = [...new Set(extracted.items.map((item) => `${item.country}|${item.service}`))];
-  const sql = await getSql();
-  await sql`insert into shop_import_jobs (id, status, total, cursor, batch_size, skipped, provider_id, keep_ids, touched, meta) values (${jobId}, 'ready', ${extracted.items.length}, 0, ${IMPORT_BATCH}, ${extracted.skipped}, ${input.providerId || ""}, ${JSON.stringify(extracted.items.map((item) => item.externalId))}, ${JSON.stringify(touched)}, ${JSON.stringify(meta)})`;
-  for (let seq = 0; seq < chunks.length; seq++) {
-    await sql`insert into shop_import_batches (job_id, seq, items) values (${jobId}, ${seq}, ${JSON.stringify(chunks[seq])})`;
+  pendingImports.clear();
+  pendingImports.set(jobId, {
+    items: extracted.items,
+    cursor: 0,
+    meta,
+    providerId: input.providerId || "",
+    skipped: extracted.skipped,
+    touched,
+    tally: { created: 0, updated: 0, byCategory: {}, byNetwork: {} },
+  });
+  return { error: null, jobId, total: extracted.items.length, saved: 0, batch: 0, batches: importBatchCount(extracted.items.length), batchSize: IMPORT_BATCH, done: false, report: null, state: null };
+}
+
+function withProvider(doc: Data, meta: ImportMeta, providerId: string) {
+  const now = new Date().toISOString();
+  const providers = doc.providers.map((provider) => ({ ...provider }));
+  let provider = providerId ? providers.find((item) => item.id === providerId) : undefined;
+  const five = /5sim/i.test(meta.name + meta.baseUrl);
+  if (!provider) {
+    provider = {
+      id: uid("prov"),
+      name: meta.name,
+      baseUrl: meta.baseUrl,
+      hasKey: meta.hasKey,
+      servesNumbers: true,
+      enabled: true,
+      currency: meta.currency,
+      usdRate: meta.usdRate > 0 ? meta.usdRate : five ? 2646 : doc.settings.usdNgn,
+      markup: meta.markup > 0 ? meta.markup : five ? 1.6 : 1 + doc.settings.margin / 100,
+      createdAt: now,
+      lastSync: null,
+    };
+    providers.push(provider);
+  } else {
+    provider.name = meta.name || provider.name;
+    provider.baseUrl = meta.baseUrl || provider.baseUrl;
+    provider.currency = meta.currency;
+    if (meta.usdRate > 0) provider.usdRate = meta.usdRate;
+    if (meta.markup > 0) provider.markup = meta.markup;
+    if (!provider.usdRate) provider.usdRate = five ? 2646 : doc.settings.usdNgn;
+    if (!provider.markup) provider.markup = five ? 1.6 : 1 + doc.settings.margin / 100;
+    provider.servesNumbers = true;
+    provider.enabled = true;
+    if (meta.hasKey) provider.hasKey = true;
   }
-  if (input.apiKey && input.providerId) await rememberKey(input.providerId, input.apiKey);
-  return { error: null, jobId, total: extracted.items.length, saved: 0, batch: 0, batches: chunks.length, batchSize: IMPORT_BATCH, done: false, report: null, state: null };
+  return { doc: { ...doc, providers }, provider };
+}
+
+async function stepFromMemory(jobId: string) {
+  const job = pendingImports.get(jobId);
+  if (!job) return emptyImport("That import is no longer running. Start it again.");
+  const session = await readSession();
+  const light = await loadLight();
+  const me = light.users.find((user) => user.id === session.userId);
+  if (me?.role !== "admin") return emptyImport("Only an admin can pull an API.");
+  const total = job.items.length;
+  const batches = importBatchCount(total);
+  if (job.cursor >= total) {
+    pendingImports.delete(jobId);
+    return { error: null, jobId, total, saved: total, batch: batches, batches, batchSize: IMPORT_BATCH, done: true, report: null, state: projectShop(light, session.userId, session.draft) };
+  }
+  const slice = job.items.slice(job.cursor, job.cursor + IMPORT_BATCH);
+  const finalize = job.cursor + slice.length >= total;
+  try {
+    return await locked(async () => {
+      const loaded = await loadLight();
+      const held = withProvider(loaded, job.meta, job.providerId);
+      job.providerId = held.provider.id;
+      const existing = await countExistingProducts(held.provider.id, slice.map((item) => item.externalId));
+      const products: Product[] = slice.map((item) => ({
+        id: uid("prd"),
+        providerId: held.provider.id,
+        externalId: item.externalId,
+        category: item.category,
+        name: item.name,
+        service: item.service,
+        country: item.country,
+        network: item.network,
+        price: sellPrice(item.price, held.provider.currency, held.provider.usdRate, held.provider.markup),
+        cost: item.price,
+        stock: item.stock,
+        operator: item.operator || "",
+        rate: item.rate || 0,
+        rates: item.rates || "",
+        enabled: job.meta.publish,
+        validity: item.validity,
+        variable: item.variable,
+        description: item.description,
+      }));
+      await upsertProductRows(products, jobId);
+      job.tally.created += Math.max(0, slice.length - existing);
+      job.tally.updated += existing;
+      for (const item of slice) {
+        job.tally.byCategory[item.category] = (job.tally.byCategory[item.category] || 0) + 1;
+        if (item.network) job.tally.byNetwork[item.network] = (job.tally.byNetwork[item.network] || 0) + 1;
+      }
+      job.cursor += slice.length;
+      if (job.meta.apiKey) {
+        await rememberKey(held.provider.id, job.meta.apiKey);
+        job.meta.apiKey = "";
+      }
+      if (finalize) await pruneSyncedProducts(held.provider.id, jobId, job.touched);
+      held.provider.servesNumbers = true;
+      held.provider.enabled = true;
+      held.provider.lastSync = {
+        at: new Date().toISOString(),
+        imported: finalize ? total : job.cursor,
+        created: job.tally.created,
+        updated: job.tally.updated,
+        skipped: job.skipped,
+        byCategory: job.tally.byCategory,
+        byNetwork: job.tally.byNetwork,
+      };
+      await writeState(held.doc);
+      const saved = job.cursor;
+      const batch = Math.ceil(saved / IMPORT_BATCH);
+      const report: SyncReport = {
+        imported: finalize ? total : slice.length,
+        created: job.tally.created,
+        updated: job.tally.updated,
+        skipped: job.skipped,
+        byCategory: job.tally.byCategory,
+        byNetwork: job.tally.byNetwork,
+        providerId: held.provider.id,
+        serverLabel: serverLabel(held.doc.providers, held.provider.id),
+      };
+      if (finalize) pendingImports.delete(jobId);
+      const fresh = await readSession();
+      return {
+        error: null,
+        jobId,
+        total,
+        saved,
+        batch,
+        batches,
+        batchSize: IMPORT_BATCH,
+        done: finalize,
+        report,
+        state: projectShop(held.doc, fresh.userId, fresh.draft),
+      };
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "This batch could not be saved.";
+    return { error: message, jobId, total, saved: job.cursor, batch: Math.floor(job.cursor / IMPORT_BATCH), batches, batchSize: IMPORT_BATCH, done: false, report: null, state: null };
+  }
 }
 
 export async function stepCatalogImport(jobId: string) {
+  if (pendingImports.has(jobId)) return stepFromMemory(jobId);
   if (!jobId) return emptyImport("Missing import.");
   const session = await readSession();
   const light = await loadLight();
@@ -705,61 +893,41 @@ export async function importFromUrl(input: { url: string; apiKey?: string; provi
 }
 
 export async function browseNumbers(input: { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean }) {
-  const doc = await loadDoc(true);
+  const doc = await loadLight();
   const session = await readSession();
   const me = doc.users.find((u) => u.id === session.userId);
   const admin = me?.role === "admin";
   const want = input.category === "rent" ? "rent" : "numbers";
-  let rows = doc.products.filter((p) => (!input.providerId || p.providerId === input.providerId) && p.category === want && p.country && p.country !== "Any");
-  if (!admin) rows = rows.filter((p) => isLive(p, doc.providers));
-  if (input.country) rows = rows.filter((p) => p.country === input.country);
-  const hidden = admin ? doc.products.filter((p) => (!input.providerId || p.providerId === input.providerId) && p.category === want && !p.enabled).length : 0;
+  const enabledProviderIds = doc.providers.filter((provider) => provider.enabled).map((provider) => provider.id);
+  const hidden = admin ? await queryHidden(input.providerId || "", want) : 0;
   const empty = { services: [] as { service: string; price: number }[], countries: [] as Product[], operators: [] as Product[], hidden };
-  if (input.detail && input.service && input.country) {
-    const operators = rows
-      .filter((product) => product.service === input.service)
-      .sort((a, b) => (b.rate || 0) - (a.rate || 0) || a.price - b.price || (a.operator || "").localeCompare(b.operator || ""));
-    return { ...empty, operators };
-  }
-  if (input.service) {
-    const map = new Map<string, Product>();
-    for (const product of rows) {
-      if (product.service !== input.service) continue;
-      const cur = map.get(product.country);
-      if (!cur || (product.price > 0 && product.price < cur.price)) map.set(product.country, product);
-    }
-    return { ...empty, countries: [...map.values()].sort((a, b) => a.price - b.price || a.country.localeCompare(b.country)) };
-  }
-  const q = (input.q || "").trim().toLowerCase();
-  const map = new Map<string, { service: string; price: number }>();
-  for (const product of rows) {
-    if (q && !product.service.toLowerCase().includes(q)) continue;
-    const cur = map.get(product.service);
-    if (!cur || product.price < cur.price) map.set(product.service, { service: product.service, price: product.price });
-  }
-  return { ...empty, services: [...map.values()].sort((a, b) => a.service.localeCompare(b.service)).slice(0, 100) };
+  const query = {
+    providerId: input.providerId || "",
+    category: want,
+    country: input.country || "",
+    service: input.service || "",
+    q: (input.q || "").trim(),
+    admin,
+    enabledProviderIds,
+  };
+  if (!admin && input.providerId && !enabledProviderIds.includes(input.providerId)) return empty;
+  if (input.detail && input.service && input.country) return { ...empty, operators: await queryOperators(query) };
+  if (input.service) return { ...empty, countries: await queryCountries(query) };
+  return { ...empty, services: await queryServices(query) };
 }
 
 export async function browseCatalog(input: { q?: string; category?: string; providerId?: string; only?: string; page?: number }) {
-  const doc = await loadDoc(true);
+  const doc = await loadLight();
   const session = await readSession();
   const me = doc.users.find((u) => u.id === session.userId);
   if (me?.role !== "admin") return { rows: [] as Product[], total: 0, live: 0 };
-  const q = (input.q || "").trim().toLowerCase();
-  const filtered = doc.products.filter((p) => {
-    if (input.category && p.category !== input.category) return false;
-    if (input.providerId && p.providerId !== input.providerId) return false;
-    if (input.only === "on" && !p.enabled) return false;
-    if (input.only === "off" && p.enabled) return false;
-    if (q && !`${p.name} ${p.service} ${p.country} ${p.network}`.toLowerCase().includes(q)) return false;
-    return true;
+  return queryCatalogPage({
+    q: (input.q || "").trim(),
+    category: input.category || "",
+    providerId: input.providerId || "",
+    only: input.only || "",
+    page: Number(input.page) || 0,
   });
-  const page = Math.max(0, Number(input.page) || 0);
-  return {
-    rows: filtered.slice(page * 40, page * 40 + 40),
-    total: filtered.length,
-    live: doc.products.filter((p) => p.enabled).length,
-  };
 }
 
 export async function askSupport(question: string) {
