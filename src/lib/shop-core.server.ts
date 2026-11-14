@@ -2,7 +2,7 @@ import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/rea
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
 import { freshData, isLive, normalizeData, repairCatalog, sellPrice, serverLabel, topupQuote, withAdminLogin, applyImportSlice, type Data, type Product, type SyncReport } from "@/lib/catalog";
-import { extractCatalog, slimFiveSim, type ParsedItem } from "@/lib/categorize";
+import { extractCatalog, slimFiveSim, serviceAllowed, MAJOR_SERVICES, type ParsedItem } from "@/lib/categorize";
 import { IMPORT_BATCH, importBatchCount } from "@/lib/import-batch";
 import { uid } from "@/lib/money";
 import {
@@ -181,6 +181,35 @@ async function readCatalog(): Promise<Product[]> {
     catalogCache = [];
   }
   return catalogCache;
+}
+
+async function clearNumberImports() {
+  const sql = await getSql();
+  try {
+    await sql`delete from shop_products where category in ('numbers', 'rent')`;
+  } catch {
+    // The products table is created by the next migration.
+  }
+  catalogCache = [];
+  try {
+    await sql`update shop_catalog set doc = '[]' where id = 'main'`;
+  } catch {
+    // No old catalogue blob yet.
+  }
+  const doc = await loadLight();
+  const products = doc.products.filter((product) => product.category !== "numbers" && product.category !== "rent");
+  const providers = doc.providers.map((provider) => ({ ...provider, servesNumbers: false }));
+  await writeState({ ...doc, products, providers });
+}
+
+export async function clearNumberCatalog() {
+  const session = await readSession();
+  const doc = await loadLight();
+  const me = doc.users.find((user) => user.id === session.userId);
+  if (me?.role !== "admin") return { error: "Only an admin can clear the catalogue.", state: null as Data | null };
+  await clearNumberImports();
+  const fresh = await loadLight();
+  return { error: null as string | null, state: projectShop(fresh, session.userId, session.draft) };
 }
 
 async function writeCatalog(products: Product[]) {
@@ -544,7 +573,7 @@ export function integrationStatus() {
   };
 }
 
-export async function pullRemote(input: { url: string; apiKey?: string; providerId?: string }) {
+export async function pullRemote(input: { url: string; apiKey?: string; providerId?: string; allow?: string[] }) {
   const session = await readSession();
   const doc = await loadDoc();
   const me = doc.users.find((u) => u.id === session.userId);
@@ -572,7 +601,7 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     if (!res.ok) return { ok: false as const, error: `The API replied ${res.status}.` };
     const parsed = JSON.parse(text) as unknown;
     const hint = /hosting|rent/i.test(url.search + url.pathname) ? "hosting" : "";
-    const payload = url.hostname.endsWith("5sim.net") ? slimFiveSim(parsed, hint) : parsed;
+    const payload = url.hostname.endsWith("5sim.net") ? slimFiveSim(parsed, hint, input.allow || []) : parsed;
     return { ok: true as const, payload };
   } catch {
     return { ok: false as const, error: "Could not reach that API. Check the URL and key." };
@@ -604,15 +633,18 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
   const doc = await loadLight();
   const me = doc.users.find((u) => u.id === session.userId);
   if (me?.role !== "admin") return emptyImport("Only an admin can pull an API.");
+  const wanted = doc.settings.wantedServices?.length ? doc.settings.wantedServices : [...MAJOR_SERVICES];
   let payload = input.payload;
   if (input.url) {
-    const fetched = await pullRemote({ url: input.url, apiKey: input.apiKey, providerId: input.providerId });
+    const fetched = await pullRemote({ url: input.url, apiKey: input.apiKey, providerId: input.providerId, allow: wanted });
     if (!fetched.ok) return emptyImport(fetched.error);
     payload = fetched.payload;
   }
   if (payload == null) return emptyImport("Add a catalogue URL or paste JSON.");
   const extracted = extractCatalog(payload);
-  if (!extracted.items.length) return emptyImport("That catalogue had no services to import.");
+  const items = extracted.items.filter((item) => (item.category !== "numbers" && item.category !== "rent") || serviceAllowed(item.service || item.name, wanted));
+  if (!items.length) return emptyImport("None of the service names you saved were in that catalogue.");
+  if (items.some((item) => item.category === "numbers" || item.category === "rent")) await clearNumberImports();
   const jobId = crypto.randomUUID();
   const meta: ImportMeta = {
     name: input.name || "New API",
@@ -624,18 +656,18 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
     hasKey: !!input.apiKey || !!input.url,
     apiKey: input.apiKey || "",
   };
-  const touched = [...new Set(extracted.items.map((item) => `${item.country}|${item.service}`))];
+  const touched = [...new Set(items.map((item) => `${item.country}|${item.service}`))];
   pendingImports.clear();
   pendingImports.set(jobId, {
-    items: extracted.items,
+    items,
     cursor: 0,
     meta,
     providerId: input.providerId || "",
-    skipped: extracted.skipped,
+    skipped: extracted.skipped + (extracted.items.length - items.length),
     touched,
     tally: { created: 0, updated: 0, byCategory: {}, byNetwork: {} },
   });
-  return { error: null, jobId, total: extracted.items.length, saved: 0, batch: 0, batches: importBatchCount(extracted.items.length), batchSize: IMPORT_BATCH, done: false, report: null, state: null };
+  return { error: null, jobId, total: items.length, saved: 0, batch: 0, batches: importBatchCount(items.length), batchSize: IMPORT_BATCH, done: false, report: null, state: null };
 }
 
 function withProvider(doc: Data, meta: ImportMeta, providerId: string) {
