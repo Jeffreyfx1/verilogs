@@ -478,6 +478,42 @@ export async function connectGoogle(profile: { email: string; name: string }) {
   return { needsPhone: out.needsPhone, role: out.userId ? doc.users.find((u) => u.id === out.userId)?.role : "customer" };
 }
 
+async function finishPaidNumber(doc: Data, userId: string, productId: string) {
+  if (!productId) return { data: doc, bought: false, error: null as string | null };
+  const product = await readProduct(productId);
+  if (!product?.enabled) return { data: doc, bought: false, error: "Payment is in your wallet, but that number is no longer available." };
+  const withProduct = { ...doc, products: [product, ...doc.products.filter((item) => item.id !== product.id)] };
+  const bought = buyProduct(withProduct, userId, productId, {});
+  if (bought.error) return { data: doc, bought: false, error: `Payment is in your wallet. ${bought.error}` };
+  return { data: bought.data, bought: true, error: null };
+}
+
+export async function purchasePreview(productId: string) {
+  const session = await readSession();
+  if (!session.userId) return { error: "Sign in first." as string };
+  const doc = await loadLight();
+  const user = doc.users.find((item) => item.id === session.userId);
+  if (!user) return { error: "Sign in first." as string };
+  const product = await readProduct(productId);
+  if (!product || !product.enabled) return { error: "That number is no longer available." as string };
+  const short = Math.max(0, product.price - user.balance);
+  const credit = short > 0 && short < 100 ? 100 : short;
+  const quote = topupQuote(credit, doc.settings);
+  return {
+    error: null as null,
+    name: product.name,
+    service: product.service,
+    country: product.country,
+    operator: product.operator,
+    price: product.price,
+    balance: user.balance,
+    short,
+    credit,
+    fee: quote.fee,
+    pay: short > 0 ? quote.pay : product.price,
+  };
+}
+
 export async function creditPaystack(reference: string, expectedUserId?: string | null) {
   const secret = process.env.PAYSTACK_SECRET_KEY;
   if (!secret) return { error: "Paystack is not connected yet. Add PAYSTACK_SECRET_KEY on the host." };
@@ -490,7 +526,7 @@ export async function creditPaystack(reference: string, expectedUserId?: string 
   const res = await fetch("https://api.paystack.co/transaction/verify/" + encodeURIComponent(reference), {
     headers: { Authorization: `Bearer ${secret}` },
   });
-  const body = (await res.json()) as { status?: boolean; data?: { status?: string; amount?: number; metadata?: { userId?: string; credit?: number } } };
+  const body = (await res.json()) as { status?: boolean; data?: { status?: string; amount?: number; metadata?: { userId?: string; credit?: number; productId?: string } } };
   if (!body.status || body.data?.status !== "success") return { error: "Paystack has not confirmed this payment." };
   const userId = body.data.metadata?.userId;
   if (!userId) return { error: "Payment is missing the account it belongs to." };
@@ -502,10 +538,11 @@ export async function creditPaystack(reference: string, expectedUserId?: string 
     const doc = await loadLight();
     const out = creditVerified(doc, userId, amount, reference);
     if (out.error) return { error: out.error };
-    await saveDoc(out.data);
+    const finished = await finishPaidNumber(out.data, userId, body.data?.metadata?.productId || "");
+    await saveDoc(finished.data);
     await sendMail(out.mail);
     const session = await readSession();
-    return { error: null, state: projectShop(out.data, session.userId, session.draft) };
+    return { error: finished.error, bought: finished.bought, state: projectShop(finished.data, session.userId, session.draft) };
   });
 }
 
@@ -516,7 +553,7 @@ export async function creditFromWebhook(raw: string, signature: string | null) {
   const a = Buffer.from(digest);
   const b = Buffer.from(signature);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return false;
-  const event = JSON.parse(raw) as { event?: string; data?: { reference?: string; status?: string; amount?: number; metadata?: { userId?: string; credit?: number } } };
+  const event = JSON.parse(raw) as { event?: string; data?: { reference?: string; status?: string; amount?: number; metadata?: { userId?: string; credit?: number; productId?: string } } };
   if (event.event !== "charge.success" || event.data?.status !== "success" || !event.data.reference || !event.data.metadata?.userId) return true;
   const charged = Math.round(Number(event.data.amount || 0) / 100);
   const credit = Math.round(Number(event.data.metadata.credit || charged));
@@ -525,14 +562,15 @@ export async function creditFromWebhook(raw: string, signature: string | null) {
     const doc = await loadLight();
     const out = creditVerified(doc, event.data!.metadata!.userId!, amount, event.data!.reference!);
     if (!out.error) {
-      await saveDoc(out.data);
+      const finished = await finishPaidNumber(out.data, event.data!.metadata!.userId!, event.data!.metadata!.productId || "");
+      await saveDoc(finished.data);
       await sendMail(out.mail);
     }
   });
   return true;
 }
 
-export async function startPaystack(amount: number) {
+export async function startPaystack(amount: number, productId = "") {
   const n = Math.round(amount);
   if (n < 100 || n > 500000) return { error: "Amount must be between ₦100 and ₦500,000." };
   const secret = process.env.PAYSTACK_SECRET_KEY;
@@ -546,6 +584,7 @@ export async function startPaystack(amount: number) {
   if (quote.pay > 2000000) return { error: "That top up plus the site charge is too large." };
   const reference = "vl_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
   const origin = (process.env.APP_URL || getRequestUrl().origin).replace(/\/$/, "");
+  const back = productId ? `${origin}/dashboard/wallet?product=${encodeURIComponent(productId)}` : `${origin}/dashboard/wallet`;
   const res = await fetch("https://api.paystack.co/transaction/initialize", {
     method: "POST",
     headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
@@ -554,8 +593,9 @@ export async function startPaystack(amount: number) {
       amount: quote.pay * 100,
       reference,
       currency: "NGN",
-      callback_url: origin + "/dashboard/wallet",
-      metadata: { userId: user.id, credit: quote.credit },
+      channels: ["bank_transfer", "bank", "card", "ussd"],
+      callback_url: back,
+      metadata: { userId: user.id, credit: quote.credit, productId },
     }),
   });
   const body = (await res.json()) as { status?: boolean; message?: string; data?: { authorization_url?: string } };
