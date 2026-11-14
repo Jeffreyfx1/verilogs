@@ -508,7 +508,7 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     headers["api-key"] = key;
   }
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 50000);
+  const timer = setTimeout(() => ctrl.abort(), 90000);
   try {
     const res = await fetch(url, { headers, signal: ctrl.signal });
     const text = await res.text();

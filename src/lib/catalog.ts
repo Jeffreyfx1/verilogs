@@ -403,6 +403,13 @@ export function ingest(
     if (input.hasKey) provider.hasKey = true;
   }
   const products = data.products.map((p) => ({ ...p }));
+  const byExternal = new Map<string, Product>();
+  const livePairs = new Set<string>();
+  for (const product of products) {
+    if (product.providerId !== provider.id) continue;
+    byExternal.set(product.externalId, product);
+    if (product.enabled) livePairs.add(`${product.country}|${product.service}`);
+  }
   const byCategory: Record<string, number> = {};
   const byNetwork: Record<string, number> = {};
   let created = 0;
@@ -411,7 +418,7 @@ export function ingest(
     byCategory[item.category] = (byCategory[item.category] || 0) + 1;
     if (item.network) byNetwork[item.network] = (byNetwork[item.network] || 0) + 1;
     const price = sellPrice(item.price, provider.currency, provider.usdRate, provider.markup);
-    const existing = products.find((p) => p.providerId === provider!.id && p.externalId === item.externalId);
+    const existing = byExternal.get(item.externalId);
     if (existing) {
       existing.name = item.name;
       existing.service = item.service;
@@ -429,7 +436,7 @@ export function ingest(
       existing.rates = item.rates || "";
       updated++;
     } else {
-      products.push({
+      const row: Product = {
         id: uid("prd"),
         providerId: provider.id,
         externalId: item.externalId,
@@ -444,11 +451,13 @@ export function ingest(
         operator: item.operator || "",
         rate: item.rate || 0,
         rates: item.rates || "",
-        enabled: (input.enable ? input.enable(item) : false) || products.some((product) => product.providerId === provider.id && product.enabled && product.country === item.country && product.service === item.service),
+        enabled: (input.enable ? input.enable(item) : false) || livePairs.has(`${item.country}|${item.service}`),
         validity: item.validity,
         variable: item.variable,
         description: item.description,
-      });
+      };
+      products.push(row);
+      byExternal.set(item.externalId, row);
       created++;
     }
   }
