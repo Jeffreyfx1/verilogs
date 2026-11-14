@@ -43,11 +43,11 @@ export async function upsertProductRows(products: Product[], sync: string) {
         product.service,
         product.country,
         product.network,
-        product.price,
-        product.cost,
-        product.stock,
+        Math.round(Number(product.price) || 0),
+        Number(product.cost) || 0,
+        Math.round(Number(product.stock) || 0),
         product.operator,
-        product.rate,
+        Math.round(Number(product.rate) || 0),
         product.rates,
         product.enabled,
         product.validity,
@@ -118,7 +118,7 @@ export async function clearProducts() {
   await sql`delete from shop_products`;
 }
 
-type BrowseInput = { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean; admin?: boolean; enabledProviderIds?: string[] };
+type BrowseInput = { providerId?: string; category?: string; service?: string; q?: string; detail?: boolean; admin?: boolean; enabledProviderIds?: string[] };
 
 function filters(input: BrowseInput, values: unknown[]) {
   const parts = ["category = $1", "country <> ''", "country <> 'Any'"];

@@ -307,14 +307,46 @@ function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedI
   return { ...raw, category, name, country, network, variable: variable || raw.price <= 0, price: variable ? 0 : raw.price };
 }
 
-export function slimFiveSim(payload: unknown, hint = "", allow: string[] = []): unknown {
+function isProductQuote(row: unknown): row is Record<string, unknown> {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return false;
+  const rec = row as Record<string, unknown>;
+  return ("Price" in rec || "price" in rec) && ("Qty" in rec || "qty" in rec || "Category" in rec || "count" in rec);
+}
+
+export function slimFiveSim(payload: unknown, hint = "", allow: string[] = [], place: { country?: string; operator?: string } = {}): unknown {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
   const rows: Array<Record<string, unknown>> = [];
-  for (const [country, services] of Object.entries(payload as Record<string, unknown>)) {
-    if (!services || typeof services !== "object" || Array.isArray(services)) return payload;
+  const entries = Object.entries(payload as Record<string, unknown>);
+  const quotes = entries.filter(([, value]) => value && typeof value === "object");
+  if (quotes.length && quotes.every(([, value]) => isProductQuote(value))) {
+    const country = place.country || "";
+    const operator = place.operator || "any";
+    for (const [service, row] of quotes) {
+      if (!isProductQuote(row)) continue;
+      if (allow.length && !serviceAllowed(service, allow)) continue;
+      const cost = Number(row.Price ?? row.price ?? row.cost ?? 0);
+      const count = Number(row.Qty ?? row.qty ?? row.count ?? 0);
+      if (!Number.isFinite(cost) || !Number.isFinite(count) || count <= 0 || cost <= 0) continue;
+      rows.push({
+        id: `${country}|${service}|${operator}`,
+        service,
+        name: service,
+        country,
+        operator,
+        cost,
+        count: Math.round(count),
+        rate: 0,
+        rates: "",
+        category: String(row.Category || row.category || hint || "activation"),
+      });
+    }
+    return rows.length ? rows : payload;
+  }
+  for (const [country, services] of entries) {
+    if (!services || typeof services !== "object" || Array.isArray(services)) continue;
     for (const [service, operators] of Object.entries(services as Record<string, unknown>)) {
       if (allow.length && !serviceAllowed(service, allow)) continue;
-      if (!operators || typeof operators !== "object" || Array.isArray(operators)) return payload;
+      if (!operators || typeof operators !== "object" || Array.isArray(operators)) continue;
       for (const [operator, row] of Object.entries(operators as Record<string, unknown>)) {
         if (!row || typeof row !== "object" || Array.isArray(row)) continue;
         const rec = row as Record<string, unknown>;
