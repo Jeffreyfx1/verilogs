@@ -358,7 +358,14 @@ export function serverLabel(providers: Provider[], id: string) {
   return i === -1 ? null : "Server " + (i + 1);
 }
 
-export function ingest(
+export type ImportTally = {
+  created: number;
+  updated: number;
+  byCategory: Record<string, number>;
+  byNetwork: Record<string, number>;
+};
+
+export function applyImportSlice(
   data: Data,
   input: {
     providerId?: string;
@@ -368,12 +375,15 @@ export function ingest(
     currency: "NGN" | "USD";
     usdRate?: number;
     markup?: number;
-    payload: unknown;
+    items: ParsedItem[];
+    skipped: number;
     enable?: (item: ParsedItem) => boolean;
+    finalize: boolean;
+    keepIds: string[];
+    touchedKeys: string[];
+    tally: ImportTally;
   },
-): { data: Data; report: SyncReport } {
-  const extracted = extractCatalog(input.payload);
-  const items = extracted.items;
+): { data: Data; report: SyncReport; providerId: string; tally: ImportTally } {
   const now = new Date().toISOString();
   const providers = data.providers.map((p) => ({ ...p }));
   let provider = input.providerId ? providers.find((p) => p.id === input.providerId) : undefined;
@@ -410,13 +420,15 @@ export function ingest(
     byExternal.set(product.externalId, product);
     if (product.enabled) livePairs.add(`${product.country}|${product.service}`);
   }
-  const byCategory: Record<string, number> = {};
-  const byNetwork: Record<string, number> = {};
-  let created = 0;
-  let updated = 0;
-  for (const item of items) {
-    byCategory[item.category] = (byCategory[item.category] || 0) + 1;
-    if (item.network) byNetwork[item.network] = (byNetwork[item.network] || 0) + 1;
+  const tally: ImportTally = {
+    created: input.tally.created,
+    updated: input.tally.updated,
+    byCategory: { ...input.tally.byCategory },
+    byNetwork: { ...input.tally.byNetwork },
+  };
+  for (const item of input.items) {
+    tally.byCategory[item.category] = (tally.byCategory[item.category] || 0) + 1;
+    if (item.network) tally.byNetwork[item.network] = (tally.byNetwork[item.network] || 0) + 1;
     const price = sellPrice(item.price, provider.currency, provider.usdRate, provider.markup);
     const existing = byExternal.get(item.externalId);
     if (existing) {
@@ -434,7 +446,7 @@ export function ingest(
       existing.operator = item.operator || "";
       existing.rate = item.rate || 0;
       existing.rates = item.rates || "";
-      updated++;
+      tally.updated++;
     } else {
       const row: Product = {
         id: uid("prd"),
@@ -458,33 +470,71 @@ export function ingest(
       };
       products.push(row);
       byExternal.set(item.externalId, row);
-      created++;
+      tally.created++;
     }
   }
-  provider.lastSync = { at: now, imported: items.length, created, updated, skipped: extracted.skipped, byCategory, byNetwork };
-  const touched = new Set(items.map((item) => `${item.country}|${item.service}`));
-  const freshIds = new Set(items.map((item) => item.externalId));
-  const kept = products.filter((product) => {
-    if (product.providerId !== provider!.id || (product.category !== "numbers" && product.category !== "rent")) return true;
-    const key = `${product.country}|${product.service}`;
-    if (!touched.has(key)) return true;
-    return freshIds.has(product.externalId);
-  });
-  provider.servesNumbers = kept.some((p) => p.providerId === provider!.id && (p.category === "numbers" || p.category === "rent"));
-  const next = { ...data, providers, products: kept };
+  const fresh = new Set(input.finalize ? input.keepIds : []);
+  const touched = new Set(input.finalize ? input.touchedKeys : []);
+  const kept = input.finalize
+    ? products.filter((product) => {
+        if (product.providerId !== provider.id || (product.category !== "numbers" && product.category !== "rent")) return true;
+        const key = `${product.country}|${product.service}`;
+        if (!touched.has(key)) return true;
+        return fresh.has(product.externalId);
+      })
+    : products;
+  provider.servesNumbers = kept.some((p) => p.providerId === provider.id && (p.category === "numbers" || p.category === "rent"));
+  provider.lastSync = {
+    at: now,
+    imported: input.finalize ? input.keepIds.length : tally.created + tally.updated,
+    created: tally.created,
+    updated: tally.updated,
+    skipped: input.skipped,
+    byCategory: tally.byCategory,
+    byNetwork: tally.byNetwork,
+  };
   return {
-    data: next,
+    data: { ...data, providers, products: kept },
+    providerId: provider.id,
+    tally,
     report: {
-      imported: items.length,
-      created,
-      updated,
-      skipped: extracted.skipped,
-      byCategory,
-      byNetwork,
+      imported: input.finalize ? input.keepIds.length : input.items.length,
+      created: tally.created,
+      updated: tally.updated,
+      skipped: input.skipped,
+      byCategory: tally.byCategory,
+      byNetwork: tally.byNetwork,
       providerId: provider.id,
       serverLabel: serverLabel(providers, provider.id),
     },
   };
+}
+
+export function ingest(
+  data: Data,
+  input: {
+    providerId?: string;
+    name: string;
+    baseUrl: string;
+    hasKey?: boolean;
+    currency: "NGN" | "USD";
+    usdRate?: number;
+    markup?: number;
+    payload: unknown;
+    enable?: (item: ParsedItem) => boolean;
+  },
+): { data: Data; report: SyncReport } {
+  const extracted = extractCatalog(input.payload);
+  const applied = applyImportSlice(data, {
+    ...input,
+    items: extracted.items,
+    skipped: extracted.skipped,
+    finalize: true,
+    keepIds: extracted.items.map((item) => item.externalId),
+    touchedKeys: [...new Set(extracted.items.map((item) => `${item.country}|${item.service}`))],
+    tally: { created: 0, updated: 0, byCategory: {}, byNetwork: {} },
+  });
+  return { data: applied.data, report: applied.report };
 }
 
 export const CATEGORY_LABEL: Record<string, string> = {
