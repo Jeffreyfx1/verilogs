@@ -998,7 +998,7 @@ export async function importFromUrl(input: { url: string; apiKey?: string; provi
   });
 }
 
-export async function browseNumbers(input: { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean }) {
+export async function browseNumbers(input: { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean; list?: string }) {
   const doc = await loadLight();
   const session = await readSession();
   const me = doc.users.find((u) => u.id === session.userId);
@@ -1017,9 +1017,10 @@ export async function browseNumbers(input: { providerId?: string; category?: str
     enabledProviderIds,
   };
   if (!admin && input.providerId && !enabledProviderIds.includes(input.providerId)) return empty;
+  if (input.list === "countries") return { ...empty, countries: await queryCountries({ ...query, service: "", q: "" }) };
   if (input.detail && input.service && input.country) return { ...empty, operators: await queryOperators(query) };
-  if (input.service) return { ...empty, countries: await queryCountries(query) };
-  return { ...empty, services: await queryServices(query) };
+  if (input.list === "services" || !input.service) return { ...empty, services: await queryServices(query) };
+  return { ...empty, countries: await queryCountries(query) };
 }
 
 export async function browseCatalog(input: { q?: string; category?: string; providerId?: string; only?: string; page?: number }) {
