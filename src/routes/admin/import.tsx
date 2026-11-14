@@ -5,7 +5,7 @@ import { Button, Field, inputClass } from "@/components/ui";
 import { CATEGORY_LABEL, type SyncReport } from "@/lib/catalog";
 import { extractCatalog } from "@/lib/categorize";
 import { batchWindow } from "@/lib/import-batch";
-import { beginCatalogImport, stepCatalogImport } from "@/lib/shop-fns";
+import { beginCatalogImport, clearNumberCatalog, stepCatalogImport } from "@/lib/shop-fns";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/import")({ component: ImportPage });
@@ -30,9 +30,17 @@ function ImportPage() {
   const [doneBatches, setDoneBatches] = useState(0);
   const [batches, setBatches] = useState(0);
   const [batchSize, setBatchSize] = useState(2000);
+  const settings = useStore((s) => s.settings);
+  const saveSettings = useStore((s) => s.saveSettings);
   const [jobId, setJobId] = useState("");
+  const [names, setNames] = useState("");
+  const [namesDirty, setNamesDirty] = useState(false);
   const [status, setStatus] = useState("");
   const busy = phase === "fetch" || phase === "save";
+  useEffect(() => {
+    if (namesDirty) return;
+    setNames((settings.wantedServices || []).join("\n"));
+  }, [namesDirty, settings.wantedServices]);
   useEffect(() => {
     const existing = providers.find((p) => p.id === providerId);
     if (existing) {
@@ -177,9 +185,43 @@ function ImportPage() {
       <div>
         <h1 className="text-2xl font-extrabold">Import services</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          A large catalogue is saved 2,000 services at a time, as separate rows, so the database does not have to swallow the whole list at once. Stay on this page until the last batch is saved. New rows stay off until you enable them, but the server switches on as soon as the first batch lands.
+          Only the service names below are imported, for every country that API actually sells. WhatsApp, Telegram, Facebook, Instagram, Amazon, Google, YouTube, TikTok and ChatGPT are already on the list. Add a name, save it, then pull again. A pull replaces the old number catalogue.
         </p>
       </div>
+      <section className="rounded-card border border-line bg-card p-4 shadow-card">
+        <h2 className="font-extrabold">Services to import</h2>
+        <p className="mt-1 text-sm text-muted">One name per line. The match is the API's service name, so WhatsApp also catches whatsapp.</p>
+        <textarea className={`${inputClass} mt-3 font-mono text-sm`} rows={8} value={names} onChange={(e) => { setNamesDirty(true); setNames(e.target.value); }} />
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            tone="soft"
+            disabled={busy}
+            onClick={() => {
+              const wantedServices = names.split(/\n+/).map((name) => name.trim()).filter(Boolean).slice(0, 80);
+              if (!wantedServices.length) return toast.error("Keep at least one service name.");
+              void saveSettings({ wantedServices }).then((err) => {
+                if (err) toast.error(err);
+                else toast.success("Service list saved.");
+              });
+            }}
+          >
+            Save service list
+          </Button>
+          <Button
+            tone="soft"
+            disabled={busy}
+            onClick={() => {
+              void clearNumberCatalog().then((res) => {
+                if (res.error) return toast.error(res.error);
+                if (res.state) adopt(res.state);
+                toast.success("Imported numbers cleared.");
+              });
+            }}
+          >
+            Clear imported numbers
+          </Button>
+        </div>
+      </section>
       {phase !== "idle" ? (
         <section className="rounded-card border border-line bg-card p-4 shadow-card">
           <div className="flex items-center justify-between gap-3">
