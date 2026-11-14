@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { GooglePicker } from "@/components/google-picker";
+import { PromoBanners } from "@/components/promos";
 import { Button, Field, inputClass, Logo } from "@/components/ui";
 import { useStore, useUser } from "@/lib/store";
 
@@ -37,7 +38,9 @@ function LoginPage() {
         <Link to="/"><Logo /></Link>
       </header>
       <div className="flex flex-1 items-center justify-center px-4 py-8">
-        <div className="w-full max-w-md rounded-card border border-line bg-card p-6 shadow-card">
+        <div className="w-full max-w-md">
+          <PromoBanners className="mb-4" />
+          <div className="rounded-card border border-line bg-card p-6 shadow-card">
           <h1 className="text-2xl font-extrabold">Log in</h1>
           <p className="mt-1 text-sm text-muted">Use your email or a Google account.</p>
           <form onSubmit={submit} className="mt-5 space-y-3">
@@ -71,6 +74,7 @@ function LoginPage() {
               <Link to="/community" className="inline-block font-semibold text-primary">Join the community</Link>
             </div>
           ) : null}
+          </div>
         </div>
       </div>
     </div>

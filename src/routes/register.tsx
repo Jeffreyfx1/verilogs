@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { GooglePicker } from "@/components/google-picker";
+import { PromoBanners } from "@/components/promos";
 import { Button, Field, inputClass, Logo } from "@/components/ui";
 import { useStore, useUser } from "@/lib/store";
 
@@ -38,7 +39,9 @@ function RegisterPage() {
     <div className="mesh flex min-h-screen flex-col">
       <header className="px-4 py-5"><Link to="/"><Logo /></Link></header>
       <div className="flex flex-1 items-center justify-center px-4 py-8">
-        <form onSubmit={submit} className="w-full max-w-md space-y-3 rounded-card border border-line bg-card p-6 shadow-card">
+        <div className="w-full max-w-md">
+          <PromoBanners className="mb-4" />
+          <form onSubmit={submit} className="space-y-3 rounded-card border border-line bg-card p-6 shadow-card">
           <h1 className="text-2xl font-extrabold">Create new account</h1>
           <Field label="Name"><input className={inputClass} required value={form.name} onChange={set("name")} placeholder="Enter your full name" /></Field>
           <Field label="Email"><input className={inputClass} type="email" required value={form.email} onChange={set("email")} placeholder="Enter your email" /></Field>
@@ -58,6 +61,7 @@ function RegisterPage() {
           <GooglePicker />
           <p className="text-center text-sm">Already have an account? <Link to="/login" className="font-semibold text-primary">Log in</Link></p>
         </form>
+        </div>
       </div>
     </div>
   );
