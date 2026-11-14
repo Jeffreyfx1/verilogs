@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
 import { naira, when } from "@/lib/money";
+import { topupQuote } from "@/lib/catalog";
 import { beginPaystack, confirmPaystack, hostStatus } from "@/lib/shop-fns";
 import { useStore, useUser } from "@/lib/store";
 
@@ -14,6 +15,7 @@ function WalletPage() {
   const user = useUser();
   const allTxns = useStore((s) => s.txns);
   const session = useStore((s) => s.sessionUserId);
+  const settings = useStore((s) => s.settings);
   const adopt = useStore((s) => s.adopt);
   const txns = useMemo(() => allTxns.filter((t) => t.userId === session && t.kind === "topup"), [allTxns, session]);
   const [amount, setAmount] = useState(5000);
@@ -37,6 +39,7 @@ function WalletPage() {
   }, [adopt]);
   if (!user) return null;
   const value = custom ? Number(custom) : amount;
+  const quote = topupQuote(value, settings);
   const pay = async () => {
     setBusy(true);
     try {
@@ -53,7 +56,7 @@ function WalletPage() {
     <div className="grid gap-4 lg:grid-cols-2">
       <section className="rounded-card border border-line bg-card p-5 shadow-card">
         <h1 className="text-2xl font-extrabold">Fund wallet</h1>
-        <p className="mt-1 text-sm text-muted">Balance {naira(user.balance)}. Paystack adds the naira after the charge succeeds.</p>
+        <p className="mt-1 text-sm text-muted">Balance {naira(user.balance)}. Paystack adds the wallet amount after the charge succeeds. The site charge is not added to the wallet.</p>
         <div className="preset-grid mt-4 grid grid-cols-3 gap-2">
           {PRESETS.map((n) => (
             <button key={n} type="button" onClick={() => { setAmount(n); setCustom(""); }} className={`min-h-11 rounded-xl border px-2 py-3 text-sm font-semibold ${!custom && amount === n ? "border-primary bg-paper text-primary" : "border-line"}`}>
@@ -67,8 +70,9 @@ function WalletPage() {
           </Field>
         </div>
         <Button className="mt-4 w-full" disabled={busy || paystack === false} onClick={() => void pay()}>
-          {busy ? "Opening Paystack…" : `Pay ${naira(Number.isFinite(value) ? value : 0)} with Paystack`}
+          {busy ? "Opening Paystack…" : `Pay ${naira(quote.pay)} with Paystack`}
         </Button>
+        {quote.fee > 0 ? <p className="mt-2 text-sm text-muted">Wallet receives {naira(quote.credit)}. Site charge {naira(quote.fee)}.</p> : null}
         {paystack === false ? (
           <p className="mt-3 text-sm text-muted">
             Paystack is not connected on this host yet. Add PAYSTACK_SECRET_KEY in the host environment, then this button charges for real. An admin can credit a wallet from Customers until then.

@@ -116,6 +116,8 @@ export type WelcomePopup = {
 export type Settings = {
   usdNgn: number;
   margin: number;
+  paystackPercent: number;
+  paystackFlat: number;
   community: string;
   telegram: string;
   whatsapp: string;
@@ -147,6 +149,8 @@ export function defaultSettings(): Settings {
   return {
     usdNgn: 1650,
     margin: 12,
+    paystackPercent: 0,
+    paystackFlat: 0,
     community: "VeriLogs Community",
     telegram: "https://t.me/verilogs",
     whatsapp: "",
@@ -300,6 +304,14 @@ function sellPrice(cost: number, currency: "NGN" | "USD", settings: Data["settin
   const ngn = currency === "USD" ? cost * settings.usdNgn : cost;
   if (ngn <= 0) return 0;
   return Math.ceil((ngn * (1 + settings.margin / 100)) / 5) * 5;
+}
+
+export function topupQuote(credit: number, settings: Pick<Settings, "paystackPercent" | "paystackFlat">) {
+  const base = Math.round(Number(credit) || 0);
+  const percent = Math.max(0, Number(settings.paystackPercent) || 0);
+  const flat = Math.max(0, Math.round(Number(settings.paystackFlat) || 0));
+  const fee = Math.round((base * percent) / 100) + flat;
+  return { credit: base, fee, pay: base + fee };
 }
 
 export type SyncReport = {

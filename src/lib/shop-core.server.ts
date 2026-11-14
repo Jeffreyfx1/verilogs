@@ -1,7 +1,7 @@
 import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/react-start/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
-import { freshData, normalizeData, repairCatalog, withAdminLogin, type Data, type SyncReport } from "@/lib/catalog";
+import { freshData, normalizeData, repairCatalog, topupQuote, withAdminLogin, type Data, type SyncReport } from "@/lib/catalog";
 import {
   addAnnouncement,
   addTicket,
@@ -353,12 +353,14 @@ export async function creditPaystack(reference: string, expectedUserId?: string 
   const res = await fetch("https://api.paystack.co/transaction/verify/" + encodeURIComponent(reference), {
     headers: { Authorization: `Bearer ${secret}` },
   });
-  const body = (await res.json()) as { status?: boolean; data?: { status?: string; amount?: number; metadata?: { userId?: string } } };
+  const body = (await res.json()) as { status?: boolean; data?: { status?: string; amount?: number; metadata?: { userId?: string; credit?: number } } };
   if (!body.status || body.data?.status !== "success") return { error: "Paystack has not confirmed this payment." };
   const userId = body.data.metadata?.userId;
   if (!userId) return { error: "Payment is missing the account it belongs to." };
   if (expect && expect !== userId) return { error: "This payment belongs to another account." };
-  const amount = Math.round(Number(body.data.amount || 0) / 100);
+  const charged = Math.round(Number(body.data.amount || 0) / 100);
+  const credit = Math.round(Number(body.data.metadata?.credit || charged));
+  const amount = credit > 0 && credit <= charged ? credit : charged;
   return locked(async () => {
     const doc = await loadDoc();
     const out = creditVerified(doc, userId, amount, reference);
@@ -377,9 +379,11 @@ export async function creditFromWebhook(raw: string, signature: string | null) {
   const a = Buffer.from(digest);
   const b = Buffer.from(signature);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return false;
-  const event = JSON.parse(raw) as { event?: string; data?: { reference?: string; status?: string; amount?: number; metadata?: { userId?: string } } };
+  const event = JSON.parse(raw) as { event?: string; data?: { reference?: string; status?: string; amount?: number; metadata?: { userId?: string; credit?: number } } };
   if (event.event !== "charge.success" || event.data?.status !== "success" || !event.data.reference || !event.data.metadata?.userId) return true;
-  const amount = Math.round(Number(event.data.amount || 0) / 100);
+  const charged = Math.round(Number(event.data.amount || 0) / 100);
+  const credit = Math.round(Number(event.data.metadata.credit || charged));
+  const amount = credit > 0 && credit <= charged ? credit : charged;
   await locked(async () => {
     const doc = await loadDoc();
     const out = creditVerified(doc, event.data!.metadata!.userId!, amount, event.data!.reference!);
@@ -401,6 +405,8 @@ export async function startPaystack(amount: number) {
   const doc = await loadDoc();
   const user = doc.users.find((u) => u.id === session.userId);
   if (!user) return { error: "Sign in first." };
+  const quote = topupQuote(n, doc.settings);
+  if (quote.pay > 2000000) return { error: "That top up plus the site charge is too large." };
   const reference = "vl_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
   const origin = (process.env.APP_URL || getRequestUrl().origin).replace(/\/$/, "");
   const res = await fetch("https://api.paystack.co/transaction/initialize", {
@@ -408,11 +414,11 @@ export async function startPaystack(amount: number) {
     headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       email: user.email,
-      amount: n * 100,
+      amount: quote.pay * 100,
       reference,
       currency: "NGN",
       callback_url: origin + "/dashboard/wallet",
-      metadata: { userId: user.id },
+      metadata: { userId: user.id, credit: quote.credit },
     }),
   });
   const body = (await res.json()) as { status?: boolean; message?: string; data?: { authorization_url?: string } };
