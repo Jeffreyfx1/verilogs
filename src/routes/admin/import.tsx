@@ -29,7 +29,7 @@ function ImportPage() {
   const [saved, setSaved] = useState(0);
   const [doneBatches, setDoneBatches] = useState(0);
   const [batches, setBatches] = useState(0);
-  const [batchSize, setBatchSize] = useState(10000);
+  const [batchSize, setBatchSize] = useState(2000);
   const [jobId, setJobId] = useState("");
   const [status, setStatus] = useState("");
   const busy = phase === "fetch" || phase === "save";
@@ -63,7 +63,7 @@ function ImportPage() {
     const existing = providerId ? providers.find((p) => p.id === providerId) : undefined;
     const label = (existing?.name || name).trim() || (url ? "New API" : "Pasted API");
     setPhase(url ? "fetch" : "save");
-    setStatus(url ? "Downloading the catalogue." : "Splitting the catalogue into batches of 10,000.");
+    setStatus(url ? "Downloading the catalogue." : "Splitting the catalogue into batches of 2,000.");
     setReport(null);
     setSaved(0);
     setDoneBatches(0);
@@ -177,7 +177,7 @@ function ImportPage() {
       <div>
         <h1 className="text-2xl font-extrabold">Import services</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          A large catalogue is saved 10,000 services at a time. The first batch has to finish before the next one starts, so a 50,000 import cannot land in one shot. Stay on this page until the last batch is saved. New rows stay off until you enable them.
+          A large catalogue is saved 2,000 services at a time, as separate rows, so the database does not have to swallow the whole list at once. Stay on this page until the last batch is saved. New rows stay off until you enable them, but the server switches on as soon as the first batch lands.
         </p>
       </div>
       {phase !== "idle" ? (

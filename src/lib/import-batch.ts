@@ -1,4 +1,4 @@
-export const IMPORT_BATCH = 10_000;
+export const IMPORT_BATCH = 2_000;
 
 export function importBatchCount(total: number, size = IMPORT_BATCH) {
   if (total <= 0) return 0;
