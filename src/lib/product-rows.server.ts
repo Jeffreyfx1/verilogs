@@ -150,11 +150,11 @@ export async function queryServices(input: BrowseInput) {
   const sql = await getSql();
   const values: unknown[] = [];
   const where = filters(input, values);
-  const rows = await sql.query<{ service: string; price: number }>(
-    `select service, min(price) as price from shop_products where ${where} group by service order by service limit 100`,
+  const rows = await sql.query<{ service: string; provider_id: string; cost: number; price: number }>(
+    `select service, provider_id, min(cost) as cost, min(price) as price from shop_products where ${where} group by service, provider_id order by service limit 400`,
     values,
   );
-  return rows.map((row) => ({ service: row.service, price: Number(row.price) || 0 }));
+  return rows.map((row) => ({ service: row.service, providerId: row.provider_id, cost: Number(row.cost) || 0, price: Number(row.price) || 0 }));
 }
 
 export async function queryCountries(input: BrowseInput) {

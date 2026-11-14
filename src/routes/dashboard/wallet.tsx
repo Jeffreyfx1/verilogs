@@ -72,19 +72,6 @@ function WalletPage() {
       setBusy(false);
     }
   };
-  const payNumber = async () => {
-    if (!preview || preview.error || !("price" in preview)) return;
-    setBusy(true);
-    try {
-      const res = await beginPaystack({ data: { amount: Number(preview.credit || 0), productId } });
-      if (res.error || !res.url) toast.error(res.error || "Paystack did not return a checkout link.");
-      else window.location.href = res.url;
-    } catch {
-      toast.error("Could not start Paystack.");
-    } finally {
-      setBusy(false);
-    }
-  };
   const payFromWallet = async () => {
     setBusy(true);
     try {
@@ -113,9 +100,9 @@ function WalletPage() {
             <p className="mt-2 text-sm text-muted">Wallet balance {naira(order.balance)}.</p>
             {order.short > 0 ? (
               <>
-                <p className="mt-2 text-sm">You pay {naira(order.pay)} now.{order.fee > 0 ? ` Site charge ${naira(order.fee)} is not added to the wallet.` : ""}</p>
-                <p className="mt-1 text-sm text-muted">Paystack opens next. Choose transfer to get an account number, or pay with a card.</p>
-                <Button className="mt-4 w-full" disabled={busy || paystack === false} onClick={() => void payNumber()}>{busy ? "Opening Paystack…" : `Pay ${naira(order.pay)}`}</Button>
+                <p className="mt-3 text-sm font-extrabold text-danger">Insufficient balance. Top up your balance to make this purchase.</p>
+                <p className="mt-1 text-sm text-muted">This number is {naira(order.price)}. Your wallet has {naira(order.balance)}.</p>
+                <Button className="mt-4 w-full" onClick={() => { setProductId(""); setPreview(null); setItem(""); window.history.replaceState({}, "", "/dashboard/wallet"); }}>Top up balance</Button>
               </>
             ) : (
               <Button className="mt-4 w-full" disabled={busy} onClick={() => void payFromWallet()}>{busy ? "Reserving…" : `Pay ${naira(order.price)} from wallet`}</Button>
@@ -130,7 +117,7 @@ function WalletPage() {
     <div className="grid gap-4 lg:grid-cols-2">
       <section className="rounded-card border border-line bg-card p-5 shadow-card">
         <h1 className="text-2xl font-extrabold">{item ? "Pay for this number" : "Fund wallet"}</h1>
-        <p className="mt-1 text-sm text-muted">{item ? `${item}. Your wallet is short, so Paystack opens for the exact amount this purchase needs.` : `Balance ${naira(user.balance)}. Paystack adds the wallet amount after the charge succeeds. The site charge is not added to the wallet.`}</p>
+        <p className="mt-1 text-sm text-muted">Balance {naira(user.balance)}. Paystack adds the wallet amount after the charge succeeds. The site charge is not added to the wallet.</p>
         <div className="preset-grid mt-4 grid grid-cols-3 gap-2">
           {PRESETS.map((n) => (
             <button key={n} type="button" onClick={() => { setAmount(n); setCustom(""); }} className={`min-h-11 rounded-xl border px-2 py-3 text-sm font-semibold ${!custom && amount === n ? "border-primary bg-paper text-primary" : "border-line"}`}>
