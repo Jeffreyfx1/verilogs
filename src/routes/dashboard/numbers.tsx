@@ -32,7 +32,6 @@ function NumbersPage() {
   const allOrders = useStore((s) => s.orders);
   const session = useStore((s) => s.sessionUserId);
   const orders = useMemo(() => allOrders.filter((o) => o.userId === session && (o.category === "numbers" || o.category === "rent") && o.status === "waiting"), [allOrders, session]);
-  const buy = useStore((s) => s.buy);
   const refund = useStore((s) => s.refund);
   const activeId = liveServers.some((s) => s.id === server) ? server : liveServers[0]?.id || "";
   const active = servers.find((s) => s.id === activeId);
@@ -118,24 +117,6 @@ function NumbersPage() {
     }
   };
 
-  const buyOperator = async (id: string) => {
-    const op = operators.find((p) => p.id === id);
-    setOperatorId(id);
-    try {
-      const err = await buy(id, {});
-      if (err?.includes("does not cover") && op) {
-        const due = Math.max(100, op.price - (user?.balance || 0));
-        const label = `${serverName(op.operator)} · ${op.service || service}`;
-        window.location.href = `/dashboard/wallet?amount=${due}&item=${encodeURIComponent(label)}`;
-        return;
-      }
-      if (err) toast.error(err);
-      else toast.success("Number reserved. The code appears on the card.");
-    } catch {
-      toast.error("Could not place that order. Try again.");
-    }
-  };
-
   return (
     <div className="space-y-4">
       <section className="balance-card flex flex-wrap items-center justify-between gap-3 rounded-card px-5 py-4">
@@ -206,7 +187,7 @@ function NumbersPage() {
                           {op.rates ? <p className="mt-1 text-xs text-muted">{op.rates}</p> : null}
                         </div>
                         <p className="text-lg font-extrabold">{naira(op.price)}</p>
-                        <Button className="shrink-0 px-3" onClick={() => { setOperatorId(op.id); void buyOperator(op.id); }}>Buy</Button>
+                        <Button className="shrink-0 px-3" onClick={() => { window.location.href = `/dashboard/wallet?product=${encodeURIComponent(op.id)}`; }}>Buy</Button>
                       </div>
                     </article>
                   );

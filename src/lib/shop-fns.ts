@@ -41,10 +41,17 @@ export const hostStatus = createServerFn({ method: "GET" }).handler(async () => 
 });
 
 export const beginPaystack = createServerFn({ method: "POST" })
-  .validator((input: { amount: number }) => ({ amount: Number(input?.amount) }))
+  .validator((input: { amount: number; productId?: string }) => ({ amount: Number(input?.amount), productId: String(input?.productId || "") }))
   .handler(async ({ data }) => {
     const { startPaystack } = await core();
-    return startPaystack(data.amount);
+    return startPaystack(data.amount, data.productId);
+  });
+
+export const purchasePreview = createServerFn({ method: "POST" })
+  .validator((input: { productId: string }) => ({ productId: String(input?.productId || "") }))
+  .handler(async ({ data }) => {
+    const { purchasePreview } = await core();
+    return purchasePreview(data.productId);
   });
 
 export const confirmPaystack = createServerFn({ method: "POST" })

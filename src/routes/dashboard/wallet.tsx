@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
 import { naira, when } from "@/lib/money";
 import { topupQuote } from "@/lib/catalog";
-import { beginPaystack, confirmPaystack, hostStatus } from "@/lib/shop-fns";
+import { beginPaystack, confirmPaystack, hostStatus, purchasePreview } from "@/lib/shop-fns";
 import { useStore, useUser } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/wallet")({ component: WalletPage });
@@ -17,50 +17,43 @@ function WalletPage() {
   const session = useStore((s) => s.sessionUserId);
   const settings = useStore((s) => s.settings);
   const adopt = useStore((s) => s.adopt);
+  const buy = useStore((s) => s.buy);
   const txns = useMemo(() => allTxns.filter((t) => t.userId === session && t.kind === "topup"), [allTxns, session]);
   const [amount, setAmount] = useState(5000);
   const [custom, setCustom] = useState("");
   const [item, setItem] = useState("");
+  const [productId, setProductId] = useState("");
+  const [preview, setPreview] = useState<Awaited<ReturnType<typeof purchasePreview>> | null>(null);
   const [paystack, setPaystack] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
-  const started = useRef(false);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const due = Math.round(Number(params.get("amount")) || 0);
     const label = params.get("item") || "";
+    const id = params.get("product") || "";
     const reference = params.get("reference") || params.get("trxref");
     if (due >= 100 && due <= 500000) {
       setCustom(String(due));
       setItem(label);
     }
-    hostStatus()
-      .then((s) => {
-        setPaystack(s.paystack);
-        if (!s.paystack || due < 100 || due > 500000 || reference || started.current) return;
-        started.current = true;
-        setBusy(true);
-        beginPaystack({ data: { amount: due } })
-          .then((res) => {
-            if (res.error || !res.url) {
-              setBusy(false);
-              toast.error(res.error || "Paystack did not return a checkout link.");
-            } else window.location.href = res.url;
-          })
-          .catch(() => {
-            setBusy(false);
-            toast.error("Could not start Paystack.");
-          });
-      })
-      .catch(() => setPaystack(false));
+    setProductId(id);
+    hostStatus().then((s) => setPaystack(s.paystack)).catch(() => setPaystack(false));
+    if (id) {
+      purchasePreview({ data: { productId: id } })
+        .then((res) => setPreview(res))
+        .catch(() => setPreview({ error: "Could not open checkout." }));
+    }
     if (!reference) return;
     confirmPaystack({ data: { reference } })
       .then((res) => {
+        if ("state" in res && res.state) adopt(res.state);
         if ("error" in res && res.error) toast.error(res.error);
-        else if ("state" in res && res.state) {
-          adopt(res.state);
-          toast.success("Paystack confirmed the top up");
-        }
-        window.history.replaceState({}, "", "/dashboard/wallet");
+        else if ("bought" in res && res.bought) {
+          toast.success("Paid. The number is in Active numbers.");
+          window.location.href = "/dashboard/numbers";
+          return;
+        } else toast.success("Paystack confirmed the top up");
+        window.history.replaceState({}, "", id ? `/dashboard/wallet?product=${encodeURIComponent(id)}` : "/dashboard/wallet");
       })
       .catch(() => toast.error("Could not confirm the Paystack payment."));
   }, [adopt]);
@@ -70,7 +63,7 @@ function WalletPage() {
   const pay = async () => {
     setBusy(true);
     try {
-      const res = await beginPaystack({ data: { amount: value } });
+      const res = await beginPaystack({ data: { amount: value, productId } });
       if (res.error || !res.url) toast.error(res.error || "Paystack did not return a checkout link.");
       else window.location.href = res.url;
     } catch {
@@ -79,6 +72,60 @@ function WalletPage() {
       setBusy(false);
     }
   };
+  const payNumber = async () => {
+    if (!preview || preview.error || !("price" in preview)) return;
+    setBusy(true);
+    try {
+      const res = await beginPaystack({ data: { amount: Number(preview.credit || 0), productId } });
+      if (res.error || !res.url) toast.error(res.error || "Paystack did not return a checkout link.");
+      else window.location.href = res.url;
+    } catch {
+      toast.error("Could not start Paystack.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const payFromWallet = async () => {
+    setBusy(true);
+    try {
+      const err = await buy(productId, {});
+      if (err) toast.error(err);
+      else {
+        toast.success("Number reserved. The code appears on the card.");
+        window.location.href = "/dashboard/numbers";
+      }
+    } catch {
+      toast.error("Could not place that order.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (productId) {
+    const order = preview && preview.error == null && "price" in preview ? preview : null;
+    return (
+      <section className="mx-auto max-w-lg rounded-card border border-line bg-card p-5 shadow-card">
+        <h1 className="text-2xl font-extrabold">Pay for this number</h1>
+        {!order ? <p className="mt-3 text-sm text-muted">{preview?.error || "Opening checkout…"}</p> : (
+          <>
+            <p className="mt-2 text-sm text-muted">{[order.service, order.country].filter(Boolean).join(" · ")}</p>
+            <p className="mt-1 font-semibold">{order.operator || order.name}</p>
+            <p className="mt-4 text-3xl font-extrabold">{naira(order.price)}</p>
+            <p className="mt-2 text-sm text-muted">Wallet balance {naira(order.balance)}.</p>
+            {order.short > 0 ? (
+              <>
+                <p className="mt-2 text-sm">You pay {naira(order.pay)} now.{order.fee > 0 ? ` Site charge ${naira(order.fee)} is not added to the wallet.` : ""}</p>
+                <p className="mt-1 text-sm text-muted">Paystack opens next. Choose transfer to get an account number, or pay with a card.</p>
+                <Button className="mt-4 w-full" disabled={busy || paystack === false} onClick={() => void payNumber()}>{busy ? "Opening Paystack…" : `Pay ${naira(order.pay)}`}</Button>
+              </>
+            ) : (
+              <Button className="mt-4 w-full" disabled={busy} onClick={() => void payFromWallet()}>{busy ? "Reserving…" : `Pay ${naira(order.price)} from wallet`}</Button>
+            )}
+            {paystack === false ? <p className="mt-3 text-sm text-muted">Paystack is not connected on this host yet. Add PAYSTACK_SECRET_KEY in the host environment.</p> : null}
+          </>
+        )}
+      </section>
+    );
+  }
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <section className="rounded-card border border-line bg-card p-5 shadow-card">
