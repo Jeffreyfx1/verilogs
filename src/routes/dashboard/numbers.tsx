@@ -108,7 +108,6 @@ function NumbersPage() {
       stop = true;
     };
   }, [activeId, want, chosen, service]);
-  const picked = operators.find((p) => p.id === operatorId) || null;
 
   const copy = async (value: string) => {
     try {
@@ -119,9 +118,9 @@ function NumbersPage() {
     }
   };
 
-  const purchase = async () => {
-    if (!picked) return;
-    const err = await buy(picked.id, {});
+  const buyOperator = async (id: string) => {
+    setOperatorId(id);
+    const err = await buy(id, {});
     if (err) toast.error(err);
     else toast.success("Number reserved. The code appears on the card.");
   };
@@ -174,39 +173,51 @@ function NumbersPage() {
           </div>
         </section>
         <section className="rounded-card border border-line bg-card p-4 shadow-card">
-          <h2 className="font-bold">Country</h2>
-          <p className="mt-1 text-xs text-muted">{service ? service : "Choose a service to see countries."}</p>
-          <div className="mt-3 max-h-[70vh] space-y-1 overflow-y-auto pr-1">
-            {countries.map((p) => (
-              <button key={p.country} type="button" onClick={() => { setCountry(p.country); setOperatorId(""); }} className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm ${chosen === p.country ? "bg-primary text-on-primary" : "hover:bg-paper"}`}>
-                <span>{p.country}</span>
-                <span className="text-xs">from {naira(p.price)}</span>
-              </button>
-            ))}
-            {service && !countries.length ? <p className="px-2 py-6 text-sm text-muted">No countries for that service.</p> : null}
-          </div>
           {chosen && service ? (
-            <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
-              <h3 className="text-sm font-bold">Servers</h3>
-              {operators.map((op) => (
-                <button key={op.id} type="button" onClick={() => setOperatorId(op.id)} className={`w-full rounded-xl border px-3 py-2 text-left ${operatorId === op.id ? "border-primary bg-primary/15" : "border-line"}`}>
-                  <span className="flex items-center justify-between gap-2 text-sm font-semibold">
-                    <span>{serverName(op.operator)}</span>
-                    <span>{naira(op.price)}</span>
-                  </span>
-                  <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-paper">
-                    <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, op.rate || 0))}%` }} />
-                  </span>
-                  <span className="mt-1 block text-xs text-muted">{op.rate ? `${op.rate}% success now` : "No recent success rate"}{op.stock > 0 ? ` · ${op.stock} in stock` : ""}</span>
-                  {op.rates ? <span className="mt-1 block text-xs text-muted">{op.rates}</span> : null}
-                </button>
-              ))}
-              {!operators.length ? <p className="text-sm text-muted">No servers for that country yet. Pull the 5sim prices again.</p> : null}
-            </div>
-          ) : null}
-          <Button className="mt-3 w-full" disabled={!picked} onClick={purchase}>
-            {picked ? `Buy ${serverName(picked.operator)} · ${naira(picked.price)}` : "Select a server"}
-          </Button>
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="font-bold">Select operator</h2>
+                {lockedCountry ? null : (
+                  <button type="button" className="text-sm font-semibold text-primary" onClick={() => { setCountry(""); setOperatorId(""); }}>Countries</button>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-muted">{service} · {chosen}. Highest success is marked. Prices can move.</p>
+              <div className="mt-3 max-h-[70vh] space-y-2 overflow-y-auto pr-1">
+                {operators.map((op) => {
+                  const best = (op.rate || 0) > 0 && op.rate === Math.max(...operators.map((item) => item.rate || 0));
+                  return (
+                    <article key={op.id} className={`rounded-2xl border p-3 ${operatorId === op.id ? "border-primary" : "border-line"}`}>
+                      {best ? <span className="mb-2 inline-block rounded-full bg-primary/20 px-2 py-0.5 text-[10px] font-extrabold tracking-wide text-primary">BEST RATE</span> : null}
+                      <div className="flex items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-extrabold">{serverName(op.operator)}</p>
+                          <p className="mt-1 text-xs text-muted">{op.rate ? `${op.rate}% success` : "No recent rate"}{op.stock > 0 ? ` · ${op.stock.toLocaleString("en-US")} numbers` : ""}</p>
+                          {op.rates ? <p className="mt-1 text-xs text-muted">{op.rates}</p> : null}
+                        </div>
+                        <p className="text-lg font-extrabold">{naira(op.price)}</p>
+                        <Button className="shrink-0 px-3" onClick={() => { setOperatorId(op.id); void buyOperator(op.id); }}>Buy</Button>
+                      </div>
+                    </article>
+                  );
+                })}
+                {!operators.length ? <p className="px-2 py-6 text-sm text-muted">No operators for {chosen} yet. In admin, pull https://5sim.net/v1/guest/prices again so each server and its success rate is saved.</p> : null}
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 className="font-bold">Country</h2>
+              <p className="mt-1 text-xs text-muted">{service ? "Tap a country to see its servers and success rates." : "Choose a service to see countries."}</p>
+              <div className="mt-3 max-h-[70vh] space-y-1 overflow-y-auto pr-1">
+                {countries.map((p) => (
+                  <button key={p.country} type="button" onClick={() => { setCountry(p.country); setOperatorId(""); }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm hover:bg-paper">
+                    <span>{p.country}</span>
+                    <span className="text-xs">from {naira(p.price)}</span>
+                  </button>
+                ))}
+                {service && !countries.length ? <p className="px-2 py-6 text-sm text-muted">No countries for that service.</p> : null}
+              </div>
+            </>
+          )}
         </section>
         <section className="rounded-card border border-line bg-card p-4 shadow-card">
           <h2 className="font-bold">Active numbers</h2>
