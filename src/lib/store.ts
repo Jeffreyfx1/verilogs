@@ -29,7 +29,7 @@ type Actions = {
   addTicket: (input: { email: string; subject: string; body: string }) => Promise<string | null>;
   saveFaqs: (faqs: Faq[]) => void;
   saveSettings: (patch: Partial<Data["settings"]>) => Promise<string | null>;
-  addAnnouncement: (title: string, body: string) => void;
+  addAnnouncement: (title: string, body: string) => Promise<string | null>;
   markNotes: () => void;
   mailUser: (userId: string, subject: string, body: string) => Promise<string | null>;
   resetDemo: () => void;
@@ -89,7 +89,7 @@ export const useStore = create<Store>((set) => {
     addTicket: async (input) => (await run("addTicket", input)).error,
     saveFaqs: (faqs) => void run("saveFaqs", { faqs }),
     saveSettings: async (patch) => (await run("saveSettings", { patch })).error,
-    addAnnouncement: (title, body) => void run("addAnnouncement", { title, body }),
+    addAnnouncement: async (title, body) => (await run("addAnnouncement", { title, body })).error,
     markNotes: () => void run("markNotes"),
     mailUser: async (userId, subject, body) => (await run("mailUser", { userId, subject, body })).error,
     resetDemo: () => void run("reset"),

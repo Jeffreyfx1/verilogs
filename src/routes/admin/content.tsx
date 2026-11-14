@@ -43,7 +43,15 @@ function ContentPage() {
           <h2 className="text-xl font-extrabold">Announcement</h2>
           <Field label="Title"><input className={inputClass} value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
           <Field label="Body"><textarea className={inputClass} rows={3} value={body} onChange={(e) => setBody(e.target.value)} /></Field>
-          <Button onClick={() => { if (!title.trim()) return; addAnnouncement(title, body); setTitle(""); setBody(""); toast.success("Posted"); }}>Post</Button>
+          <Button onClick={() => {
+            if (!title.trim()) return;
+            void addAnnouncement(title, body).then((err) => {
+              if (err) toast.error(err);
+              else toast.success("Posted and emailed to customers");
+              setTitle("");
+              setBody("");
+            });
+          }}>Post and email customers</Button>
           <ul className="text-sm text-muted">{announcements.slice(0, 4).map((a) => <li key={a.id}>{a.title}</li>)}</ul>
         </section>
         <section className="space-y-3 rounded-card border border-line bg-card p-4 shadow-card">
