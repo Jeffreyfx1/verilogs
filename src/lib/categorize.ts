@@ -32,6 +32,9 @@ const PRICE_KEYS = ["price", "plan_amount", "amount", "cost", "selling_price", "
 const ID_KEYS = ["id", "plan_id", "dataplan_id", "service_id", "code", "external_id", "product_id", "slug", "variation_code", "plan_code"];
 const STOCK_KEYS = ["count", "stock", "qty", "available", "quantity"];
 const VALID_KEYS = ["month_validate", "validity", "duration", "days"];
+const METRIC_KEYS = new Set([
+  "price", "cost", "count", "qty", "quantity", "rate", "id", "stock", "amount", "category", "pos", "retail_price",
+]);
 const META_KEYS = new Set([
   "status", "data", "message", "success", "result", "response", "payload", "items", "list",
   "plans", "packages", "services", "info", "error", "msg", "ok", "meta", "note", "content",
@@ -277,6 +280,34 @@ export function extractCatalog(payload: unknown): CatalogExtract {
     if (!obj) return;
     const nested = Object.keys(obj).filter((key) => obj[key] && typeof obj[key] === "object");
     for (const key of nested) visit(obj[key], childCtx(ctx, key), [...path, key], depth + 1);
+    for (const key of Object.keys(obj)) {
+      if (path.some((part) => META_KEYS.has(part.trim().toLowerCase()))) break;
+      const value = obj[key];
+      if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) continue;
+      const low = key.trim().toLowerCase();
+      if (METRIC_KEYS.has(low) || META_KEYS.has(low)) continue;
+      const next = childCtx(ctx, key);
+      if (!next.service) continue;
+      const raw = {
+        externalId: slug([...path, key]),
+        name: next.service,
+        service: next.service,
+        country: next.country,
+        network: next.network,
+        operator: next.operator,
+        price: value,
+        stock: 0,
+        validity: "",
+        variable: false,
+        description: "",
+        hint: next.section || "activation",
+      };
+      const priced = finalize(raw);
+      const pricedKey = [priced.externalId, priced.category, priced.country, priced.network].join("|");
+      if (seen.has(pricedKey)) continue;
+      seen.add(pricedKey);
+      out.push(priced);
+    }
     const raw = toRaw(obj, ctx, path);
     if (!raw) return;
     const ownPrice = parseMoney(pick(obj, PRICE_KEYS));
