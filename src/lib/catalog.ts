@@ -454,6 +454,28 @@ export function withAdminLogin(doc: Data): Data {
   return same ? doc : { ...doc, users };
 }
 
+export function repairCatalog(doc: Data): Data {
+  const junk = new Set(["iso", "prefix"]);
+  let changed = false;
+  const products: Product[] = [];
+  for (const product of doc.products) {
+    if (junk.has(product.service.trim().toLowerCase())) {
+      changed = true;
+      continue;
+    }
+    if (product.category === "other") {
+      changed = true;
+      products.push({ ...product, category: "numbers" as const, country: product.country || "Any", service: product.service || product.name });
+    } else products.push(product);
+  }
+  if (!changed) return doc;
+  const providers = doc.providers.map((provider) => {
+    const servesNumbers = products.some((p) => p.providerId === provider.id && p.category === "numbers");
+    return servesNumbers === provider.servesNumbers ? provider : { ...provider, servesNumbers };
+  });
+  return { ...doc, products, providers };
+}
+
 export function isLive(product: Product, providers: Provider[]) {
   const provider = providers.find((p) => p.id === product.providerId);
   return product.enabled && !!provider?.enabled;

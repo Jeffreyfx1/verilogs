@@ -1,7 +1,7 @@
 import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/react-start/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
-import { freshData, normalizeData, withAdminLogin, type Data, type SyncReport } from "@/lib/catalog";
+import { freshData, normalizeData, repairCatalog, withAdminLogin, type Data, type SyncReport } from "@/lib/catalog";
 import {
   addAnnouncement,
   addTicket,
@@ -114,7 +114,7 @@ async function loadDoc(): Promise<Data> {
   }
   try {
     const parsed = normalizeData(JSON.parse(rows[0].doc) as Data);
-    const cleaned = withAdminLogin(withoutSampleCatalog(parsed));
+    const cleaned = repairCatalog(withAdminLogin(withoutSampleCatalog(parsed)));
     if (cleaned !== parsed) await saveDoc(cleaned);
     return cleaned;
   } catch {

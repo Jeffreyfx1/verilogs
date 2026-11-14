@@ -218,7 +218,7 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
     ? network && !networkOf(ownName) && (hint === "data" || ctx.section === "data")
       ? `${network} ${ownName}`
       : ownName
-    : [service || "Number", country].filter(Boolean).join(" \u00b7 ");
+    : [service || "Number", country].filter(Boolean).join(" · ");
   const externalId = id ? slug([...path, id]) : slug([...path, hint, display, country, network, operator, String(price ?? "")]);
   return {
     externalId,
@@ -231,7 +231,7 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
     stock: stockRaw == null ? 0 : Math.max(0, Math.round(stockRaw)),
     validity,
     variable: price == null || price === 0,
-    description: [text(pick(obj, ["description", "desc", "plan_type", "type"])), operator && operator !== display ? operator : ""].filter(Boolean).join(" \u00b7 "),
+    description: [text(pick(obj, ["description", "desc", "plan_type", "type"])), operator && operator !== display ? operator : ""].filter(Boolean).join(" · "),
     hint,
   };
 }
@@ -257,7 +257,7 @@ function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedI
   const network = raw.network || (category === "data" || category === "airtime" ? networkOf(raw.name) : "");
   const variable = category === "airtime" || category === "electricity";
   let name = raw.name;
-  if (category === "numbers" && raw.service && country && country !== "Any" && !name.includes("\u00b7")) name = `${raw.service} \u00b7 ${country}`;
+  if (category === "numbers" && raw.service && country && country !== "Any" && !name.includes("·")) name = `${raw.service} · ${country}`;
   if ((category === "data" || category === "airtime") && network && !networkOf(name)) name = `${network} ${name}`;
   if (category === "cable" && raw.operator && !name.toLowerCase().includes(raw.operator.toLowerCase())) name = `${raw.operator} ${name}`;
   return { ...raw, category, name, country, network, variable: variable || raw.price <= 0, price: variable ? 0 : raw.price };
