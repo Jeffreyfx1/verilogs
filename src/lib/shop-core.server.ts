@@ -2,6 +2,7 @@ import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/rea
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
 import { freshData, normalizeData, repairCatalog, topupQuote, withAdminLogin, type Data, type SyncReport } from "@/lib/catalog";
+import { slimFiveSim } from "@/lib/categorize";
 import {
   addAnnouncement,
   addTicket,
@@ -456,19 +457,42 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     headers["api-key"] = key;
   }
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 20000);
+  const timer = setTimeout(() => ctrl.abort(), 50000);
   try {
     const res = await fetch(url, { headers, signal: ctrl.signal });
     const text = await res.text();
-    if (text.length > 4_000_000) return { ok: false as const, error: "That catalogue is larger than 4MB." };
+    if (text.length > 16_000_000) return { ok: false as const, error: "That catalogue is larger than 16MB." };
     if (!res.ok) return { ok: false as const, error: `The API replied ${res.status}.` };
-    const payload = JSON.parse(text) as unknown;
+    const parsed = JSON.parse(text) as unknown;
+    const hint = /hosting|rent/i.test(url.search + url.pathname) ? "hosting" : "";
+    const payload = url.hostname.endsWith("5sim.net") ? slimFiveSim(parsed, hint) : parsed;
     return { ok: true as const, payload };
   } catch {
     return { ok: false as const, error: "Could not reach that API. Check the URL and key." };
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function importFromUrl(input: { url: string; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; publish?: boolean }) {
+  const fetched = await pullRemote({ url: input.url, apiKey: input.apiKey, providerId: input.providerId });
+  if (!fetched.ok) {
+    return locked(async () => {
+      const doc = await loadDoc();
+      const session = await readSession();
+      return result(doc, session.userId, session.draft, fetched.error, null);
+    });
+  }
+  return applyAct("import", {
+    providerId: input.providerId || "",
+    name: input.name || "",
+    baseUrl: input.baseUrl || input.url,
+    currency: input.currency === "USD" ? "USD" : "NGN",
+    payload: fetched.payload,
+    hasKey: true,
+    publish: !!input.publish,
+    apiKey: input.apiKey || "",
+  });
 }
 
 export async function askSupport(question: string) {
