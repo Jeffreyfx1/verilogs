@@ -2,7 +2,7 @@ import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/rea
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
 import { freshData, isLive, normalizeData, repairCatalog, sellPrice, serverLabel, topupQuote, withAdminLogin, applyImportSlice, type Data, type Product, type SyncReport } from "@/lib/catalog";
-import { extractCatalog, slimFiveSim, serviceAllowed, MAJOR_SERVICES, type ParsedItem } from "@/lib/categorize";
+import { extractCatalog, slimFiveSim, serviceAllowed, fiveSimCategoryUrl, MAJOR_SERVICES, type ParsedItem } from "@/lib/categorize";
 import { IMPORT_BATCH, importBatchCount } from "@/lib/import-batch";
 import { uid } from "@/lib/money";
 import {
@@ -579,8 +579,9 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
   const me = doc.users.find((u) => u.id === session.userId);
   if (me?.role !== "admin") return { ok: false as const, error: "Only an admin can pull an API." };
   let url: URL;
+  const routed = fiveSimCategoryUrl(input.url);
   try {
-    url = new URL(input.url);
+    url = new URL(routed.url);
   } catch {
     return { ok: false as const, error: "Enter a full https address." };
   }
@@ -598,13 +599,17 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     const res = await fetch(url, { headers, signal: ctrl.signal });
     const text = await res.text();
     if (text.length > 16_000_000) return { ok: false as const, error: "That catalogue is larger than 16MB." };
-    if (!res.ok) return { ok: false as const, error: `The API replied ${res.status}.` };
+    if (!res.ok) {
+      const detail = text.replace(/\s+/g, " ").trim().slice(0, 160);
+      return { ok: false as const, error: detail ? `The API replied ${res.status}. ${detail}` : `The API replied ${res.status}.` };
+    }
     const parsed = JSON.parse(text) as unknown;
     const hint = /hosting|rent/i.test(url.search + url.pathname) ? "hosting" : "";
     const parts = url.pathname.split("/").filter(Boolean);
     const at = parts.findIndex((part) => part === "products");
     const place = at >= 0 ? { country: parts[at + 1] || "", operator: parts[at + 2] || "any" } : {};
-    const payload = url.hostname.endsWith("5sim.net") ? slimFiveSim(parsed, hint, input.allow || [], place) : parsed;
+    const allow = [...new Set([...(input.allow || []), routed.product].filter(Boolean))];
+    const payload = url.hostname.endsWith("5sim.net") ? slimFiveSim(parsed, hint, allow, place) : parsed;
     return { ok: true as const, payload };
   } catch {
     return { ok: false as const, error: "Could not reach that API. Check the URL and key." };
@@ -637,17 +642,19 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
   const me = doc.users.find((u) => u.id === session.userId);
   if (me?.role !== "admin") return emptyImport("Only an admin can pull an API.");
   const wanted = doc.settings.wantedServices?.length ? doc.settings.wantedServices : [...MAJOR_SERVICES];
+  const routed = input.url ? fiveSimCategoryUrl(input.url) : { url: "", product: "" };
+  const wantedForPull = routed.product ? [...wanted, routed.product] : wanted;
   let payload = input.payload;
   if (input.url) {
-    const fetched = await pullRemote({ url: input.url, apiKey: input.apiKey, providerId: input.providerId, allow: wanted });
+    const fetched = await pullRemote({ url: input.url, apiKey: input.apiKey, providerId: input.providerId, allow: wantedForPull });
     if (!fetched.ok) return emptyImport(fetched.error);
     payload = fetched.payload;
   }
   if (payload == null) return emptyImport("Add a catalogue URL or paste JSON.");
   const extracted = extractCatalog(payload);
-  const items = extracted.items.filter((item) => (item.category !== "numbers" && item.category !== "rent") || serviceAllowed(item.service || item.name, wanted));
+  const items = extracted.items.filter((item) => (item.category !== "numbers" && item.category !== "rent") || serviceAllowed(item.service || item.name, wantedForPull));
   if (!items.length) return emptyImport("None of the service names you saved were in that catalogue.");
-  if (items.some((item) => item.category === "numbers" || item.category === "rent")) await clearNumberImports();
+  if (!routed.product && items.some((item) => item.category === "numbers" || item.category === "rent")) await clearNumberImports();
   const jobId = crypto.randomUUID();
   const meta: ImportMeta = {
     name: input.name || "New API",
