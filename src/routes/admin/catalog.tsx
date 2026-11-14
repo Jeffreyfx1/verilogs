@@ -7,7 +7,7 @@ import { useServers, useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/catalog")({ component: CatalogPage });
 
-const CATS = ["", "numbers", "data", "airtime", "cable", "electricity", "exam", "giftcard", "betting", "other"];
+const CATS = ["", "numbers", "rent", "data", "airtime", "cable", "electricity", "exam", "giftcard", "betting", "other"];
 
 function CatalogPage() {
   const products = useStore((s) => s.products);
