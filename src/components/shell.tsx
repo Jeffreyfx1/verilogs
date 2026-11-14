@@ -151,15 +151,15 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="shell-mobilebar flex items-center justify-between gap-2 border-b border-line bg-card px-3 py-3 lg:hidden">
+        <div className="shell-mobilebar flex items-center gap-2 border-b border-line bg-card px-3 py-3 lg:hidden">
           <button onClick={() => setOpen(true)} className="rounded-xl border border-line p-2" aria-label="Open menu">
             <Menu className="size-5" />
           </button>
-          <Logo compact />
-          <div className="flex items-center gap-2">
-            <NoticeBell />
-            <span className="text-sm font-semibold">{naira(user.balance)}</span>
-          </div>
+          <Link to={admin ? "/admin" : "/dashboard"} className="mr-auto">
+            <Logo compact />
+          </Link>
+          <NoticeBell />
+          <span className="rounded-full bg-paper px-3 py-1 text-sm font-extrabold">{naira(user.balance)}</span>
         </div>
         <div className="app-pad flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:py-6">{children}</div>
