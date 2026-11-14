@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Button, inputClass } from "@/components/ui";
+import type { Product } from "@/lib/catalog";
 import { naira, when } from "@/lib/money";
-import { isLive } from "@/lib/catalog";
+import { browseNumbers } from "@/lib/shop-fns";
 import { useServers, useStore, useUser } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/numbers")({
@@ -21,8 +22,6 @@ function NumbersPage() {
   const user = useUser();
   const servers = useServers();
   const liveServers = servers.filter((s) => s.enabled);
-  const products = useStore((s) => s.products);
-  const providers = useStore((s) => s.providers);
   const allOrders = useStore((s) => s.orders);
   const session = useStore((s) => s.sessionUserId);
   const orders = useMemo(() => allOrders.filter((o) => o.userId === session && (o.category === "numbers" || o.category === "rent")), [allOrders, session]);
@@ -33,31 +32,52 @@ function NumbersPage() {
   const [q, setQ] = useState("");
   const [service, setService] = useState("");
   const [country, setCountry] = useState("");
-
+  const [services, setServices] = useState<{ service: string; price: number }[]>([]);
+  const [countries, setCountries] = useState<Product[]>([]);
+  const [hidden, setHidden] = useState(0);
+  const [loading, setLoading] = useState(false);
   const want = kind === "rent" ? "rent" : "numbers";
-  const pool = products.filter((p) => p.providerId === activeId && p.category === want && isLive(p, providers) && p.country && p.country !== "Any");
-  const unfiled = products.some((p) => p.providerId === activeId && (p.category === "numbers" || p.category === "rent") && isLive(p, providers) && (!p.country || p.country === "Any"));
-  const hidden = products.filter((p) => p.providerId === activeId && p.category === want && !p.enabled).length;
-  const services = useMemo(() => {
-    const map = new Map<string, { service: string; price: number }>();
-    for (const p of pool) {
-      if (lockedCountry && p.country !== lockedCountry) continue;
-      if (q && !p.service.toLowerCase().includes(q.toLowerCase())) continue;
-      const cur = map.get(p.service);
-      if (!cur || p.price < cur.price) map.set(p.service, { service: p.service, price: p.price });
+
+  useEffect(() => {
+    let stop = false;
+    const timer = setTimeout(() => {
+      setLoading(true);
+      browseNumbers({ data: { providerId: activeId, category: want, country: lockedCountry, service: "", q } })
+        .then((res) => {
+          if (stop) return;
+          setServices(res.services);
+          setHidden(res.hidden);
+        })
+        .catch(() => {
+          if (!stop) setServices([]);
+        })
+        .finally(() => {
+          if (!stop) setLoading(false);
+        });
+    }, 250);
+    return () => {
+      stop = true;
+      clearTimeout(timer);
+    };
+  }, [activeId, want, lockedCountry, q]);
+
+  useEffect(() => {
+    if (!service) {
+      setCountries([]);
+      return;
     }
-    return [...map.values()].sort((a, b) => a.service.localeCompare(b.service));
-  }, [pool, q, lockedCountry]);
-  const countries = useMemo(() => {
-    const map = new Map<string, (typeof pool)[number]>();
-    for (const p of pool) {
-      if (p.service !== service) continue;
-      if (lockedCountry && p.country !== lockedCountry) continue;
-      const cur = map.get(p.country);
-      if (!cur || (p.price > 0 && p.price < cur.price)) map.set(p.country, p);
-    }
-    return [...map.values()].sort((a, b) => a.price - b.price || a.country.localeCompare(b.country));
-  }, [pool, service, lockedCountry]);
+    let stop = false;
+    browseNumbers({ data: { providerId: activeId, category: want, country: lockedCountry, service, q: "" } })
+      .then((res) => {
+        if (!stop) setCountries(res.countries);
+      })
+      .catch(() => {
+        if (!stop) setCountries([]);
+      });
+    return () => {
+      stop = true;
+    };
+  }, [activeId, want, lockedCountry, service]);
   const picked = countries.find((p) => p.country === country) || null;
 
   const copy = async (value: string) => {
@@ -120,7 +140,7 @@ function NumbersPage() {
                 <span className="text-xs">from {naira(s.price)}</span>
               </button>
             ))}
-            {!services.length ? <p className="px-2 py-6 text-sm text-muted">{unfiled ? "Imported rows have no country, so they are hidden. Pull https://5sim.net/v1/guest/prices with currency USD." : kind === "rent" ? "No rentals are live on this server. Import a catalogue whose category is hosting or rent." : "Nothing is live on this server yet."}</p> : null}
+            {!services.length ? <p className="px-2 py-6 text-sm text-muted">{loading ? "Loading services…" : q ? "No service matches that search." : kind === "rent" ? "No rentals are live on this server." : "Nothing is live on this server yet. Search a service such as WhatsApp."}</p> : null}
           </div>
         </section>
         <section className="rounded-card border border-line bg-card p-4 shadow-card">

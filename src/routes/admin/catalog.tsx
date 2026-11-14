@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Button, inputClass } from "@/components/ui";
-import { CATEGORY_LABEL } from "@/lib/catalog";
+import { CATEGORY_LABEL, type Product } from "@/lib/catalog";
 import { naira } from "@/lib/money";
+import { browseCatalog } from "@/lib/shop-fns";
 import { useServers, useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/catalog")({ component: CatalogPage });
@@ -10,33 +11,39 @@ export const Route = createFileRoute("/admin/catalog")({ component: CatalogPage 
 const CATS = ["", "numbers", "rent", "data", "airtime", "cable", "electricity", "exam", "giftcard", "betting", "other"];
 
 function CatalogPage() {
-  const products = useStore((s) => s.products);
   const providers = useStore((s) => s.providers);
   const servers = useServers();
   const setEnabled = useStore((s) => s.setEnabled);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
   const [provider, setProvider] = useState("");
-  const [net, setNet] = useState("");
   const [only, setOnly] = useState<"all" | "off" | "on">("all");
   const [page, setPage] = useState(0);
   const [picked, setPicked] = useState<string[]>([]);
+  const [rows, setRows] = useState<Product[]>([]);
+  const [total, setTotal] = useState(0);
+  const [live, setLive] = useState(0);
+  const [tick, setTick] = useState(0);
 
-  const networks = useMemo(() => [...new Set(products.map((p) => p.network).filter(Boolean))].sort(), [products]);
-  const filtered = useMemo(() => products.filter((p) => {
-    if (cat && p.category !== cat) return false;
-    if (provider && p.providerId !== provider) return false;
-    if (net && p.network !== net) return false;
-    if (only === "on" && !p.enabled) return false;
-    if (only === "off" && p.enabled) return false;
-    if (q) {
-      const blob = `${p.name} ${p.service} ${p.country} ${p.network}`.toLowerCase();
-      if (!blob.includes(q.toLowerCase())) return false;
-    }
-    return true;
-  }), [products, cat, provider, net, only, q]);
-  const slice = filtered.slice(page * 40, page * 40 + 40);
-  const pages = Math.max(1, Math.ceil(filtered.length / 40));
+  useEffect(() => {
+    let stop = false;
+    const timer = setTimeout(() => {
+      browseCatalog({ data: { q, category: cat, providerId: provider, only, page } })
+        .then((res) => {
+          if (stop) return;
+          setRows(res.rows);
+          setTotal(res.total);
+          setLive(res.live);
+        })
+        .catch(() => undefined);
+    }, 250);
+    return () => {
+      stop = true;
+      clearTimeout(timer);
+    };
+  }, [q, cat, provider, only, page, tick]);
+
+  const pages = Math.max(1, Math.ceil(total / 40));
 
   const labelFor = (id: string) => {
     const server = servers.find((s) => s.id === id);
@@ -48,13 +55,14 @@ function CatalogPage() {
   const apply = (ids: string[], enabled: boolean) => {
     setEnabled(ids, enabled);
     setPicked([]);
+    setTimeout(() => setTick((n) => n + 1), 700);
   };
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-extrabold">Catalogue</h1>
-        <p className="text-sm text-muted">{filtered.length} matching · {products.filter((p) => p.enabled).length} live of {products.length} imported. Enable a row to show it on the shop.</p>
+        <p className="text-sm text-muted">{total} matching · {live} live. Numbers are loaded one page at a time so login stays fast. Enable a row to show it on the shop.</p>
       </div>
       <div className="grid gap-2 md:grid-cols-3 lg:grid-cols-6">
         <input className={inputClass} placeholder="Search" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} />
@@ -65,16 +73,12 @@ function CatalogPage() {
           <option value="">All providers</option>
           {providers.map((p) => <option key={p.id} value={p.id}>{labelFor(p.id)}</option>)}
         </select>
-        <select className={inputClass} value={net} onChange={(e) => { setNet(e.target.value); setPage(0); }}>
-          <option value="">All networks</option>
-          {networks.map((n) => <option key={n}>{n}</option>)}
-        </select>
         <select className={inputClass} value={only} onChange={(e) => { setOnly(e.target.value as typeof only); setPage(0); }}>
           <option value="all">Live and off</option>
           <option value="off">Switched off</option>
           <option value="on">Live</option>
         </select>
-        <Button tone="soft" onClick={() => apply(filtered.map((p) => p.id), only !== "on")}>{only === "on" ? "Disable this filter" : "Enable this filter"}</Button>
+        <Button tone="soft" onClick={() => apply(rows.map((p) => p.id), only !== "on")}>{only === "on" ? "Disable this page" : "Enable this page"}</Button>
       </div>
       {picked.length ? (
         <div className="flex flex-wrap gap-2">
@@ -84,7 +88,7 @@ function CatalogPage() {
       ) : null}
       <div className="overflow-hidden rounded-card border border-line bg-card">
         <div className="scroll-tall">
-          {slice.map((p) => (
+          {rows.map((p) => (
             <div key={p.id} className="flex items-start gap-3 border-b border-line px-3 py-3 text-sm">
               <input type="checkbox" checked={picked.includes(p.id)} onChange={() => toggle(p.id)} className="mt-1" aria-label={`Select ${p.name}`} />
               <span className="min-w-0 flex-1">
@@ -97,7 +101,7 @@ function CatalogPage() {
               </span>
             </div>
           ))}
-          {!slice.length ? <p className="p-6 text-sm text-muted">No rows match.</p> : null}
+          {!rows.length ? <p className="p-6 text-sm text-muted">No rows match.</p> : null}
         </div>
       </div>
       <div className="flex items-center justify-between text-sm">
