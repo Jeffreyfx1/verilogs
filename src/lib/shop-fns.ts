@@ -1,7 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { Data, SyncReport } from "@/lib/catalog";
 
-type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
 type ShopPayload = { error: string | null; state: Data; report: SyncReport | null };
 
 async function core() {
@@ -43,17 +42,19 @@ export const confirmPaystack = createServerFn({ method: "POST" })
     return creditPaystack(data.reference, "session");
   });
 
-export const fetchCatalogue = createServerFn({ method: "POST" })
-  .validator((input: { url: string; apiKey?: string; providerId?: string }) => ({
+export const importUrl = createServerFn({ method: "POST" })
+  .validator((input: { url: string; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; publish?: boolean }) => ({
     url: String(input?.url || ""),
     apiKey: input?.apiKey ? String(input.apiKey) : "",
     providerId: input?.providerId ? String(input.providerId) : "",
+    name: input?.name ? String(input.name) : "",
+    baseUrl: input?.baseUrl ? String(input.baseUrl) : "",
+    currency: input?.currency === "USD" ? "USD" : "NGN",
+    publish: !!input?.publish,
   }))
-  .handler(async ({ data }): Promise<{ ok: true; payload: Json } | { ok: false; error: string }> => {
-    const { pullRemote } = await core();
-    const res = await pullRemote(data);
-    if (!res.ok) return { ok: false, error: res.error };
-    return { ok: true, payload: res.payload as Json };
+  .handler(async ({ data }) => {
+    const { importFromUrl } = await core();
+    return importFromUrl(data);
   });
 
 export const supportAsk = createServerFn({ method: "POST" })
