@@ -174,9 +174,9 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
               ]
             : [
                 { to: "/dashboard", label: "Home", icon: LayoutDashboard },
-                { to: "/dashboard/numbers", label: "Numbers", icon: Hash },
-                { to: "/dashboard/data", label: "Data", icon: Radio },
-                { to: "/dashboard/wallet", label: "Wallet", icon: Wallet },
+                { to: "/dashboard/history", label: "Orders", icon: History },
+                { to: "/dashboard/support", label: "Support", icon: LifeBuoy },
+                { to: "/dashboard/profile", label: "Settings", icon: Settings },
               ]
           ).map((item) => (
             <Link key={item.label} to={item.to} className="flex flex-1 flex-col items-center gap-1 py-1 text-xs font-semibold text-ink">
