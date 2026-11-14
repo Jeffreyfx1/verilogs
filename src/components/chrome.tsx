@@ -86,8 +86,8 @@ export function PublicFooter() {
     <footer className="mt-auto border-t border-line bg-deep text-on-deep">
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:grid-cols-3">
         <div>
-          <p className="text-lg font-extrabold">{brand || "VeriLogs"}</p>
-          <p className="mt-2 text-sm text-on-deep/80">Virtual numbers, data, airtime and bills. Wallet in naira. Servers stay separate.</p>
+          <Logo />
+          <p className="mt-3 text-sm font-medium text-on-deep/80">Virtual numbers, data, airtime and bills. Wallet in naira. Servers stay separate.</p>
         </div>
         <div>
           <p className="text-sm font-semibold">Help</p>

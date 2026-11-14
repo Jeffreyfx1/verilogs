@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
-import type { Banner } from "@/lib/catalog";
+import type { Banner, WelcomePopup } from "@/lib/catalog";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/brand")({ component: BrandPage });
@@ -14,6 +14,8 @@ function BrandPage() {
   const [home, setHome] = useState(settings.home);
   const [banners, setBanners] = useState<Banner[]>(settings.banners);
   const [welcome, setWelcome] = useState(settings.supportWelcome);
+  const [popup, setPopup] = useState<WelcomePopup>(settings.popup);
+  const [links, setLinks] = useState({ whatsapp: settings.whatsapp, telegram: settings.telegram });
 
   const onFile = (file: File | undefined) => {
     if (!file) return;
@@ -45,6 +47,24 @@ function BrandPage() {
         <Field label="Hero text"><textarea className={inputClass} rows={4} value={home.body} onChange={(e) => setHome({ ...home, body: e.target.value })} /></Field>
         <Field label="Support bot welcome"><textarea className={inputClass} rows={2} value={welcome} onChange={(e) => setWelcome(e.target.value)} /></Field>
         <Button onClick={() => void save({ brand, home, supportWelcome: welcome }).then((err) => err ? toast.error(err) : toast.success("Homepage saved"))}>Save homepage</Button>
+      </section>
+      <section className="space-y-3 rounded-card border border-line bg-card p-4 shadow-card">
+        <h2 className="font-bold">Welcome popup</h2>
+        <p className="text-sm text-muted">This opens once per visit on the public site and inside the dashboard. Leave a link empty to hide that button.</p>
+        <label className="flex items-center gap-2 text-sm font-semibold">
+          <input type="checkbox" checked={popup.enabled} onChange={(e) => setPopup({ ...popup, enabled: e.target.checked })} />
+          Show the popup
+        </label>
+        <Field label="Title"><input className={inputClass} value={popup.title} onChange={(e) => setPopup({ ...popup, title: e.target.value })} /></Field>
+        <Field label="Text"><textarea className={inputClass} rows={2} value={popup.body} onChange={(e) => setPopup({ ...popup, body: e.target.value })} /></Field>
+        <Field label="WhatsApp title"><input className={inputClass} value={popup.whatsappTitle} onChange={(e) => setPopup({ ...popup, whatsappTitle: e.target.value })} /></Field>
+        <Field label="WhatsApp text"><input className={inputClass} value={popup.whatsappBody} onChange={(e) => setPopup({ ...popup, whatsappBody: e.target.value })} /></Field>
+        <Field label="WhatsApp link"><input className={inputClass} value={links.whatsapp} onChange={(e) => setLinks({ ...links, whatsapp: e.target.value })} placeholder="https://chat.whatsapp.com/..." /></Field>
+        <Field label="Telegram title"><input className={inputClass} value={popup.telegramTitle} onChange={(e) => setPopup({ ...popup, telegramTitle: e.target.value })} /></Field>
+        <Field label="Telegram text"><input className={inputClass} value={popup.telegramBody} onChange={(e) => setPopup({ ...popup, telegramBody: e.target.value })} /></Field>
+        <Field label="Telegram link"><input className={inputClass} value={links.telegram} onChange={(e) => setLinks({ ...links, telegram: e.target.value })} placeholder="https://t.me/..." /></Field>
+        <Field label="Button label"><input className={inputClass} value={popup.button} onChange={(e) => setPopup({ ...popup, button: e.target.value })} /></Field>
+        <Button onClick={() => void save({ popup, whatsapp: links.whatsapp, telegram: links.telegram }).then((err) => err ? toast.error(err) : toast.success("Popup saved"))}>Save popup</Button>
       </section>
       <section className="space-y-3 rounded-card border border-line bg-card p-4 shadow-card">
         <h2 className="font-bold">Banners</h2>
