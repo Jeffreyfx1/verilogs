@@ -1,6 +1,6 @@
 import { parseMoney } from "@/lib/money";
 
-export type Category = "numbers" | "airtime" | "data" | "cable" | "electricity" | "exam" | "giftcard" | "betting" | "other";
+export type Category = "numbers" | "rent" | "airtime" | "data" | "cable" | "electricity" | "exam" | "giftcard" | "betting" | "other";
 
 export type ParsedItem = {
   externalId: string;
@@ -143,6 +143,7 @@ function sectionOfKey(key: string): Category | "" {
   if (/\b(betting|bets?|sportbooks?)\b/.test(s)) return "betting";
   if (/\b(airtime|vtu)\b/.test(s) && !/\bdata\b/.test(s)) return "airtime";
   if (/\b(dataplans?|bundles?|dataplan)\b/.test(s) || s === "data" || s === "sme") return "data";
+  if (/\b(rent|hosting)\b/.test(s)) return "rent";
   if (/\b(sms|otp|activation|virtual|numbers)\b/.test(s)) return "numbers";
   return "";
 }
@@ -221,7 +222,7 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
     ? network && !networkOf(ownName) && (hint === "data" || ctx.section === "data")
       ? `${network} ${ownName}`
       : ownName
-    : [service || "Number", country].filter(Boolean).join(" · ");
+    : [service || "Number", country].filter(Boolean).join(" \u00b7 ");
   const externalId = id ? slug([...path, id]) : slug([...path, hint, display, country, network, operator, String(price ?? "")]);
   return {
     externalId,
@@ -234,7 +235,7 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
     stock: stockRaw == null ? 0 : Math.max(0, Math.round(stockRaw)),
     validity,
     variable: price == null || price === 0,
-    description: [text(pick(obj, ["description", "desc", "plan_type", "type"])), operator && operator !== display ? operator : ""].filter(Boolean).join(" · "),
+    description: [text(pick(obj, ["description", "desc", "plan_type", "type"])), operator && operator !== display ? operator : ""].filter(Boolean).join(" \u00b7 "),
     hint,
   };
 }
@@ -242,10 +243,12 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
 function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedItem {
   const blob = `${raw.hint} ${raw.name} ${raw.service} ${raw.description} ${raw.network}`.toLowerCase();
   const hint = raw.hint.toLowerCase();
-  const sms = hint === "numbers" || hint === "activation" || hint === "hosting" || hint === "rent";
+  const rent = hint === "rent" || hint === "hosting" || /\b(hosting|rent)\b/.test(blob);
+  const sms = rent || hint === "numbers" || hint === "activation";
   const looksData = !sms && (hint === "data" || /data|\d+(\.\d+)?\s?(gb|mb)|bundle|sme|gifting|\bcg\b/.test(blob));
   let category: Category = "other";
-  if (sms) category = "numbers";
+  if (rent) category = "rent";
+  else if (sms) category = "numbers";
   else if (/\b(exam|waec|neco|nabteb|jamb|result checker)\b/.test(blob) || hint === "exam") category = "exam";
   else if (/\b(electricity|electric|disco|ikedc|ekedc|aedc|phed|kedco|ibedc|kaedco|eedc)\b/.test(blob) || hint === "electricity") category = "electricity";
   else if (/\b(cable|dstv|gotv|startimes|cabletv)\b/.test(blob) || hint === "cable") category = "cable";
@@ -256,11 +259,11 @@ function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedI
   else if (hint === "numbers" || (raw.country && raw.service && !raw.network)) category = "numbers";
   else if (raw.network) category = "data";
   else if (raw.country && raw.service) category = "numbers";
-  const country = raw.country || (category === "numbers" ? "Any" : "");
+  const country = raw.country === "Any" ? "" : raw.country;
   const network = raw.network || (category === "data" || category === "airtime" ? networkOf(raw.name) : "");
   const variable = category === "airtime" || category === "electricity";
   let name = raw.name;
-  if (category === "numbers" && raw.service && country && country !== "Any" && !name.includes("·")) name = `${raw.service} · ${country}`;
+  if ((category === "numbers" || category === "rent") && raw.service && country && !name.includes("\u00b7")) name = `${raw.service} \u00b7 ${country}`;
   if ((category === "data" || category === "airtime") && network && !networkOf(name)) name = `${network} ${name}`;
   if (category === "cable" && raw.operator && !name.toLowerCase().includes(raw.operator.toLowerCase())) name = `${raw.operator} ${name}`;
   return { ...raw, category, name, country, network, variable: variable || raw.price <= 0, price: variable ? 0 : raw.price };
