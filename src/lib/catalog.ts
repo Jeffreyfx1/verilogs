@@ -102,6 +102,17 @@ export type Note = {
   kind: "account" | "wallet" | "mail" | "order" | "support";
 };
 
+export type WelcomePopup = {
+  enabled: boolean;
+  title: string;
+  body: string;
+  whatsappTitle: string;
+  whatsappBody: string;
+  telegramTitle: string;
+  telegramBody: string;
+  button: string;
+};
+
 export type Settings = {
   usdNgn: number;
   margin: number;
@@ -113,6 +124,7 @@ export type Settings = {
   supportWelcome: string;
   home: HomeCopy;
   banners: Banner[];
+  popup: WelcomePopup;
 };
 
 export type Data = {
@@ -150,6 +162,20 @@ export function defaultSettings(): Settings {
       { id: "b1", title: "Servers stay separate", body: "Each SMS API you connect becomes the next server. Prices and stock are never merged.", href: "/register" },
       { id: "b2", title: "SIMs stay apart", body: "MTN, Airtel, Glo, 9mobile and Smile are their own catalogues.", href: "/register" },
     ],
+    popup: defaultPopup(),
+  };
+}
+
+export function defaultPopup(): WelcomePopup {
+  return {
+    enabled: true,
+    title: "Welcome to VeriLogs",
+    body: "Fast SMS verification, wallet funding and digital services in one place.",
+    whatsappTitle: "Join our WhatsApp",
+    whatsappBody: "Get updates, support and important announcements.",
+    telegramTitle: "Join our Telegram",
+    telegramBody: "Follow the channel for rates, stock and notices.",
+    button: "Start buying numbers",
   };
 }
 
@@ -178,6 +204,7 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
       logo: incoming?.logo ?? "",
       brand: incoming?.brand || base.brand,
       supportWelcome: incoming?.supportWelcome || base.supportWelcome,
+      popup: { ...base.popup, ...incoming?.popup },
     },
   };
 }
@@ -402,6 +429,31 @@ export const CATEGORY_LABEL: Record<string, string> = {
   other: "Other",
 };
 
+export const ADMIN_EMAIL = "verilogs@gmail.com";
+export const ADMIN_PASSWORD_HASH = "37433eca0a2b03eb87e6ed9536e8a5cdd8557acc9bd16c47e99a0197f59f35dd";
+
+export function withAdminLogin(doc: Data): Data {
+  const hasAdmin = doc.users.some((u) => u.role === "admin");
+  const users = hasAdmin
+    ? doc.users.map((u) => (u.role === "admin" ? { ...u, email: ADMIN_EMAIL, passwordHash: ADMIN_PASSWORD_HASH } : u))
+    : [
+        {
+          id: "usr_admin",
+          name: "VeriLogs Admin",
+          email: ADMIN_EMAIL,
+          phone: "",
+          passwordHash: ADMIN_PASSWORD_HASH,
+          google: false,
+          role: "admin" as const,
+          balance: 0,
+          createdAt: new Date().toISOString(),
+        },
+        ...doc.users,
+      ];
+  const same = users.length === doc.users.length && users.every((u, i) => u.email === doc.users[i]?.email && u.passwordHash === doc.users[i]?.passwordHash);
+  return same ? doc : { ...doc, users };
+}
+
 export function isLive(product: Product, providers: Provider[]) {
   const provider = providers.find((p) => p.id === product.providerId);
   return product.enabled && !!provider?.enabled;
@@ -413,9 +465,9 @@ export function freshData(): Data {
     users: [{
       id: "usr_admin",
       name: "VeriLogs Admin",
-      email: "admin@verilogs.app",
+      email: ADMIN_EMAIL,
       phone: "",
-      passwordHash: "1e16d6e9cfbb52596211577ad84a169944b6951c47703d65fa7800309d086b89",
+      passwordHash: ADMIN_PASSWORD_HASH,
       google: false,
       role: "admin",
       balance: 0,
