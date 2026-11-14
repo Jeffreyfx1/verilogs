@@ -263,6 +263,8 @@ export async function applyAct(op: string, payload: Record<string, unknown>): Pr
         name: str("name"),
         baseUrl: str("baseUrl"),
         currency: str("currency") === "USD" ? "USD" : "NGN",
+        usdRate: num("usdRate"),
+        markup: num("markup"),
         payload: payload.payload,
         hasKey: !!payload.hasKey || !!str("apiKey"),
         publish: !!payload.publish,
@@ -277,9 +279,12 @@ export async function applyAct(op: string, payload: Record<string, unknown>): Pr
       doc = out.data;
       error = out.error;
     } else if (op === "setProvider") {
-      const patch: { enabled?: boolean; name?: string } = {};
+      const patch: { enabled?: boolean; name?: string; usdRate?: number; markup?: number; currency?: "NGN" | "USD" } = {};
       if (typeof payload.enabled === "boolean") patch.enabled = payload.enabled;
       if (str("name")) patch.name = str("name");
+      if (Number.isFinite(num("usdRate")) && num("usdRate") > 0) patch.usdRate = num("usdRate");
+      if (Number.isFinite(num("markup")) && num("markup") > 0) patch.markup = num("markup");
+      if (payload.currency === "USD" || payload.currency === "NGN") patch.currency = payload.currency;
       const out = setProvider(doc, userId, str("id"), patch);
       doc = out.data;
       error = out.error;
@@ -474,7 +479,7 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
   }
 }
 
-export async function importFromUrl(input: { url: string; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; publish?: boolean }) {
+export async function importFromUrl(input: { url: string; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean }) {
   const fetched = await pullRemote({ url: input.url, apiKey: input.apiKey, providerId: input.providerId });
   if (!fetched.ok) {
     return locked(async () => {
@@ -488,6 +493,8 @@ export async function importFromUrl(input: { url: string; apiKey?: string; provi
     name: input.name || "",
     baseUrl: input.baseUrl || input.url,
     currency: input.currency === "USD" ? "USD" : "NGN",
+    usdRate: Number(input.usdRate) || 0,
+    markup: Number(input.markup) || 0,
     payload: fetched.payload,
     hasKey: true,
     publish: !!input.publish,
