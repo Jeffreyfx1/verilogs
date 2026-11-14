@@ -1,8 +1,9 @@
 import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/react-start/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
-import { freshData, isLive, normalizeData, repairCatalog, topupQuote, withAdminLogin, type Data, type Product, type SyncReport } from "@/lib/catalog";
-import { slimFiveSim } from "@/lib/categorize";
+import { freshData, isLive, normalizeData, repairCatalog, topupQuote, withAdminLogin, applyImportSlice, type Data, type Product, type SyncReport } from "@/lib/catalog";
+import { extractCatalog, slimFiveSim, type ParsedItem } from "@/lib/categorize";
+import { IMPORT_BATCH, importBatchCount, sliceImport } from "@/lib/import-batch";
 import {
   addAnnouncement,
   addTicket,
@@ -168,12 +169,12 @@ async function readCatalog(): Promise<Product[]> {
 }
 
 async function writeCatalog(products: Product[]) {
-  catalogCache = products;
   const sql = await getSql();
   const text = JSON.stringify(products);
   const existing = await sql`select id from shop_catalog where id = 'main'`;
   if (existing[0]) await sql`update shop_catalog set doc = ${text}, updated_at = now() where id = 'main'`;
   else await sql`insert into shop_catalog (id, doc) values ('main', ${text})`;
+  catalogCache = products;
 }
 
 async function writeState(doc: Data) {
@@ -539,6 +540,144 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     return { ok: false as const, error: "Could not reach that API. Check the URL and key." };
   } finally {
     clearTimeout(timer);
+  }
+}
+
+type ImportMeta = { name: string; baseUrl: string; currency: "NGN" | "USD"; usdRate: number; markup: number; publish: boolean; hasKey: boolean; apiKey: string };
+
+function emptyImport(error: string | null) {
+  return { error, jobId: "", total: 0, saved: 0, batch: 0, batches: 0, batchSize: IMPORT_BATCH, done: false, report: null as SyncReport | null, state: null as Data | null };
+}
+
+export async function beginCatalogImport(input: { url?: string; payload?: unknown; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean }) {
+  const session = await readSession();
+  const doc = await loadLight();
+  const me = doc.users.find((u) => u.id === session.userId);
+  if (me?.role !== "admin") return emptyImport("Only an admin can pull an API.");
+  let payload = input.payload;
+  if (input.url) {
+    const fetched = await pullRemote({ url: input.url, apiKey: input.apiKey, providerId: input.providerId });
+    if (!fetched.ok) return emptyImport(fetched.error);
+    payload = fetched.payload;
+  }
+  if (payload == null) return emptyImport("Add a catalogue URL or paste JSON.");
+  const extracted = extractCatalog(payload);
+  if (!extracted.items.length) return emptyImport("That catalogue had no services to import.");
+  const chunks = sliceImport(extracted.items);
+  const jobId = crypto.randomUUID();
+  const meta: ImportMeta = {
+    name: input.name || "New API",
+    baseUrl: input.baseUrl || input.url || "https://provider.example/api",
+    currency: input.currency === "USD" ? "USD" : "NGN",
+    usdRate: Number(input.usdRate) || 0,
+    markup: Number(input.markup) || 0,
+    publish: !!input.publish,
+    hasKey: !!input.apiKey || !!input.url,
+    apiKey: input.apiKey || "",
+  };
+  const touched = [...new Set(extracted.items.map((item) => `${item.country}|${item.service}`))];
+  const sql = await getSql();
+  await sql`insert into shop_import_jobs (id, status, total, cursor, batch_size, skipped, provider_id, keep_ids, touched, meta) values (${jobId}, 'ready', ${extracted.items.length}, 0, ${IMPORT_BATCH}, ${extracted.skipped}, ${input.providerId || ""}, ${JSON.stringify(extracted.items.map((item) => item.externalId))}, ${JSON.stringify(touched)}, ${JSON.stringify(meta)})`;
+  for (let seq = 0; seq < chunks.length; seq++) {
+    await sql`insert into shop_import_batches (job_id, seq, items) values (${jobId}, ${seq}, ${JSON.stringify(chunks[seq])})`;
+  }
+  if (input.apiKey && input.providerId) await rememberKey(input.providerId, input.apiKey);
+  return { error: null, jobId, total: extracted.items.length, saved: 0, batch: 0, batches: chunks.length, batchSize: IMPORT_BATCH, done: false, report: null, state: null };
+}
+
+export async function stepCatalogImport(jobId: string) {
+  if (!jobId) return emptyImport("Missing import.");
+  const session = await readSession();
+  const light = await loadLight();
+  const me = light.users.find((u) => u.id === session.userId);
+  if (me?.role !== "admin") return emptyImport("Only an admin can pull an API.");
+  const sql = await getSql();
+  const rows = await sql<{
+    id: string;
+    total: number;
+    cursor: number;
+    batch_size: number;
+    created_count: number;
+    updated_count: number;
+    skipped: number;
+    by_category: string;
+    by_network: string;
+    provider_id: string;
+    keep_ids: string;
+    touched: string;
+    meta: string;
+  }>`select id, total, cursor, batch_size, created_count, updated_count, skipped, by_category, by_network, provider_id, keep_ids, touched, meta from shop_import_jobs where id = ${jobId}`;
+  const job = rows[0];
+  if (!job) return emptyImport("That import is no longer on the server. Start it again.");
+  const total = Number(job.total) || 0;
+  const cursor = Number(job.cursor) || 0;
+  const batchSize = Number(job.batch_size) || IMPORT_BATCH;
+  const batches = importBatchCount(total, batchSize);
+  if (cursor >= batches) {
+    return { error: null, jobId, total, saved: total, batch: batches, batches, batchSize, done: true, report: null, state: projectShop(light, session.userId, session.draft) };
+  }
+  const batchRows = await sql<{ items: string }>`select items from shop_import_batches where job_id = ${jobId} and seq = ${cursor}`;
+  if (!batchRows[0]) return emptyImport("A saved batch is missing. Start the import again.");
+  let items: ParsedItem[] = [];
+  try {
+    items = JSON.parse(batchRows[0].items) as ParsedItem[];
+  } catch {
+    return emptyImport("A saved batch could not be read. Start the import again.");
+  }
+  const meta = JSON.parse(job.meta) as ImportMeta;
+  const tally = {
+    created: Number(job.created_count) || 0,
+    updated: Number(job.updated_count) || 0,
+    byCategory: JSON.parse(job.by_category || "{}") as Record<string, number>,
+    byNetwork: JSON.parse(job.by_network || "{}") as Record<string, number>,
+  };
+  const finalize = cursor + 1 >= batches;
+  try {
+    return await locked(async () => {
+      const doc = await loadDoc(true);
+      const applied = applyImportSlice(doc, {
+        providerId: job.provider_id || undefined,
+        name: meta.name,
+        baseUrl: meta.baseUrl,
+        hasKey: meta.hasKey,
+        currency: meta.currency,
+        usdRate: meta.usdRate,
+        markup: meta.markup,
+        items,
+        skipped: Number(job.skipped) || 0,
+        enable: () => meta.publish,
+        finalize,
+        keepIds: finalize ? (JSON.parse(job.keep_ids || "[]") as string[]) : [],
+        touchedKeys: finalize ? (JSON.parse(job.touched || "[]") as string[]) : [],
+        tally,
+      });
+      await saveDoc(applied.data, true);
+      if (meta.apiKey) {
+        await rememberKey(applied.providerId, meta.apiKey);
+        meta.apiKey = "";
+      }
+      const saved = finalize ? total : Math.min(total, (cursor + 1) * batchSize);
+      await sql`update shop_import_jobs set status = ${finalize ? "done" : "running"}, cursor = ${cursor + 1}, created_count = ${applied.tally.created}, updated_count = ${applied.tally.updated}, by_category = ${JSON.stringify(applied.tally.byCategory)}, by_network = ${JSON.stringify(applied.tally.byNetwork)}, provider_id = ${applied.providerId}, meta = ${JSON.stringify(meta)}, error = '' where id = ${jobId}`;
+      await sql`delete from shop_import_batches where job_id = ${jobId} and seq = ${cursor}`;
+      if (finalize) await sql`update shop_import_jobs set keep_ids = '[]', touched = '[]' where id = ${jobId}`;
+      const fresh = await readSession();
+      return {
+        error: null,
+        jobId,
+        total,
+        saved,
+        batch: cursor + 1,
+        batches,
+        batchSize,
+        done: finalize,
+        report: applied.report,
+        state: projectShop(applied.data, fresh.userId, fresh.draft),
+      };
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "This batch could not be saved.";
+    await sql`update shop_import_jobs set status = 'failed', error = ${message.slice(0, 300)} where id = ${jobId}`;
+    return { error: message, jobId, total, saved: Math.min(total, cursor * batchSize), batch: cursor, batches, batchSize, done: false, report: null, state: null };
   }
 }
 
