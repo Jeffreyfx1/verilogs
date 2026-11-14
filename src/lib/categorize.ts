@@ -35,6 +35,7 @@ const VALID_KEYS = ["month_validate", "validity", "duration", "days"];
 const META_KEYS = new Set([
   "status", "data", "message", "success", "result", "response", "payload", "items", "list",
   "plans", "packages", "services", "info", "error", "msg", "ok", "meta", "note", "content",
+  "iso", "prefix", "text_en", "text_ru", "text", "slug", "emoji", "pos",
 ]);
 
 const SERVICE_CANON: Record<string, string> = {
@@ -217,7 +218,7 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
     ? network && !networkOf(ownName) && (hint === "data" || ctx.section === "data")
       ? `${network} ${ownName}`
       : ownName
-    : [service || "Number", country].filter(Boolean).join(" · ");
+    : [service || "Number", country].filter(Boolean).join(" \u00b7 ");
   const externalId = id ? slug([...path, id]) : slug([...path, hint, display, country, network, operator, String(price ?? "")]);
   return {
     externalId,
@@ -230,7 +231,7 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
     stock: stockRaw == null ? 0 : Math.max(0, Math.round(stockRaw)),
     validity,
     variable: price == null || price === 0,
-    description: [text(pick(obj, ["description", "desc", "plan_type", "type"])), operator && operator !== display ? operator : ""].filter(Boolean).join(" · "),
+    description: [text(pick(obj, ["description", "desc", "plan_type", "type"])), operator && operator !== display ? operator : ""].filter(Boolean).join(" \u00b7 "),
     hint,
   };
 }
@@ -238,9 +239,11 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
 function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedItem {
   const blob = `${raw.hint} ${raw.name} ${raw.service} ${raw.description} ${raw.network}`.toLowerCase();
   const hint = raw.hint.toLowerCase();
-  const looksData = hint === "data" || /data|\d+(\.\d+)?\s?(gb|mb)|bundle|sme|gifting|\bcg\b/.test(blob);
+  const sms = hint === "numbers" || hint === "activation" || hint === "hosting" || hint === "rent";
+  const looksData = !sms && (hint === "data" || /data|\d+(\.\d+)?\s?(gb|mb)|bundle|sme|gifting|\bcg\b/.test(blob));
   let category: Category = "other";
-  if (/\b(exam|waec|neco|nabteb|jamb|result checker)\b/.test(blob) || hint === "exam") category = "exam";
+  if (sms) category = "numbers";
+  else if (/\b(exam|waec|neco|nabteb|jamb|result checker)\b/.test(blob) || hint === "exam") category = "exam";
   else if (/\b(electricity|electric|disco|ikedc|ekedc|aedc|phed|kedco|ibedc|kaedco|eedc)\b/.test(blob) || hint === "electricity") category = "electricity";
   else if (/\b(cable|dstv|gotv|startimes|cabletv)\b/.test(blob) || hint === "cable") category = "cable";
   else if (/\b(gift\s?cards?|giftcard|voucher)\b/.test(blob) || hint === "giftcard") category = "giftcard";
@@ -250,13 +253,14 @@ function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedI
   else if (hint === "numbers" || (raw.country && raw.service && !raw.network)) category = "numbers";
   else if (raw.network) category = "data";
   else if (raw.country && raw.service) category = "numbers";
+  const country = raw.country || (category === "numbers" ? "Any" : "");
   const network = raw.network || (category === "data" || category === "airtime" ? networkOf(raw.name) : "");
   const variable = category === "airtime" || category === "electricity";
   let name = raw.name;
-  if (category === "numbers" && raw.service && raw.country && !name.includes("·")) name = `${raw.service} · ${raw.country}`;
+  if (category === "numbers" && raw.service && country && country !== "Any" && !name.includes("\u00b7")) name = `${raw.service} \u00b7 ${country}`;
   if ((category === "data" || category === "airtime") && network && !networkOf(name)) name = `${network} ${name}`;
   if (category === "cable" && raw.operator && !name.toLowerCase().includes(raw.operator.toLowerCase())) name = `${raw.operator} ${name}`;
-  return { ...raw, category, name, network, variable: variable || raw.price <= 0, price: variable ? 0 : raw.price };
+  return { ...raw, category, name, country, network, variable: variable || raw.price <= 0, price: variable ? 0 : raw.price };
 }
 
 export function extractCatalog(payload: unknown): CatalogExtract {
@@ -279,7 +283,7 @@ export function extractCatalog(payload: unknown): CatalogExtract {
     const ownName = text(pick(obj, NAME_KEYS));
     if (nested.length > 0 && (ownPrice == null || !ownName)) return;
     const item = finalize(raw);
-    if (item.name.length < 2) {
+    if (!item.name) {
       skipped++;
       return;
     }
