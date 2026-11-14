@@ -91,7 +91,8 @@ export type Ticket = {
 export type Faq = { id: string; question: string; answer: string };
 export type Announcement = { id: string; title: string; body: string; createdAt: string };
 export type Banner = { id: string; title: string; body: string; href: string };
-export type HomeCopy = { eyebrow: string; title: string; body: string };
+export type HomeCard = { id: string; title: string; body: string; image: string };
+export type HomeCopy = { eyebrow: string; title: string; body: string; image: string; cards: HomeCard[] };
 export type Note = {
   id: string;
   userId: string;
@@ -161,6 +162,12 @@ export function defaultSettings(): Settings {
       eyebrow: "Trusted digital services",
       title: "Secure SMS verification, data and bills",
       body: "Get virtual numbers, airtime, data and bill payment from one naira wallet. Pick a server, fund the wallet, and the code or recharge shows up in your dashboard.",
+      image: "",
+      cards: [
+        { id: "c1", title: "Virtual numbers", body: "SMS codes for WhatsApp, Telegram, Google and the other services you connect. Each API stays on its own server.", image: "" },
+        { id: "c2", title: "Data and airtime", body: "MTN, Airtel, Glo, 9mobile and Smile stay as separate catalogues, with the price you set.", image: "" },
+        { id: "c3", title: "Bills", body: "Cable, electricity and exam PINs from the same naira wallet.", image: "" },
+      ],
     },
     banners: [
       { id: "b1", title: "Servers stay separate", body: "Each SMS API you connect becomes the next server. Prices and stock are never merged.", href: "/register" },
@@ -203,7 +210,11 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
     settings: {
       ...base,
       ...incoming,
-      home: { ...base.home, ...incoming?.home },
+      home: {
+        ...base.home,
+        ...incoming?.home,
+        cards: incoming?.home?.cards?.length ? incoming.home.cards : base.home.cards,
+      },
       banners: incoming?.banners?.length ? incoming.banners : base.banners,
       logo: incoming?.logo ?? "",
       brand: incoming?.brand || base.brand,
@@ -411,7 +422,7 @@ export function ingest(
       created++;
     }
   }
-  provider.servesNumbers = products.some((p) => p.providerId === provider!.id && p.category === "numbers");
+  provider.servesNumbers = products.some((p) => p.providerId === provider!.id && (p.category === "numbers" || p.category === "rent"));
   provider.lastSync = { at: now, imported: items.length, created, updated, skipped: extracted.skipped, byCategory, byNetwork };
   const next = { ...data, providers, products };
   return {
@@ -431,6 +442,7 @@ export function ingest(
 
 export const CATEGORY_LABEL: Record<string, string> = {
   numbers: "Virtual numbers",
+  rent: "Rent numbers",
   airtime: "Airtime",
   data: "Data",
   cable: "Cable TV",
@@ -475,14 +487,19 @@ export function repairCatalog(doc: Data): Data {
       changed = true;
       continue;
     }
-    if (product.category === "other") {
+    const rent = /\b(hosting|rent)\b/i.test(`${product.description} ${product.name}`);
+    const country = product.country === "Any" ? "" : product.country;
+    let category = product.category;
+    if (category === "other") category = rent ? "rent" : "numbers";
+    else if (rent && category === "numbers") category = "rent";
+    if (category !== product.category || country !== product.country || !(product.service || product.name)) {
       changed = true;
-      products.push({ ...product, category: "numbers" as const, country: product.country || "Any", service: product.service || product.name });
+      products.push({ ...product, category, country, service: product.service || product.name });
     } else products.push(product);
   }
   if (!changed) return doc;
   const providers = doc.providers.map((provider) => {
-    const servesNumbers = products.some((p) => p.providerId === provider.id && p.category === "numbers");
+    const servesNumbers = products.some((p) => p.providerId === provider.id && (p.category === "numbers" || p.category === "rent"));
     return servesNumbers === provider.servesNumbers ? provider : { ...provider, servesNumbers };
   });
   return { ...doc, products, providers };
