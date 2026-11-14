@@ -118,27 +118,76 @@
 }
 
 .tier-card {
+  position: relative;
   background:
-    radial-gradient(80% 90% at 8% 80%, #7c3aed 0%, transparent 58%),
-    radial-gradient(60% 80% at 100% 0%, #22d3ee55, transparent 46%),
-    linear-gradient(145deg, #3b1280 0%, #1a0840 42%, #0c0420 100%);
-  border: 1px solid #c084fc;
+    radial-gradient(80% 100% at 5% 100%, #9333ea 0%, transparent 65%),
+    radial-gradient(60% 80% at 100% 0%, #22d3ee44, transparent 60%),
+    linear-gradient(145deg, #391078 0%, #1a0840 48%, #0c0420 100%);
+  border: 1px solid #d8a5ff;
   box-shadow:
     0 0 0 1px #7c3aed,
-    0 0 28px #a855f7,
-    0 0 64px #6d28d988,
-    inset 0 0 40px #7c3aed55;
+    0 0 20px #a855f7,
+    0 0 45px #6d28d977,
+    inset 0 0 35px #7c3aed44;
+}
+
+.tier-photo {
+  border: 1px solid #d8a5ff80;
+  box-shadow: 0 0 18px #a855f7, inset 0 0 20px #7c3aed;
 }
 
 .uk-card {
-  background:
-    radial-gradient(70% 140% at 92% 80%, #6d28d9 0%, transparent 58%),
-    linear-gradient(160deg, #3a1280, #160838 62%, #0c0422);
+  position: relative;
+  isolation: isolate;
   border: 1px solid #c084fc;
   box-shadow:
     0 0 0 1px #7c3aed,
-    0 0 22px #a855f799,
-    inset 0 0 28px #6d28d944;
+    0 0 24px #a855f799,
+    inset 0 0 30px #6d28d944;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.uk-card:active {
+  transform: scale(0.98);
+}
+
+.service-card {
+  position: relative;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  backdrop-filter: blur(12px);
+}
+
+.service-card:active {
+  transform: scale(0.95);
+  box-shadow: 0 0 22px #a855f7, inset 0 0 15px #a855f744;
+}
+
+.history-card {
+  position: relative;
+  background:
+    radial-gradient(100% 100% at 100% 100%, #581c8733, transparent 70%),
+    linear-gradient(145deg, #16052f, #0b031b);
+  border: 1px solid #a855f7;
+  box-shadow:
+    0 0 0 1px #7c3aed66,
+    0 0 22px #7c3aed55,
+    inset 0 0 25px #6d28d933;
+}
+
+.tier-photo img,
+.uk-card img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@media (max-width: 380px) {
+  .tier-card { padding: 12px; }
+  .tier-photo { width: 34%; height: 145px; }
+  .tier-card h2 { font-size: 17px; }
+  .tier-card p { font-size: 11px; }
+  .service-card { min-height: 90px; }
 }
 
 .hero-wash {
