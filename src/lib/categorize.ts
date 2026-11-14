@@ -30,7 +30,7 @@ type Ctx = {
 const NAME_KEYS = ["name", "plan_name", "plan", "service_name", "title", "package", "bundle_name", "product_name", "variation", "dataplan"];
 const PRICE_KEYS = ["price", "plan_amount", "amount", "cost", "selling_price", "plan_price", "Price", "retail_price"];
 const ID_KEYS = ["id", "plan_id", "dataplan_id", "service_id", "code", "external_id", "product_id", "slug", "variation_code", "plan_code"];
-const STOCK_KEYS = ["count", "stock", "qty", "available", "quantity"];
+const STOCK_KEYS = ["count", "stock", "qty", "Qty", "available", "quantity"];
 const VALID_KEYS = ["month_validate", "validity", "duration", "days"];
 const METRIC_KEYS = new Set([
   "price", "cost", "count", "qty", "quantity", "rate", "id", "stock", "amount", "category", "pos", "retail_price",
@@ -120,7 +120,7 @@ export function networkOf(blob: string): string {
   return "";
 }
 
-function countryOf(key: string): string {
+countryOf(key: string): string {
   const normalized = key.trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
   if (COUNTRIES[normalized]) return COUNTRIES[normalized];
   const squashed = normalized.replace(/\s+/g, "");
@@ -240,6 +240,13 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
   };
 }
 
+function prettyCountry(raw: string) {
+  const mapped = countryOf(raw);
+  if (mapped) return mapped;
+  if (!raw || raw.toLowerCase() === "any") return "";
+  return raw.replace(/[-_]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedItem {
   const blob = `${raw.hint} ${raw.name} ${raw.service} ${raw.description} ${raw.network}`.toLowerCase();
   const hint = raw.hint.toLowerCase();
@@ -259,7 +266,7 @@ function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedI
   else if (hint === "numbers" || (raw.country && raw.service && !raw.network)) category = "numbers";
   else if (raw.network) category = "data";
   else if (raw.country && raw.service) category = "numbers";
-  const country = raw.country === "Any" ? "" : raw.country;
+  const country = prettyCountry(raw.country);
   const network = raw.network || (category === "data" || category === "airtime" ? networkOf(raw.name) : "");
   const variable = category === "airtime" || category === "electricity";
   let name = raw.name;
@@ -267,6 +274,42 @@ function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedI
   if ((category === "data" || category === "airtime") && network && !networkOf(name)) name = `${network} ${name}`;
   if (category === "cable" && raw.operator && !name.toLowerCase().includes(raw.operator.toLowerCase())) name = `${raw.operator} ${name}`;
   return { ...raw, category, name, country, network, variable: variable || raw.price <= 0, price: variable ? 0 : raw.price };
+}
+
+export function slimFiveSim(payload: unknown, hint = ""): unknown {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+  const rows: Array<Record<string, unknown>> = [];
+  for (const [country, services] of Object.entries(payload as Record<string, unknown>)) {
+    if (!services || typeof services !== "object" || Array.isArray(services)) return payload;
+    for (const [service, operators] of Object.entries(services as Record<string, unknown>)) {
+      if (!operators || typeof operators !== "object" || Array.isArray(operators)) return payload;
+      let best: { cost: number; count: number; operator: string } | null = null;
+      let leaf = false;
+      for (const [operator, row] of Object.entries(operators as Record<string, unknown>)) {
+        if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+        const rec = row as Record<string, unknown>;
+        if (!("cost" in rec) && !("count" in rec)) continue;
+        leaf = true;
+        const cost = Number(rec.cost ?? rec.price ?? 0);
+        const count = Number(rec.count ?? rec.qty ?? 0);
+        if (!Number.isFinite(cost) || !Number.isFinite(count) || count <= 0 || cost <= 0) continue;
+        if (!best || cost < best.cost) best = { cost, count, operator };
+      }
+      if (!leaf) continue;
+      if (!best) continue;
+      rows.push({
+        id: `${country}|${service}`,
+        service,
+        name: service,
+        country,
+        operator: best.operator,
+        cost: best.cost,
+        count: Math.round(best.count),
+        category: hint || "activation",
+      });
+    }
+  }
+  return rows.length ? rows : payload;
 }
 
 export function extractCatalog(payload: unknown): CatalogExtract {
