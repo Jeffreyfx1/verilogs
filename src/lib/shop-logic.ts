@@ -218,24 +218,7 @@ export function refundOrder(data: Data, userId: string | null, orderId: string) 
 }
 
 export function tickWaiting(data: Data) {
-  const now = Date.now();
-  let changed = false;
-  const orders = data.orders.map((o) => {
-    if (o.status === "waiting" && now - new Date(o.createdAt).getTime() > 7000 && !o.code) {
-      changed = true;
-      return { ...o, status: "received" as const, code: String(100000 + Math.floor(Math.random() * 900000)) };
-    }
-    return o;
-  });
-  if (!changed) return data;
-  let next = { ...data, orders };
-  for (const o of orders) {
-    const prev = data.orders.find((p) => p.id === o.id);
-    if (prev && prev.status === "waiting" && o.status === "received") {
-      next = pushNote(next, o.userId, "SMS code is in", `${o.title}: ${o.code}`, "order");
-    }
-  }
-  return next;
+  return data;
 }
 
 export function importServices(
