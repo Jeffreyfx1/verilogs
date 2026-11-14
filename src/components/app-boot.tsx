@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { WelcomeModal } from "@/components/welcome-modal";
 import { useStore } from "@/lib/store";
 
 export function AppBoot({ children }: { children: ReactNode }) {
@@ -19,5 +20,10 @@ export function AppBoot({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  return children;
+  return (
+    <>
+      {children}
+      <WelcomeModal />
+    </>
+  );
 }
