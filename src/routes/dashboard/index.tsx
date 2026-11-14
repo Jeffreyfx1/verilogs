@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { Hash, History, Megaphone, Radio, Receipt, Smartphone, Wallet, Zap } from "lucide-react";
-import { PromoBanners } from "@/components/promos";
+import { Hash, History, Megaphone, Radio, Receipt, Smartphone, Zap } from "lucide-react";
+import { isLive, type Product } from "@/lib/catalog";
 import { naira, when } from "@/lib/money";
 import { useStore, useUser } from "@/lib/store";
 
@@ -18,58 +18,70 @@ const quick = [
   { to: "/community", label: "Channel", icon: Radio },
 ];
 
+const shelves = [
+  { to: "/dashboard/numbers", title: "Virtual numbers", body: "Pick a server, then a service and country." },
+  { to: "/dashboard/data", title: "Data", body: "Plans stay split by network." },
+  { to: "/dashboard/airtime", title: "Airtime", body: "Recharge from the same wallet." },
+  { to: "/dashboard/bills", title: "Bills", body: "Cable, electricity and exam PINs." },
+];
+
+function shelfFor(product: Product) {
+  if (product.category === "numbers") return "/dashboard/numbers";
+  if (product.category === "data") return "/dashboard/data";
+  if (product.category === "airtime") return "/dashboard/airtime";
+  return "/dashboard/bills";
+}
+
 function DashHome() {
   const user = useUser();
-  const allOrders = useStore((s) => s.orders);
+  const products = useStore((s) => s.products);
+  const providers = useStore((s) => s.providers);
   const allTxns = useStore((s) => s.txns);
   const session = useStore((s) => s.sessionUserId);
-  const orders = useMemo(() => allOrders.filter((o) => o.userId === session), [allOrders, session]);
   const txns = useMemo(() => allTxns.filter((t) => t.userId === session), [allTxns, session]);
+  const slides = useMemo(() => {
+    const live = products.filter((p) => isLive(p, providers)).slice(0, 12);
+    if (!live.length) return shelves.map((s) => ({ ...s, price: "" }));
+    return live.map((p) => ({
+      to: shelfFor(p),
+      title: p.name,
+      body: [p.network, p.country].filter(Boolean).join(" · ") || p.category,
+      price: naira(p.price),
+    }));
+  }, [products, providers]);
   if (!user) return null;
-  const first = user.name.split(" ")[0] || "there";
-  const otp = orders.filter((o) => o.category === "numbers" && (o.status === "received" || o.status === "completed")).length;
+  const loop = [...slides, ...slides];
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-extrabold">Welcome, {first}</h1>
-        <p className="text-sm font-medium text-muted">Numbers, data, airtime and bills in one wallet.</p>
-      </div>
-
-      <section className="balance-card rounded-card p-5 shadow-card">
-        <div className="flex items-start justify-between gap-3">
-          <p className="text-xs font-extrabold tracking-wide text-white/75">Available balance</p>
-          <Link to="/dashboard/wallet" className="rounded-full bg-white/15 px-3 py-1.5 text-xs font-extrabold text-white">Fund wallet</Link>
+    <div className="space-y-4 bg-white">
+      <section className="rounded-card border border-line bg-white p-4 shadow-card">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-extrabold text-muted">Available balance</p>
+            <p className="text-3xl font-extrabold text-ink">{naira(user.balance)}</p>
+          </div>
+          <Link to="/dashboard/wallet" className="btn-gradient rounded-full px-4 py-2 text-xs font-extrabold">Fund wallet</Link>
         </div>
-        <p className="mt-3 text-4xl font-extrabold text-white">{naira(user.balance)}</p>
-        <div className="mt-5 grid grid-cols-3 gap-2">
-          {[
-            ["Codes", String(otp)],
-            ["Wallet", "Active"],
-            ["Level", "Tier 1"],
-          ].map(([k, v]) => (
-            <div key={k} className="rounded-2xl bg-white/10 px-2 py-3 text-center">
-              <p className="text-[11px] font-bold text-white/70">{k}</p>
-              <p className="mt-1 text-sm font-extrabold text-white">{v}</p>
-            </div>
+      </section>
+
+      <section className="marquee-wrap -mx-4">
+        <div className="marquee px-4">
+          {loop.map((slide, i) => (
+            <Link key={slide.title + i} to={slide.to} className="promo-card flex w-72 shrink-0 flex-col justify-between">
+              <span>
+                <span className="block text-lg font-extrabold text-white">{slide.title}</span>
+                <span className="mt-1 block text-sm font-medium text-white/80">{slide.body}</span>
+              </span>
+              <span className="mt-4 inline-flex w-fit rounded-full bg-white/15 px-3 py-1 text-xs font-extrabold text-white">{slide.price || "Open"}</span>
+            </Link>
           ))}
         </div>
       </section>
 
-      <Link to="/dashboard/profile" className="promo-card block">
-        <p className="text-xs font-extrabold text-white/70">Tier 1</p>
-        <p className="mt-1 text-lg font-extrabold text-white">Your account is ready</p>
-        <p className="mt-1 text-sm font-medium text-white/75">Update your name and phone from profile, then fund the wallet.</p>
-      </Link>
-
-      <PromoBanners />
-
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-extrabold">Quick services</h2>
-        </div>
-        <div className="grid grid-cols-4 gap-2">
+      <section className="rounded-card border border-line bg-white p-4 shadow-card">
+        <h2 className="text-lg font-extrabold">Quick services</h2>
+        <div className="mt-3 grid grid-cols-4 gap-2">
           {quick.map((q) => (
-            <Link key={q.label} to={q.to} className="flex flex-col items-center gap-2 rounded-2xl border border-line bg-card px-1 py-3 text-center shadow-card">
+            <Link key={q.label} to={q.to} className="flex flex-col items-center gap-2 rounded-2xl bg-[#f3f0fb] px-1 py-3 text-center">
               <span className="grid size-10 place-items-center rounded-2xl bg-primary text-on-primary">
                 <q.icon className="size-4" />
               </span>
@@ -79,14 +91,14 @@ function DashHome() {
         </div>
       </section>
 
-      <section className="rounded-card border border-line bg-card p-4 shadow-card">
+      <section className="rounded-card border border-line bg-white p-4 shadow-card">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-extrabold">History</h2>
           <Link to="/dashboard/history" className="text-sm font-extrabold text-primary">View all</Link>
         </div>
         <div className="mt-3 space-y-2">
           {txns.slice(0, 4).map((t) => (
-            <div key={t.id} className="flex items-center gap-3 rounded-2xl bg-paper px-3 py-3">
+            <div key={t.id} className="flex items-center gap-3 rounded-2xl bg-[#f3f0fb] px-3 py-3">
               <span className="grid size-10 place-items-center rounded-2xl bg-primary text-on-primary"><Receipt className="size-4" /></span>
               <span className="min-w-0 flex-1">
                 <p className="truncate text-sm font-extrabold">{t.note}</p>
@@ -95,7 +107,15 @@ function DashHome() {
               <span className={`text-sm font-extrabold ${t.amount < 0 ? "text-danger" : "text-ok"}`}>{naira(t.amount)}</span>
             </div>
           ))}
-          {!txns.length ? <p className="py-3 text-sm font-medium text-muted">Your recent transactions will appear here.</p> : null}
+          {!txns.length ? (
+            <div className="flex items-center gap-3 rounded-2xl bg-[#f3f0fb] px-3 py-3">
+              <span className="grid size-10 place-items-center rounded-2xl bg-primary text-on-primary"><Receipt className="size-4" /></span>
+              <span>
+                <p className="text-sm font-extrabold">Transaction history</p>
+                <p className="text-xs font-medium text-muted">Your recent transactions will appear here.</p>
+              </span>
+            </div>
+          ) : null}
         </div>
       </section>
     </div>
