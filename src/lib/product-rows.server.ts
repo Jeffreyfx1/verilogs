@@ -118,7 +118,7 @@ export async function clearProducts() {
   await sql`delete from shop_products`;
 }
 
-type BrowseInput = { providerId?: string; category?: string; service?: string; q?: string; detail?: boolean; admin?: boolean; enabledProviderIds?: string[] };
+type BrowseInput = { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean; admin?: boolean; enabledProviderIds?: string[] };
 
 function filters(input: BrowseInput, values: unknown[]) {
   const parts = ["category = $1", "country <> ''", "country <> 'Any'"];
