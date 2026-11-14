@@ -1,7 +1,7 @@
 import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/react-start/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
-import { freshData, normalizeData, type Data, type SyncReport } from "@/lib/catalog";
+import { freshData, normalizeData, withAdminLogin, type Data, type SyncReport } from "@/lib/catalog";
 import {
   addAnnouncement,
   addTicket,
@@ -114,7 +114,7 @@ async function loadDoc(): Promise<Data> {
   }
   try {
     const parsed = normalizeData(JSON.parse(rows[0].doc) as Data);
-    const cleaned = withoutSampleCatalog(parsed);
+    const cleaned = withAdminLogin(withoutSampleCatalog(parsed));
     if (cleaned !== parsed) await saveDoc(cleaned);
     return cleaned;
   } catch {
@@ -383,7 +383,7 @@ export async function creditFromWebhook(raw: string, signature: string | null) {
 
 export async function startPaystack(amount: number) {
   const n = Math.round(amount);
-  if (n < 100 || n > 500000) return { error: "Amount must be between ₦100 and ₦500,000." };
+  if (n < 100 || n > 500000) return { error: "Amount must be between \u20a6100 and \u20a6500,000." };
   const secret = process.env.PAYSTACK_SECRET_KEY;
   if (!secret) return { error: "Paystack is not connected yet. Add the secret key on Render, then try again." };
   const session = await readSession();
