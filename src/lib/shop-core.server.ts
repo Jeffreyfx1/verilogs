@@ -88,6 +88,22 @@ async function writeSession(token: string, userId: string | null, draft: Draft |
   }
 }
 
+function withoutSampleCatalog(doc: Data): Data {
+  const sampleIds = new Set(
+    doc.providers
+      .filter((p) => /provider\.example/i.test(p.baseUrl) || ["SwiftSMS", "NovaOTP", "NaijaVTU"].includes(p.name))
+      .map((p) => p.id),
+  );
+  const fakeWhatsapp = doc.settings.whatsapp.includes("2348000000000");
+  if (!sampleIds.size && !fakeWhatsapp) return doc;
+  return {
+    ...doc,
+    providers: doc.providers.filter((p) => !sampleIds.has(p.id)),
+    products: doc.products.filter((p) => !sampleIds.has(p.providerId)),
+    settings: fakeWhatsapp ? { ...doc.settings, whatsapp: "" } : doc.settings,
+  };
+}
+
 async function loadDoc(): Promise<Data> {
   const sql = await getSql();
   const rows = await sql<{ doc: string }>`select doc from shop_state where id = 'main'`;
@@ -97,7 +113,10 @@ async function loadDoc(): Promise<Data> {
     return doc;
   }
   try {
-    return normalizeData(JSON.parse(rows[0].doc) as Data);
+    const parsed = normalizeData(JSON.parse(rows[0].doc) as Data);
+    const cleaned = withoutSampleCatalog(parsed);
+    if (cleaned !== parsed) await saveDoc(cleaned);
+    return cleaned;
   } catch {
     return freshData();
   }
