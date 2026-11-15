@@ -3,7 +3,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
 import { CATEGORY_LABEL, type SyncReport } from "@/lib/catalog";
-import { extractCatalog } from "@/lib/categorize";
+import { extractCatalog, shapeImport, type ImportKind } from "@/lib/categorize";
 import { batchWindow } from "@/lib/import-batch";
 import { beginCatalogImport, clearNumberCatalog, stepCatalogImport } from "@/lib/shop-fns";
 import { useStore } from "@/lib/store";
@@ -36,6 +36,7 @@ function ImportPage() {
   const [names, setNames] = useState("");
   const [namesDirty, setNamesDirty] = useState(false);
   const [status, setStatus] = useState("");
+  const [kind, setKind] = useState<ImportKind>("numbers");
   const busy = phase === "fetch" || phase === "save";
   useEffect(() => {
     if (namesDirty) return;
@@ -60,13 +61,15 @@ function ImportPage() {
     if (!text.trim()) return null;
     try {
       const parsed = extractCatalog(JSON.parse(text));
-      return { ok: true as const, ...parsed };
+      const wanted = names.split(/\n+/).map((item) => item.trim()).filter(Boolean);
+      const items = shapeImport(parsed.items, kind, wanted);
+      return { ok: true as const, items, skipped: parsed.skipped + (parsed.items.length - items.length) };
     } catch {
       return { ok: false as const, error: "That text is not valid JSON." };
     }
-  }, [text]);
+  }, [kind, names, text]);
 
-  const runJob = async (payload: unknown | undefined, url: string) => {
+  const runJob = async (payload: unknown | undefined, url: string, forced?: ImportKind) => {
     if (busy) return;
     const existing = providerId ? providers.find((p) => p.id === providerId) : undefined;
     const label = (existing?.name || name).trim() || (url ? "New API" : "Pasted API");
@@ -91,6 +94,7 @@ function ImportPage() {
           usdRate,
           markup,
           publish,
+          kind: forced || kind,
         },
       });
       if (started.error || !started.jobId) {
@@ -272,12 +276,30 @@ function ImportPage() {
           <Field label="API key" hint="Stored on the server for this provider. It is not shown again.">
             <input className={inputClass} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Optional until you pull a live URL" />
           </Field>
-          <Field label="Catalogue URL" hint="Virtual numbers use the saved service list. Data, airtime and bills from another API still import in full.">
+          <Field label="Import type" hint="Pick one type. Importing it again only replaces that type on this server. Numbers, VTU, VPN and SMM stay side by side.">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {([
+                ["numbers", "Numbers"],
+                ["vtu", "VTU"],
+                ["vpn", "VPN"],
+                ["smm", "SMM"],
+                ["random", "Random"],
+              ] as const).map(([id, label]) => (
+                <button key={id} type="button" onClick={() => setKind(id)} className={`rounded-xl border px-2 py-2 text-sm font-extrabold ${kind === id ? "border-primary bg-primary text-white" : "border-line bg-paper"}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <p className="text-xs text-muted">
+            Numbers uses the saved names. VTU files airtime and data. VPN and SMM keep the API’s own group names. Random imports every priced service and arranges it under the category that site already uses.
+          </p>
+          <Field label="Catalogue URL" hint="The saved name list only filters a Numbers import.">
             <input className={inputClass} value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="https://provider.example/api/services" />
           </Field>
           <div className="flex flex-wrap gap-2">
             <Button tone="soft" disabled={busy || !apiUrl.trim()} onClick={() => void runJob(undefined, apiUrl)}>{busy ? "Importing…" : "Pull and import this API"}</Button>
-            <Button tone="soft" disabled={busy} onClick={() => void runJob(undefined, "https://5sim.net/v1/guest/prices")}>{busy ? "Importing…" : "Import saved services for every country"}</Button>
+            <Button tone="soft" disabled={busy} onClick={() => void runJob(undefined, "https://5sim.net/v1/guest/prices", "numbers")}>{busy ? "Importing…" : "Import saved services for every country"}</Button>
           </div>
           <Field label="Price currency">
             <select className={inputClass} value={currency} onChange={(e) => setCurrency(e.target.value as "NGN" | "USD")}>
@@ -291,7 +313,7 @@ function ImportPage() {
           <Field label="Markup" hint="5sim uses 1.6. A $0.10 number becomes 0.10 × rate × markup.">
             <input className={inputClass} inputMode="decimal" value={markup} onChange={(e) => setMarkup(Number(e.target.value))} />
           </Field>
-          <p className="text-xs text-muted">Example: $0.10 sells at ₦{Math.ceil((0.1 * (usdRate || 0) * (markup || 1)) / 5) * 5}. Prices update on the next import. Airtime, data, bills and VPN JSON import as those categories. They only show up as an SMS server if the file actually contains numbers.</p>
+          <p className="text-xs text-muted">Example: $0.10 sells at ₦{Math.ceil((0.1 * (usdRate || 0) * (markup || 1)) / 5) * 5}. A Numbers import does not delete VTU, VPN or SMM on the same server.</p>
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} className="mt-1" />
             <span>Put new services live immediately. Leave this off if you want to review first. Already-enabled rows stay as they are.</span>

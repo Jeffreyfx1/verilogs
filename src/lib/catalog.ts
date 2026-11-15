@@ -592,6 +592,8 @@ export const CATEGORY_LABEL: Record<string, string> = {
   exam: "Exam PINs",
   giftcard: "Gift cards",
   betting: "Betting",
+  boost: "Social boost",
+  vpn: "VPN",
   other: "Other",
 };
 
@@ -630,13 +632,14 @@ export function repairCatalog(doc: Data): Data {
       continue;
     }
     const rent = /\b(hosting|rent)\b/i.test(`${product.description} ${product.name}`);
-    if ((product.category === "numbers" || product.category === "rent" || product.category === "other") && (!product.country || product.country === "Any")) {
+    const boost = product.category === "boost" || /\b(smm|boost|followers?|likes?|subscribers?|watchtime)\b/i.test(`${product.name} ${product.service} ${product.description}`);
+    if ((product.category === "numbers" || product.category === "rent") && (!product.country || product.country === "Any") && !boost) {
       changed = true;
       continue;
     }
     const country = product.country === "Any" ? "" : product.country;
     let category = product.category;
-    if (category === "other") category = rent ? "rent" : "numbers";
+    if (boost && category !== "airtime" && category !== "data" && category !== "cable" && category !== "electricity" && category !== "exam" && category !== "vpn") category = "boost";
     else if (rent && category === "numbers") category = "rent";
     if (category !== product.category || country !== product.country || !(product.service || product.name)) {
       changed = true;

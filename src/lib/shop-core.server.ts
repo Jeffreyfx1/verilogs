@@ -2,20 +2,23 @@ import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/rea
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
 import { freshData, isLive, normalizeData, quoteProduct, repairCatalog, sellPrice, markupFor, serverLabel, topupQuote, withAdminLogin, applyImportSlice, type Data, type Product, type SyncReport } from "@/lib/catalog";
-import { extractCatalog, slimFiveSim, serviceAllowed, fiveSimCategoryUrl, MAJOR_SERVICES, type ParsedItem } from "@/lib/categorize";
+import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, shapeImport, MAJOR_SERVICES, type ImportKind, type ParsedItem } from "@/lib/categorize";
 import { IMPORT_BATCH, importBatchCount } from "@/lib/import-batch";
 import { uid } from "@/lib/money";
 import {
   clearProducts,
   countExistingProducts,
+  dropMisfiledBoost,
   pruneSyncedProducts,
   providerIdsWithNumbers,
   queryCatalogPage,
   queryCountries,
+  queryExtras,
   queryHidden,
   queryOperators,
   queryServices,
   readProduct,
+  readShopRows,
   setRowsEnabled,
   upsertProductRows,
 } from "@/lib/product-rows.server";
@@ -281,6 +284,9 @@ function result(doc: Data, userId: string | null, draft: Draft | null, error: st
 
 const LIGHT = new Set(["login", "register", "logout", "resetPassword", "completeGoogle"]);
 
+let sweptBoost = false;
+const LIGHT_CATS = ["airtime", "data", "cable", "electricity", "exam", "giftcard", "betting", "other"];
+
 export async function currentShop(): Promise<ApplyResult> {
   let doc = await loadLight();
   try {
@@ -299,6 +305,21 @@ export async function currentShop(): Promise<ApplyResult> {
     }
   } catch {
     // Table appears after the next deploy migration.
+  }
+  try {
+    if (!sweptBoost) {
+      await dropMisfiledBoost();
+      sweptBoost = true;
+    }
+    const rows = await readShopRows(LIGHT_CATS, 2000);
+    const have = new Set(doc.products.map((product) => `${product.providerId}|${product.externalId}`));
+    const missing = rows.filter((product) => product.externalId && !have.has(`${product.providerId}|${product.externalId}`));
+    if (missing.length) {
+      doc = { ...doc, products: [...doc.products, ...missing] };
+      await writeState(doc);
+    }
+  } catch {
+    // Catalogue table is created by the next migration.
   }
   const session = await readSession();
   return result(doc, session.userId, session.draft, null);
@@ -688,12 +709,32 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
       return { ok: false as const, error: detail ? `The API replied ${res.status}. ${detail}` : `The API replied ${res.status}.` };
     }
     const parsed = JSON.parse(text) as unknown;
+    let payload: unknown = parsed;
+    if (!url.hostname.endsWith("5sim.net") && key && !Array.isArray(parsed)) {
+      const keys = parsed && typeof parsed === "object" ? Object.keys(parsed as object) : [];
+      if (keys.length < 3) {
+        const posted = await fetch(url, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ key, apiKey: key, action: "services" }),
+          signal: ctrl.signal,
+        });
+        const postedText = await posted.text();
+        if (posted.ok && postedText.length <= 16_000_000) {
+          try {
+            payload = JSON.parse(postedText) as unknown;
+          } catch {
+            payload = parsed;
+          }
+        }
+      }
+    }
     const hint = /hosting|rent/i.test(url.search + url.pathname) ? "hosting" : "";
     const parts = url.pathname.split("/").filter(Boolean);
     const at = parts.findIndex((part) => part === "products");
     const place = at >= 0 ? { country: parts[at + 1] || "", operator: parts[at + 2] || "any" } : {};
-    const payload = url.hostname.endsWith("5sim.net") ? slimFiveSim(parsed, hint, allow, place) : parsed;
-    return { ok: true as const, payload };
+    const ready = url.hostname.endsWith("5sim.net") ? slimFiveSim(payload, hint, allow, place) : payload;
+    return { ok: true as const, payload: ready };
   } catch {
     return { ok: false as const, error: "Could not reach that API. Check the URL and key." };
   } finally {
@@ -701,7 +742,7 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
   }
 }
 
-type ImportMeta = { name: string; baseUrl: string; currency: "NGN" | "USD"; usdRate: number; markup: number; publish: boolean; hasKey: boolean; apiKey: string };
+type ImportMeta = { name: string; baseUrl: string; currency: "NGN" | "USD"; usdRate: number; markup: number; publish: boolean; hasKey: boolean; apiKey: string; kind: ImportKind };
 
 type PendingImport = {
   items: ParsedItem[];
@@ -710,6 +751,7 @@ type PendingImport = {
   providerId: string;
   skipped: number;
   touched: string[];
+  light: Product[];
   tally: { created: number; updated: number; byCategory: Record<string, number>; byNetwork: Record<string, number> };
 };
 
@@ -719,29 +761,37 @@ function emptyImport(error: string | null) {
   return { error, jobId: "", total: 0, saved: 0, batch: 0, batches: 0, batchSize: IMPORT_BATCH, done: false, report: null as SyncReport | null, state: null as Data | null };
 }
 
-export async function beginCatalogImport(input: { url?: string; payload?: unknown; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean }) {
+const KIND_EMPTY: Record<ImportKind, string> = {
+  numbers: "No virtual numbers in that catalogue matched the names you saved.",
+  vtu: "No airtime or data plans were in that catalogue.",
+  vpn: "No VPN plans were in that catalogue.",
+  smm: "No social boost services were in that catalogue.",
+  random: "That catalogue had no priced services.",
+};
+
+function importKindOf(value: string | undefined): ImportKind {
+  return value === "vtu" || value === "vpn" || value === "smm" || value === "random" ? value : "numbers";
+}
+
+export async function beginCatalogImport(input: { url?: string; payload?: unknown; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean; kind?: string }) {
   const session = await readSession();
   const doc = await loadLight();
   const me = doc.users.find((u) => u.id === session.userId);
   if (me?.role !== "admin") return emptyImport("Only an admin can pull an API.");
+  const kind = importKindOf(input.kind);
   const wanted = doc.settings.wantedServices?.length ? doc.settings.wantedServices : [...MAJOR_SERVICES];
   const routed = input.url ? fiveSimCategoryUrl(input.url) : { url: "", product: "" };
   const wantedForPull = routed.product ? [...wanted, routed.product] : wanted;
   let payload = input.payload;
   if (input.url) {
-    const fetched = await pullRemote({ url: input.url, apiKey: input.apiKey, providerId: input.providerId, allow: wantedForPull });
+    const fetched = await pullRemote({ url: input.url, apiKey: input.apiKey, providerId: input.providerId, allow: kind === "numbers" ? wantedForPull : [] });
     if (!fetched.ok) return emptyImport(fetched.error);
     payload = fetched.payload;
   }
   if (payload == null) return emptyImport("Add a catalogue URL or paste JSON.");
   const extracted = extractCatalog(payload);
-  const items = extracted.items.filter((item) => {
-    if (item.category === "other" && item.price <= 0) return false;
-    if (item.category === "numbers" || item.category === "rent") return item.price > 0 && serviceAllowed(item.service || item.name, wantedForPull);
-    return true;
-  });
-  if (!items.length) return emptyImport("None of the service names you saved were in that catalogue.");
-  if (!routed.product && items.some((item) => item.category === "numbers" || item.category === "rent")) await clearNumberImports();
+  const items = shapeImport(extracted.items, kind, wantedForPull);
+  if (!items.length) return emptyImport(KIND_EMPTY[kind]);
   const jobId = crypto.randomUUID();
   const meta: ImportMeta = {
     name: input.name || "New API",
@@ -752,6 +802,7 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
     publish: !!input.publish,
     hasKey: !!input.apiKey || !!input.url,
     apiKey: input.apiKey || "",
+    kind,
   };
   const touched = [...new Set(items.map((item) => `${item.country}|${item.service}`))];
   pendingImports.clear();
@@ -762,6 +813,7 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
     providerId: input.providerId || "",
     skipped: extracted.skipped + (extracted.items.length - items.length),
     touched,
+    light: [],
     tally: { created: 0, updated: 0, byCategory: {}, byNetwork: {} },
   });
   return { error: null, jobId, total: items.length, saved: 0, batch: 0, batches: importBatchCount(items.length), batchSize: IMPORT_BATCH, done: false, report: null, state: null };
@@ -801,6 +853,25 @@ function withProvider(doc: Data, meta: ImportMeta, providerId: string) {
     if (meta.hasKey) provider.hasKey = true;
   }
   return { doc: { ...doc, providers }, provider };
+}
+
+function mergeLight(doc: Data, providerId: string, rows: Product[]): Data {
+  if (!rows.length) return doc;
+  const cats = new Set(rows.map((row) => row.category));
+  const incoming = new Set(rows.map((row) => row.externalId));
+  const kept = doc.products.filter((product) => product.providerId !== providerId || !cats.has(product.category) || incoming.has(product.externalId));
+  const byExternal = new Map(kept.filter((product) => product.providerId === providerId).map((product) => [product.externalId, product]));
+  const products = [...kept];
+  for (const row of rows) {
+    const prev = byExternal.get(row.externalId);
+    if (!prev) {
+      products.push(row);
+      continue;
+    }
+    const at = products.indexOf(prev);
+    if (at >= 0) products[at] = { ...row, id: prev.id, enabled: prev.enabled || row.enabled };
+  }
+  return { ...doc, products };
 }
 
 async function stepFromMemory(jobId: string) {
@@ -845,6 +916,7 @@ async function stepFromMemory(jobId: string) {
         description: item.description,
       }));
       await upsertProductRows(products, jobId);
+      job.light.push(...products.filter((product) => product.category === "airtime" || product.category === "data" || product.category === "cable" || product.category === "electricity" || product.category === "exam" || product.category === "giftcard" || product.category === "betting"));
       job.tally.created += Math.max(0, slice.length - existing);
       job.tally.updated += existing;
       for (const item of slice) {
@@ -856,7 +928,12 @@ async function stepFromMemory(jobId: string) {
         await rememberKey(held.provider.id, job.meta.apiKey);
         job.meta.apiKey = "";
       }
-      if (finalize) await pruneSyncedProducts(held.provider.id, jobId, job.touched);
+      if (finalize) {
+        const categories = [...new Set(job.items.map((item) => item.category))];
+        await pruneSyncedProducts(held.provider.id, jobId, job.touched, categories);
+        if (categories.includes("boost")) await dropMisfiledBoost(held.provider.id);
+        held.doc = mergeLight(held.doc, held.provider.id, job.light);
+      }
       if (job.items.some((item) => item.category === "numbers" || item.category === "rent")) held.provider.servesNumbers = true;
       held.provider.enabled = true;
       held.provider.lastSync = {
@@ -1065,6 +1142,15 @@ export async function browseNumbers(input: { providerId?: string; category?: str
   if (input.list === "services" || !input.service) return { ...empty, services: await serviceList() };
   const countries = (await queryCountries(query)).map((row) => quoteProduct(row, doc));
   return { ...empty, countries };
+}
+
+export async function browseExtras(input: { q?: string }) {
+  const doc = await loadLight();
+  const session = await readSession();
+  if (!session.userId) return [] as Product[];
+  const providerIds = doc.providers.filter((provider) => provider.enabled).map((provider) => provider.id);
+  const rows = await queryExtras({ q: (input.q || "").trim(), providerIds });
+  return rows.map((row) => quoteProduct(row, doc));
 }
 
 export async function browseCatalog(input: { q?: string; category?: string; providerId?: string; only?: string; page?: number }) {

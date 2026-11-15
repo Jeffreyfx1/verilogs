@@ -470,6 +470,7 @@ html[data-form="phone"] .scroll-pane {
   * { transition: none !important; animation: none !important; }
 }
 
+:root {
   --gold: #facc15;
 }
 

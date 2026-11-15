@@ -80,19 +80,70 @@ export async function countExistingProducts(providerId: string, externalIds: str
   return Number(rows[0]?.n) || 0;
 }
 
-export async function pruneSyncedProducts(providerId: string, sync: string, touched: string[]) {
-  if (!touched.length) return;
+export async function pruneSyncedProducts(providerId: string, sync: string, touched: string[], categories: string[] = ["numbers", "rent"]) {
   const sql = await getSql();
-  const size = 500;
-  for (let i = 0; i < touched.length; i += size) {
-    const keys = touched.slice(i, i + size);
+  const cats = [...new Set(categories.filter(Boolean))];
+  const heavy = cats.filter((category) => category === "numbers" || category === "rent");
+  const rest = cats.filter((category) => category !== "numbers" && category !== "rent");
+  if (heavy.length && touched.length) {
+    const size = 500;
+    for (let i = 0; i < touched.length; i += size) {
+      const keys = touched.slice(i, i + size);
+      await sql.query(
+        `delete from shop_products
+         where provider_id = $1 and category = any($2::text[]) and sync <> $3
+           and (country || '|' || service) = any($4::text[])`,
+        [providerId, heavy, sync, keys],
+      );
+    }
+  }
+  if (rest.length) {
     await sql.query(
-      `delete from shop_products
-       where provider_id = $1 and category in ('numbers','rent') and sync <> $2
-         and (country || '|' || service) = any($3::text[])`,
-      [providerId, sync, keys],
+      `delete from shop_products where provider_id = $1 and category = any($2::text[]) and sync <> $3`,
+      [providerId, rest, sync],
     );
   }
+}
+
+const BOOST_MISFILE = String.raw`(name ~* '\m(followers|likes|subscribers|comments|smm|boost|watchtime|impressions|retweets)\M' or service ~* '\m(followers|likes|subscribers|smm|boost)\M' or name ~* '\mviews\M')`;
+
+export async function dropMisfiledBoost(providerId?: string) {
+  const sql = await getSql();
+  if (providerId) {
+    await sql.query(`delete from shop_products where provider_id = $1 and category in ('numbers','rent') and ${BOOST_MISFILE}`, [providerId]);
+    return;
+  }
+  await sql.query(`delete from shop_products where category in ('numbers','rent') and ${BOOST_MISFILE}`);
+}
+
+export async function readShopRows(categories: string[], limit = 2000) {
+  if (!categories.length) return [];
+  const sql = await getSql();
+  const rows = await sql.query<Record<string, unknown>>(
+    "select * from shop_products where category = any($1::text[]) order by service, name limit $2",
+    [categories, limit],
+  );
+  return rows.map(rowOf);
+}
+
+export async function queryExtras(input: { q?: string; providerIds: string[] }) {
+  if (!input.providerIds.length) return [];
+  const sql = await getSql();
+  const values: unknown[] = [input.providerIds];
+  const parts = [
+    "category not in ('numbers','rent','airtime','data','cable','electricity','exam')",
+    "enabled = true",
+    "provider_id = any($1::text[])",
+  ];
+  if (input.q) {
+    values.push(`%${input.q.replace(/[%_]/g, "")}%`);
+    parts.push(`(name ilike $${values.length} or service ilike $${values.length})`);
+  }
+  const rows = await sql.query<Record<string, unknown>>(
+    `select * from shop_products where ${parts.join(" and ")} order by service, name limit 400`,
+    values,
+  );
+  return rows.map(rowOf);
 }
 
 export async function readProduct(id: string) {

@@ -68,7 +68,7 @@ export const clearNumberCatalog = createServerFn({ method: "POST" }).handler(asy
 });
 
 export const beginCatalogImport = createServerFn({ method: "POST" })
-  .validator((input: { url?: string; payload?: unknown; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean }) => ({
+  .validator((input: { url?: string; payload?: unknown; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean; kind?: string }) => ({
     url: String(input?.url || ""),
     payload: input?.payload,
     apiKey: input?.apiKey ? String(input.apiKey) : "",
@@ -79,6 +79,7 @@ export const beginCatalogImport = createServerFn({ method: "POST" })
     usdRate: Number(input?.usdRate) || 0,
     markup: Number(input?.markup) || 0,
     publish: !!input?.publish,
+    kind: input?.kind === "vtu" || input?.kind === "vpn" || input?.kind === "smm" || input?.kind === "random" ? input.kind : "numbers",
   }))
   .handler(async ({ data }): Promise<ImportStep> => {
     const { beginCatalogImport } = await core();
@@ -122,6 +123,13 @@ export const browseNumbers = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { browseNumbers } = await core();
     return browseNumbers(data);
+  });
+
+export const browseExtras = createServerFn({ method: "POST" })
+  .validator((input: { q?: string }) => ({ q: String(input?.q || "").slice(0, 60) }))
+  .handler(async ({ data }) => {
+    const { browseExtras } = await core();
+    return browseExtras(data);
   });
 
 export const browseCatalog = createServerFn({ method: "POST" })

@@ -27,7 +27,7 @@ export function serviceAllowed(service: string, list: string[]) {
   return keys.some((key) => name === key || name.startsWith(key) || (key.startsWith(name) && name.length >= 4));
 }
 
-export type Category = "numbers" | "rent" | "airtime" | "data" | "cable" | "electricity" | "exam" | "giftcard" | "betting" | "other";
+export type Category = "numbers" | "rent" | "airtime" | "data" | "cable" | "electricity" | "exam" | "giftcard" | "betting" | "boost" | "vpn" | "other";
 
 export type ParsedItem = {
   externalId: string;
@@ -63,6 +63,7 @@ const STOCK_KEYS = ["count", "stock", "qty", "Qty", "available", "quantity"];
 const VALID_KEYS = ["month_validate", "validity", "duration", "days"];
 const METRIC_KEYS = new Set([
   "price", "cost", "count", "qty", "quantity", "rate", "id", "stock", "amount", "category", "pos", "retail_price",
+  "min", "max", "min_qty", "max_qty", "minimum", "maximum", "refill", "cancel", "dripfeed", "runs", "interval", "service",
 ]);
 const META_KEYS = new Set([
   "status", "data", "message", "success", "result", "response", "payload", "items", "list",
@@ -220,6 +221,7 @@ function sectionOfKey(key: string): Category | "" {
   if (/\b(airtime|vtu)\b/.test(s) && !/\bdata\b/.test(s)) return "airtime";
   if (/\b(dataplans?|bundles?|dataplan)\b/.test(s) || s === "data" || s === "sme") return "data";
   if (/\b(rent|hosting)\b/.test(s)) return "rent";
+  if (/\b(smm|boost|followers?|likes?|subscribers?)\b/.test(s)) return "boost";
   if (/\bvpn\b|proxy|wireguard|openvpn/.test(s)) return "";
   if (/\b(sms|otp|activation|numbers)\b/.test(s)) return "numbers";
   return "";
@@ -281,10 +283,11 @@ function slug(parts: string[]) {
 
 function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<ParsedItem, "category"> & { hint: string }) | null {
   const ownName = text(pick(obj, NAME_KEYS));
-  const price = parseMoney(pick(obj, PRICE_KEYS));
+  let price = parseMoney(pick(obj, PRICE_KEYS));
   const id = text(pick(obj, ID_KEYS));
   const serviceField = text(pick(obj, ["service", "platform", "app"]));
-  const service = SERVICE_CANON[serviceField.toLowerCase()] || serviceField || ctx.service;
+  let service = SERVICE_CANON[serviceField.toLowerCase()] || serviceField || ctx.service;
+  if (/^\d+$/.test(service)) service = ownName || ctx.service || service;
   const countryRaw = text(pick(obj, ["country", "country_name", "geo"])) || ctx.country;
   const country = countryOf(countryRaw) || (COUNTRIES[countryRaw.toLowerCase()] ? COUNTRIES[countryRaw.toLowerCase()] : countryRaw);
   const blob = [ownName, service, text(pick(obj, ["network", "network_name", "sim", "network_code"])), ctx.network, ctx.operator].join(" ");
@@ -293,6 +296,13 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
   const stockRaw = parseMoney(pick(obj, STOCK_KEYS));
   const hint = text(pick(obj, ["category", "type", "kind", "section"])) || ctx.section;
   const operator = text(pick(obj, ["operator", "route"])) || ctx.operator;
+  const minQ = parseMoney(pick(obj, ["min", "min_qty", "minimum"]));
+  const maxQ = parseMoney(pick(obj, ["max", "max_qty", "maximum"]));
+  const boostish = minQ != null || maxQ != null || /\b(smm|boost|followers?|likes?|views?|subscribers?|comments?)\b/i.test(`${hint} ${ownName} ${service}`);
+  if ((price == null || price === 0) && boostish) {
+    const rate = parseMoney(obj.rate ?? obj.Rate);
+    if (rate != null && rate > 0 && rate < 100000 && !(stockRaw != null && stockRaw > 0 && countryOf(country))) price = rate;
+  }
   if (!ownName && !id && !service && price == null) return null;
   if (price == null && !ownName && !service) return null;
   const display = ownName
@@ -301,6 +311,7 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
       : ownName
     : [service || "Number", country].filter(Boolean).join(" · ");
   const externalId = id ? slug([...path, id]) : slug([...path, hint, display, country, network, operator, String(price ?? "")]);
+  const qty = minQ != null || maxQ != null ? `Min ${minQ ?? 0}${maxQ != null ? ` · Max ${maxQ}` : ""}` : "";
   return {
     externalId,
     name: display || ownName || id,
@@ -314,7 +325,7 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
     rates: text(obj.rates),
     validity,
     variable: price == null || price === 0,
-    description: [text(pick(obj, ["description", "desc", "plan_type", "type"])), operator && operator !== display ? operator : ""].filter(Boolean).join(" · "),
+    description: [text(pick(obj, ["description", "desc", "plan_type", "type"])), qty, operator && operator !== display ? operator : ""].filter(Boolean).join(" · "),
     hint,
   };
 }
@@ -329,12 +340,14 @@ function prettyCountry(raw: string) {
 function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedItem {
   const blob = `${raw.hint} ${raw.name} ${raw.service} ${raw.description} ${raw.network}`.toLowerCase();
   const hint = raw.hint.toLowerCase();
-  const rent = hint === "rent" || hint === "hosting" || /\b(hosting|rent)\b/.test(blob);
-  const sms = rent || hint === "numbers" || hint === "activation";
-  const looksData = !sms && (hint === "data" || /data|\d+(\.\d+)?\s?(gb|mb)|bundle|sme|gifting|\bcg\b/.test(blob));
+  const boost = hint === "boost" || hint === "smm" || /^(default|package|custom comments|mentions|subscriptions?|poll)$/.test(hint.trim()) || /\b(smm|boost|followers?|likes?|views?|subscribers?|comments?|watchtime|impressions?|retweets?)\b/.test(blob);
+  const countryOk = !!countryOf(raw.country) || (!!raw.country && raw.country.toLowerCase() !== "any" && /^(any|virtual\d+)$/i.test(raw.operator.trim()));
+  const rent = !boost && countryOk && (hint === "rent" || hint === "hosting" || /\b(hosting|rent)\b/.test(blob));
+  const sms = !boost && countryOk && (rent || hint === "numbers" || hint === "activation" || /^(any|virtual\d+)$/i.test(raw.operator.trim()));
+  const looksData = !sms && !boost && (hint === "data" || /data|\d+(\.\d+)?\s?(gb|mb)|bundle|sme|gifting|\bcg\b/.test(blob));
   let category: Category = "other";
   if (rent) category = "rent";
-  else if (sms) category = "numbers";
+  else if (sms && (raw.operator || raw.stock > 0 || raw.rate > 0 || hint === "numbers")) category = "numbers";
   else if (/\b(exam|waec|neco|nabteb|jamb|result checker)\b/.test(blob) || hint === "exam") category = "exam";
   else if (/\b(electricity|electric|disco|ikedc|ekedc|aedc|phed|kedco|ibedc|kaedco|eedc)\b/.test(blob) || hint === "electricity") category = "electricity";
   else if (/\b(cable|dstv|gotv|startimes|cabletv)\b/.test(blob) || hint === "cable") category = "cable";
@@ -342,18 +355,62 @@ function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedI
   else if (/\b(betting|sportbook|\bbet\b)\b/.test(blob) || hint === "betting") category = "betting";
   else if (hint === "airtime" || (/airtime|\bvtu\b/.test(blob) && !/\d+(\.\d+)?\s?(gb|mb)/.test(blob))) category = "airtime";
   else if (looksData && hint !== "numbers") category = "data";
-  else if (/\bvpn\b|\bproxy\b|wireguard|openvpn/.test(blob) || hint === "vpn") category = "other";
-  else if (hint === "numbers" || (raw.country && raw.service && !raw.network)) category = "numbers";
+  else if (boost) category = "boost";
+  else if (/\bvpn\b|\bproxy\b|wireguard|openvpn/.test(blob) || hint === "vpn") category = "vpn";
   else if (raw.network) category = "data";
-  else if (raw.country && raw.service) category = "numbers";
-  const country = prettyCountry(raw.country);
+  const country = category === "numbers" || category === "rent" ? prettyCountry(raw.country) : raw.country && raw.country.toLowerCase() !== "any" ? prettyCountry(raw.country) : "";
   const network = raw.network || (category === "data" || category === "airtime" ? networkOf(raw.name) : "");
-  const variable = category === "airtime" || category === "electricity";
+  const variable = (category === "airtime" || category === "electricity") && !(raw.price > 0);
   let name = raw.name;
+  let service = raw.service;
   if ((category === "numbers" || category === "rent") && raw.service && country && !name.includes("·")) name = `${raw.service} · ${country}`;
   if ((category === "data" || category === "airtime") && network && !networkOf(name)) name = `${network} ${name}`;
   if (category === "cable" && raw.operator && !name.toLowerCase().includes(raw.operator.toLowerCase())) name = `${raw.operator} ${name}`;
-  return { ...raw, category, name, country, network, variable: variable || raw.price <= 0, price: variable ? 0 : raw.price };
+  if (category === "boost" || category === "vpn" || category === "other") {
+    const group = raw.hint.replace(/[_-]+/g, " ").trim();
+    const generic = /^(default|package|custom comments|mentions|subscriptions?|other|boost|smm|activation|vpn|proxy)$/i.test(group);
+    if (group && !generic && group.length < 48 && !/^\d+$/.test(group)) service = titleCase(group);
+  }
+  return { ...raw, category, name, service, country, network, variable, price: variable ? 0 : raw.price };
+}
+
+export type ImportKind = "numbers" | "vtu" | "vpn" | "smm" | "random";
+
+function keptGroup(item: ParsedItem) {
+  const group = item.service.trim();
+  if (group && group !== item.name && group.length < 48) return group;
+  return item.service || "General";
+}
+
+export function shapeImport(items: ParsedItem[], kind: ImportKind, wanted: string[]) {
+  const priced = items.filter((item) => item.price > 0 && !!item.name);
+  if (kind === "numbers") {
+    return priced.filter((item) => (item.category === "numbers" || item.category === "rent") && serviceAllowed(item.service || item.name, wanted));
+  }
+  if (kind === "vtu") {
+    return priced
+      .filter((item) => item.category !== "numbers" && item.category !== "rent" && item.category !== "boost")
+      .map((item) => {
+        if (item.category === "data" || item.category === "airtime" || item.category === "cable" || item.category === "electricity" || item.category === "exam") return item;
+        const blob = `${item.name} ${item.service} ${item.description}`.toLowerCase();
+        const category: Category = /\d+(\.\d+)?\s?(gb|mb)|bundle|\bdata\b/.test(blob) ? "data" : "airtime";
+        return { ...item, category };
+      });
+  }
+  if (kind === "vpn") {
+    return priced
+      .filter((item) => item.category !== "numbers" && item.category !== "rent")
+      .map((item) => ({ ...item, category: "vpn" as const, service: keptGroup(item) || "VPN" }));
+  }
+  if (kind === "smm") {
+    return priced
+      .filter((item) => item.category !== "numbers" && item.category !== "rent")
+      .map((item) => ({ ...item, category: "boost" as const, service: keptGroup(item) || "SMM" }));
+  }
+  return priced.map((item) => {
+    if (item.category !== "other") return item;
+    return { ...item, service: keptGroup(item) || item.service || "Other" };
+  });
 }
 
 function isOperatorQuote(row: unknown): row is Record<string, unknown> {

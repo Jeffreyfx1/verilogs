@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { inputClass } from "@/components/ui";
-import { isLive } from "@/lib/catalog";
+import { isLive, type Product } from "@/lib/catalog";
 import { naira } from "@/lib/money";
+import { browseExtras } from "@/lib/shop-fns";
 import { useStore, useUser } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/extra")({ component: ExtraPage });
@@ -17,10 +18,26 @@ function ExtraPage() {
   const buy = useStore((s) => s.buy);
   const [q, setQ] = useState("");
   const [buying, setBuying] = useState("");
-  const items = useMemo(
-    () => all.filter((p) => !KNOWN.has(p.category) && isLive(p, providers) && (!q || `${p.service} ${p.name}`.toLowerCase().includes(q.toLowerCase()))),
-    [all, providers, q],
-  );
+  const [remote, setRemote] = useState<Product[]>([]);
+  useEffect(() => {
+    let stop = false;
+    const timer = setTimeout(() => {
+      browseExtras({ data: { q } })
+        .then((rows) => {
+          if (!stop) setRemote(rows);
+        })
+        .catch(() => undefined);
+    }, 200);
+    return () => {
+      stop = true;
+      clearTimeout(timer);
+    };
+  }, [q]);
+  const items = useMemo(() => {
+    const seen = new Set(remote.map((row) => row.id));
+    const local = all.filter((p) => !KNOWN.has(p.category) && !seen.has(p.id) && isLive(p, providers) && (!q || `${p.service} ${p.name}`.toLowerCase().includes(q.toLowerCase())));
+    return [...remote, ...local];
+  }, [all, providers, q, remote]);
   const groups = [...items.reduce((map, item) => {
     const key = item.service || item.category || "Other";
     map.set(key, [...(map.get(key) || []), item]);
@@ -39,7 +56,7 @@ function ExtraPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-extrabold">More services</h1>
-      <p className="text-sm text-muted">Anything imported that is not a number, airtime, data or a bill shows up here, grouped by the name the API sent.</p>
+      <p className="text-sm text-muted">VPN, social boost and random imports show here, grouped by the category the API already uses. Numbers, airtime and data stay on their own pages.</p>
       <input className={inputClass} placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />
       {!groups.length ? <p className="text-sm text-muted">No extra services yet. Import an API and turn the rows on.</p> : null}
       {groups.map(([name, rows]) => (
