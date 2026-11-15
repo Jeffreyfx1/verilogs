@@ -40,13 +40,19 @@ export function applyDevice(id: string) {
 
 export function DeviceFrame({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    let saved = "auto";
-    try {
-      saved = localStorage.getItem(KEY) || "auto";
-    } catch {
-      saved = "auto";
-    }
-    applyDevice(saved);
+    applyDevice("auto");
+    const fit = () => {
+      const root = document.documentElement;
+      if (root.dataset.lock !== "1") return;
+      const locked = Number.parseInt(root.style.getPropertyValue("--device-w"), 10);
+      if (locked && window.innerWidth < locked + 32) applyDevice("auto");
+    };
+    window.addEventListener("resize", fit);
+    window.addEventListener("orientationchange", fit);
+    return () => {
+      window.removeEventListener("resize", fit);
+      window.removeEventListener("orientationchange", fit);
+    };
   }, []);
   return (
     <div id="verilogs-app" className="min-h-screen bg-paper">
@@ -58,11 +64,8 @@ export function DeviceFrame({ children }: { children: React.ReactNode }) {
 export function DevicePicker({ compact = false }: { compact?: boolean }) {
   const [id, setId] = useState("auto");
   useEffect(() => {
-    try {
-      setId(localStorage.getItem(KEY) || "auto");
-    } catch {
-      setId("auto");
-    }
+    setId("auto");
+    applyDevice("auto");
   }, []);
   return (
     <label className="flex items-center gap-2 text-xs font-semibold text-muted">

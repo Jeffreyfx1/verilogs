@@ -164,7 +164,7 @@ function PromoCarousel() {
             key={s.id}
             to="/dashboard/numbers"
             search={s.search}
-            className={`promo-slide slide-${s.tone} relative flex min-h-[8.75rem] w-full shrink-0 snap-start items-center gap-3 overflow-hidden rounded-[1.4rem] p-4`}
+            className={`promo-slide slide-${s.tone} relative flex min-h-[8.75rem] w-full shrink-0 snap-start items-center gap-3 overflow-hidden rounded-[1.4rem] p-4 md:w-[calc(50%-0.375rem)] xl:w-[calc(33.333%-0.5rem)]`}
           >
             {s.image ? (
               <img
@@ -241,7 +241,7 @@ function DashHome() {
   return (
     <div className="min-w-0 space-y-4 pb-4">
       <header className="px-0.5">
-        <h1 className="text-[1.7rem] font-extrabold leading-tight text-white">Welcome back</h1>
+        <h1 className="text-[clamp(1.35rem,5vw,1.7rem)] font-extrabold leading-tight text-white">Welcome back</h1>
         <p className="mt-1 text-[13px] font-medium leading-snug text-white/70">Wallet, bills, numbers and verification services in one place.</p>
         <span className="account-pill mt-3 inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[13px] font-bold text-white">
           <ShieldCheck className="size-4 text-violet-300" />
@@ -249,6 +249,7 @@ function DashHome() {
         </span>
       </header>
 
+      <div className="grid items-stretch gap-4 lg:grid-cols-2">
       <section className="balance-card rise relative overflow-hidden rounded-[1.7rem] p-4">
         <span className="balance-orb pointer-events-none absolute -right-16 -top-12 size-60 rounded-full" />
         <div className="relative flex items-start justify-between gap-3">
@@ -265,7 +266,7 @@ function DashHome() {
           </Link>
         </div>
         <div className="relative mt-4 flex items-center gap-3">
-          <p className="text-[2.4rem] font-extrabold leading-none text-white">{showBal ? naira(user.balance) : "₦••••••"}</p>
+          <p className="text-[clamp(1.7rem,7vw,2.6rem)] font-extrabold leading-none text-white">{showBal ? naira(user.balance) : "₦••••••"}</p>
           <button type="button" aria-label={showBal ? "Hide balance" : "Show balance"} onClick={() => setShowBal((v) => !v)} className="balance-glass grid size-11 place-items-center rounded-full text-white">
             {showBal ? <Eye className="size-5" /> : <EyeOff className="size-5" />}
           </button>
@@ -284,7 +285,6 @@ function DashHome() {
         </div>
       </section>
 
-      {/* ================= TIER BANNER ================= */}
       <section className="tier-card rise relative min-h-[9.75rem] overflow-hidden rounded-[1.6rem]">
         <img
           src={TIER_IMAGE}
@@ -329,8 +329,8 @@ function DashHome() {
           </Link>
         </div>
       </section>
+      </div>
 
-      {/* ================= PROMO SLIDES ================= */}
       <PromoCarousel />
 
       {/* ================= QUICK SERVICES ================= */}
@@ -351,7 +351,7 @@ function DashHome() {
           </button>
         </div>
 
-        <div className="mt-3 grid grid-cols-4 gap-2.5">
+        <div className="mt-3 grid grid-cols-4 gap-2.5 sm:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
           {tiles.map((q) => (
             <Link
               key={q.label}

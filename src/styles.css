@@ -664,16 +664,12 @@ html[data-form="phone"] .scroll-pane {
 }
 
 .wallet-band {
-  width: calc(100% + 1.15rem);
-  margin-left: -0.575rem;
-  margin-right: -0.575rem;
+  width: 100%;
+  max-width: 100%;
   border-radius: 1.85rem;
 }
 @media (min-width: 640px) {
   .wallet-band {
-    width: calc(100% + 0.5rem);
-    margin-left: -0.25rem;
-    margin-right: -0.25rem;
     border-radius: 2rem;
   }
 }
