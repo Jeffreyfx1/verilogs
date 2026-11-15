@@ -677,3 +677,26 @@ html[data-form="phone"] .scroll-pane {
     border-radius: 2rem;
   }
 }
+
+.account-pill {
+  background: #1a0a38cc;
+  border: 1px solid #7c3aed99;
+  box-shadow: 0 0 12px #7c3aed44;
+}
+
+.balance-card {
+  background: linear-gradient(145deg, #4c1d95 0%, #2d0e66 55%, #1a0840 100%);
+  border: 1.5px solid #a855f7;
+  box-shadow: 0 0 18px #9333ea88, 0 0 40px #6d28d944, inset 0 0 30px #7c3aed33;
+}
+
+.balance-orb {
+  background: radial-gradient(circle, #ffffff1f 0%, #ffffff10 60%, transparent 70%);
+}
+
+.balance-glass {
+  background: #ffffff1a;
+  border: 1px solid #ffffff33;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}

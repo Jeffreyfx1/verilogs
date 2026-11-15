@@ -5,6 +5,8 @@ import {
   ArrowRight,
   ChevronRight,
   Crown,
+  Eye,
+  EyeOff,
   FileDigit,
   FileText,
   Flag,
@@ -13,16 +15,19 @@ import {
   MessageCircle,
   MessageSquareMore,
   MonitorPlay,
+  Plus,
   Send,
+  ShieldCheck,
   Signal,
   Smartphone,
   SquarePlay,
+  UserRound,
   Users,
   Zap,
 } from "lucide-react";
 
 import { TIER_IMAGE, UK_IMAGE } from "@/lib/dashboard-images";
-import { when } from "@/lib/money";
+import { naira, when } from "@/lib/money";
 import { useStore, useUser } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/")({
@@ -224,13 +229,61 @@ function DashHome() {
 
   const latestTxn = txns[0];
   const [open, setOpen] = useState(true);
+  const [showBal, setShowBal] = useState(true);
+  const orders = useStore((s) => s.orders);
 
   if (!user) return null;
 
   const tiles = open ? quick : quick.slice(0, 8);
+  const code = `VER-${user.id.slice(-4).toUpperCase()}`;
+  const totalOtp = orders.filter((order) => order.userId === user.id && (order.category === "numbers" || order.category === "rent") && (order.status === "completed" || order.status === "received")).length;
 
   return (
     <div className="min-w-0 space-y-4 pb-4">
+      <header className="px-0.5">
+        <h1 className="text-[1.7rem] font-extrabold leading-tight text-white">Welcome back</h1>
+        <p className="mt-1 text-[13px] font-medium leading-snug text-white/70">Wallet, bills, numbers and verification services in one place.</p>
+        <span className="account-pill mt-3 inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[13px] font-bold text-white">
+          <ShieldCheck className="size-4 text-violet-300" />
+          Tier 1 Account
+        </span>
+      </header>
+
+      <section className="balance-card rise relative overflow-hidden rounded-[1.7rem] p-4">
+        <span className="balance-orb pointer-events-none absolute -right-16 -top-12 size-60 rounded-full" />
+        <div className="relative flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold tracking-[0.18em] text-white/80">AVAILABLE BALANCE</p>
+            <span className="balance-glass mt-3 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold text-white">
+              <UserRound className="size-4" />
+              {code}
+            </span>
+          </div>
+          <Link to="/dashboard/wallet" className="balance-glass inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold whitespace-nowrap text-white">
+            <Plus className="size-4" />
+            Fund Wallet
+          </Link>
+        </div>
+        <div className="relative mt-4 flex items-center gap-3">
+          <p className="text-[2.4rem] font-extrabold leading-none text-white">{showBal ? naira(user.balance) : "₦••••••"}</p>
+          <button type="button" aria-label={showBal ? "Hide balance" : "Show balance"} onClick={() => setShowBal((v) => !v)} className="balance-glass grid size-11 place-items-center rounded-full text-white">
+            {showBal ? <Eye className="size-5" /> : <EyeOff className="size-5" />}
+          </button>
+        </div>
+        <div className="relative mt-4 grid grid-cols-2 gap-3">
+          <div className="balance-glass rounded-2xl p-3">
+            <p className="text-[11px] font-bold tracking-wider text-white/80">TOTAL OTP</p>
+            <p className="mt-2 text-lg font-extrabold text-white">{totalOtp}</p>
+            <p className="mt-0.5 text-xs font-medium text-white/60">Verified</p>
+          </div>
+          <div className="balance-glass rounded-2xl p-3">
+            <p className="text-[11px] font-bold tracking-wider text-white/80">KYC LEVEL</p>
+            <p className="mt-2 text-lg font-extrabold text-white">Tier 1</p>
+            <p className="mt-0.5 text-xs font-medium text-white/60">In Progress</p>
+          </div>
+        </div>
+      </section>
+
       {/* ================= TIER BANNER ================= */}
       <section className="tier-card rise relative min-h-[9.75rem] overflow-hidden rounded-[1.6rem]">
         <img
