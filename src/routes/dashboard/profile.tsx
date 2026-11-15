@@ -30,7 +30,7 @@ function ProfilePage() {
       ) : null}
       <section className="grid gap-4 rounded-card border border-line bg-card p-5 shadow-card md:grid-cols-2">
         <div className="grid place-items-center">
-          <div className="grid size-24 place-items-center rounded-card bg-primary text-3xl font-extrabold text-on-primary">{user.name.slice(0, 1).toUpperCase()}</div>
+          <div className="grid size-24 place-items-center rounded-card bg-primary text-3xl font-extrabold text-on-primary">{(user.name || "V").slice(0, 1).toUpperCase()}</div>
           <p className="mt-2 text-center text-sm font-semibold">{user.name}</p>
         </div>
         <form className="space-y-3" onSubmit={async (e) => { e.preventDefault(); const err = await update({ name, phone }); if (err) toast.error(err); else toast.success("Profile saved"); }}>

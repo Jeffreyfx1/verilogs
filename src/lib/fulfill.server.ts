@@ -39,8 +39,9 @@ function planId(product: Product) {
 }
 
 function networkId(product: Product) {
-  if (/^\d+$/.test(product.operator.trim())) return Number(product.operator);
-  return SME_NET[product.network.trim().toLowerCase()] || 0;
+  const operator = String(product.operator || "").trim();
+  if (/^\d+$/.test(operator)) return Number(operator);
+  return SME_NET[String(product.network || "").trim().toLowerCase()] || 0;
 }
 
 async function readBody(res: Response) {

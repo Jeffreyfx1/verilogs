@@ -220,7 +220,17 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
         operatorPrices: operatorMarkupsOf(provider.operatorPrices),
       };
     }),
-    products: src.products ?? [],
+    products: (src.products ?? []).map((product) => ({
+      ...product,
+      name: product.name || "",
+      service: product.service || product.name || "",
+      country: product.country || "",
+      network: product.network || "",
+      operator: product.operator || "",
+      rates: product.rates || "",
+      validity: product.validity || "",
+      description: product.description || "",
+    })),
     orders: src.orders ?? [],
     txns: src.txns ?? [],
     tickets: src.tickets ?? [],
@@ -241,8 +251,8 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
       brand: incoming?.brand || base.brand,
       supportWelcome: incoming?.supportWelcome || base.supportWelcome,
       popup: { ...base.popup, ...incoming?.popup },
-      wantedServices: incoming?.wantedServices?.map((name) => name.trim()).filter(Boolean).slice(0, 200).length
-        ? incoming.wantedServices.map((name) => name.trim()).filter(Boolean).slice(0, 200)
+      wantedServices: Array.isArray(incoming?.wantedServices) && incoming.wantedServices.length
+        ? incoming.wantedServices.map((name) => String(name || "").trim()).filter(Boolean).slice(0, 200)
         : base.wantedServices,
     },
   };
@@ -340,14 +350,14 @@ export function operatorMarkupsOf(input: unknown): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
     const markup = Number(value);
-    const name = key.trim().toLowerCase();
+    const name = String(key || "").trim().toLowerCase();
     if (name && markup > 0) out[name] = markup;
   }
   return out;
 }
 
 export function markupFor(provider: Pick<Provider, "markup" | "operatorMarkups">, operator: string) {
-  const custom = provider.operatorMarkups?.[operator.trim().toLowerCase()];
+  const custom = provider.operatorMarkups?.[String(operator || "").trim().toLowerCase()];
   if (custom && custom > 0) return custom;
   return provider.markup > 0 ? provider.markup : 1;
 }
@@ -370,8 +380,8 @@ function spreadPrice(seed: string) {
 export const USA_WA_PRICES = [4600, 4800, 4950];
 
 export function isUsaWhatsapp(country: string, service: string) {
-  const place = country.trim().toLowerCase();
-  const name = service.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const place = String(country || "").trim().toLowerCase();
+  const name = String(service || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const usa = place === "united states" || place === "usa" || place === "us" || place === "america";
   return usa && (name === "whatsapp" || name === "wa");
 }
@@ -382,7 +392,7 @@ export function usaWhatsappPrice(rank: number) {
 
 export function rankUsaWhatsapp<T extends { id: string; operator: string; rate: number }>(rows: T[]) {
   return [...rows]
-    .sort((a, b) => b.rate - a.rate || a.operator.localeCompare(b.operator) || a.id.localeCompare(b.id))
+    .sort((a, b) => b.rate - a.rate || String(a.operator || "").localeCompare(String(b.operator || "")) || a.id.localeCompare(b.id))
     .map((row, index) => ({ ...row, price: usaWhatsappPrice(index) }));
 }
 
@@ -409,13 +419,14 @@ export function sellPrice(cost: number, currency: "NGN" | "USD", _rate: number, 
 export function quoteProduct(product: Product, doc: Pick<Data, "providers" | "settings">): Product {
   const provider = doc.providers.find((item) => item.id === product.providerId);
   if (!provider) return product;
-  const fixed = provider.operatorPrices?.[product.operator.trim().toLowerCase()];
+  const operator = String(product.operator || "").trim().toLowerCase();
+  const fixed = provider.operatorPrices?.[operator];
   if (fixed && fixed > 0) return { ...product, price: Math.ceil(fixed / 5) * 5 };
   if (!(product.cost > 0) || product.variable) return product;
   if (provider.currency === "USD" && product.cost > 500) return product;
-  const five = /5sim/i.test(`${provider.name} ${provider.baseUrl}`);
-  const fallback = provider.markup > 0 ? provider.markup : five ? 1.6 : 1 + doc.settings.margin / 100;
-  const custom = provider.operatorMarkups?.[product.operator.trim().toLowerCase()];
+  const five = /5sim/i.test(`${provider.name || ""} ${provider.baseUrl || ""}`);
+  const fallback = provider.markup > 0 ? provider.markup : five ? 1.6 : 1 + (doc.settings?.margin || 0) / 100;
+  const custom = provider.operatorMarkups?.[operator];
   const price = sellPrice(product.cost, provider.currency, USD_NGN, custom && custom > 0 ? custom : fallback, `${product.externalId}|${product.name}|${product.country}|${product.operator}`, product.category);
   return price > 0 ? { ...product, price } : product;
 }

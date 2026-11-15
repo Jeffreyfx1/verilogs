@@ -172,14 +172,14 @@ export function networkOf(blob: string): string {
 }
 
 function countryOf(key: string): string {
-  const normalized = key.trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  const normalized = String(key || "").trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
   if (COUNTRIES[normalized]) return COUNTRIES[normalized];
   const squashed = normalized.replace(/\s+/g, "");
   return COUNTRIES[squashed] || EXTRA_COUNTRIES[normalized] || EXTRA_COUNTRIES[squashed] || "";
 }
 
 export function isCountrySlug(key: string) {
-  const name = key.trim().toLowerCase();
+  const name = String(key || "").trim().toLowerCase();
   return name === "any" || !!countryOf(name);
 }
 
@@ -339,11 +339,12 @@ function prettyCountry(raw: string) {
 
 function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedItem {
   const blob = `${raw.hint} ${raw.name} ${raw.service} ${raw.description} ${raw.network}`.toLowerCase();
-  const hint = raw.hint.toLowerCase();
+  const hint = String(raw.hint || "").toLowerCase();
   const boost = hint === "boost" || hint === "smm" || /^(default|package|custom comments|mentions|subscriptions?|poll)$/.test(hint.trim()) || /\b(smm|boost|followers?|likes?|views?|subscribers?|comments?|watchtime|impressions?|retweets?)\b/.test(blob);
-  const countryOk = !!countryOf(raw.country) || (!!raw.country && raw.country.toLowerCase() !== "any" && /^(any|virtual\d+)$/i.test(raw.operator.trim()));
+  const operator = String(raw.operator || "").trim();
+  const countryOk = !!countryOf(raw.country) || (!!raw.country && String(raw.country).toLowerCase() !== "any" && /^(any|virtual\d+)$/i.test(operator));
   const rent = !boost && countryOk && (hint === "rent" || hint === "hosting" || /\b(hosting|rent)\b/.test(blob));
-  const sms = !boost && countryOk && (rent || hint === "numbers" || hint === "activation" || /^(any|virtual\d+)$/i.test(raw.operator.trim()));
+  const sms = !boost && countryOk && (rent || hint === "numbers" || hint === "activation" || /^(any|virtual\d+)$/i.test(operator));
   const looksData = !sms && !boost && (hint === "data" || /data|\d+(\.\d+)?\s?(gb|mb)|bundle|sme|gifting|\bcg\b/.test(blob));
   let category: Category = "other";
   if (rent) category = "rent";

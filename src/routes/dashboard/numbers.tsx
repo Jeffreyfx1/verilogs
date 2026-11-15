@@ -28,11 +28,11 @@ const FLAGS: Record<string, string> = {
 };
 
 function flag(name: string) {
-  return FLAGS[name.toLowerCase()] || "🌐";
+  return FLAGS[String(name || "").toLowerCase()] || "🌐";
 }
 
 function countryHit(name: string, query: string) {
-  const n = name.toLowerCase();
+  const n = String(name || "").toLowerCase();
   const q = query.toLowerCase().trim();
   if (!q) return true;
   if (n.includes(q)) return true;

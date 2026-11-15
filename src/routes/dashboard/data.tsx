@@ -28,7 +28,7 @@ function DataPage() {
   const [net, setNet] = useState(present[0] || "MTN");
   const [phone, setPhone] = useState("");
   const [q, setQ] = useState("");
-  const shown = plans.filter((p) => (net === "Other" ? !ORDER.includes(p.network) : p.network === net) && (!q || p.name.toLowerCase().includes(q.toLowerCase())));
+  const shown = plans.filter((p) => (net === "Other" ? !ORDER.includes(p.network) : p.network === net) && (!q || (p.name || "").toLowerCase().includes(q.toLowerCase())));
 
   const purchase = async (id: string) => {
     if (phone.trim().length < 8) return toast.error("Enter the phone number that should receive the data.");

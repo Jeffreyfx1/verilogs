@@ -235,7 +235,7 @@ function DashHome() {
   if (!user) return null;
 
   const tiles = open ? quick : quick.slice(0, 8);
-  const code = `VER-${user.id.slice(-4).toUpperCase()}`;
+  const code = `VER-${String(user.id || "0000").slice(-4).toUpperCase()}`;
   const totalOtp = orders.filter((order) => order.userId === user.id && (order.category === "numbers" || order.category === "rent") && (order.status === "completed" || order.status === "received")).length;
 
   return (

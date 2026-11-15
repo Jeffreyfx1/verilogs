@@ -27,7 +27,7 @@ function BillsPage() {
   const [detail, setDetail] = useState("");
   const [amount, setAmount] = useState("2000");
   const [q, setQ] = useState("");
-  const list = products.filter((p) => p.category === tab && (!q || p.name.toLowerCase().includes(q.toLowerCase())));
+  const list = products.filter((p) => p.category === tab && (!q || (p.name || "").toLowerCase().includes(q.toLowerCase())));
   const purchase = async (p: Product) => {
     if (phone.trim().length < 8 && tab !== "exam" && tab !== "giftcard") return toast.error("Enter a phone number.");
     const err = await buy(p.id, { phone, detail, amount: p.variable ? Number(amount) : undefined });
