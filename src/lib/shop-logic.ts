@@ -254,7 +254,7 @@ export function setProvider(data: Data, userId: string | null, id: string, patch
   const products = provider
     ? data.products.map((product) => {
         if (product.providerId !== id || !(product.cost > 0)) return product;
-        const price = sellPrice(product.cost, provider.currency, provider.usdRate, markupFor(provider, product.operator));
+        const price = sellPrice(product.cost, provider.currency, provider.usdRate, markupFor(provider, product.operator), `${product.externalId}|${product.name}|${product.country}|${product.operator}`, product.category);
         return price > 0 && price !== product.price ? { ...product, price } : product;
       })
     : data.products;

@@ -353,35 +353,45 @@ export function markupFor(provider: Pick<Provider, "markup" | "operatorMarkups">
 }
 
 export const USD_NGN = 1343;
-export const MIN_SELL = 2000;
+
+const BILL_PRICE = new Set(["airtime", "data", "cable", "electricity", "exam"]);
+
+function spreadPrice(seed: string) {
+  let hash = 2166136261;
+  const text = seed || "price";
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const slots = (2700 - 1850) / 50 + 1;
+  return 1850 + ((hash >>> 0) % slots) * 50;
+}
 
 export function nairaCost(cost: number, currency: "NGN" | "USD") {
   if (!(cost > 0)) return 0;
   return Math.round(currency === "USD" ? cost * USD_NGN : cost);
 }
 
-export function sellPrice(cost: number, currency: "NGN" | "USD", _rate: number, markup: number) {
+export function sellPrice(cost: number, currency: "NGN" | "USD", _rate: number, markup: number, seed = "", category = "") {
   const ngn = nairaCost(cost, currency);
   if (ngn <= 0) return 0;
-  if (ngn < MIN_SELL) return MIN_SELL;
   const factor = markup > 0 ? markup : 1;
-  return Math.ceil((ngn * factor) / 5) * 5;
+  const priced = Math.ceil((ngn * factor) / 5) * 5;
+  if (BILL_PRICE.has(category) || priced > 2000) return priced;
+  return spreadPrice(seed || `${category}|${ngn}|${factor}`);
 }
 
 export function quoteProduct(product: Product, doc: Pick<Data, "providers" | "settings">): Product {
   const provider = doc.providers.find((item) => item.id === product.providerId);
   if (!provider) return product;
   const fixed = provider.operatorPrices?.[product.operator.trim().toLowerCase()];
-  if (fixed && fixed > 0) {
-    const price = Math.ceil(fixed / 5) * 5;
-    return { ...product, price: price < MIN_SELL ? MIN_SELL : price };
-  }
+  if (fixed && fixed > 0) return { ...product, price: Math.ceil(fixed / 5) * 5 };
   if (!(product.cost > 0) || product.variable) return product;
   if (provider.currency === "USD" && product.cost > 500) return product;
   const five = /5sim/i.test(`${provider.name} ${provider.baseUrl}`);
   const fallback = provider.markup > 0 ? provider.markup : five ? 1.6 : 1 + doc.settings.margin / 100;
   const custom = provider.operatorMarkups?.[product.operator.trim().toLowerCase()];
-  const price = sellPrice(product.cost, provider.currency, USD_NGN, custom && custom > 0 ? custom : fallback);
+  const price = sellPrice(product.cost, provider.currency, USD_NGN, custom && custom > 0 ? custom : fallback, `${product.externalId}|${product.name}|${product.country}|${product.operator}`, product.category);
   return price > 0 ? { ...product, price } : product;
 }
 
@@ -485,7 +495,7 @@ export function applyImportSlice(
   for (const item of input.items) {
     tally.byCategory[item.category] = (tally.byCategory[item.category] || 0) + 1;
     if (item.network) tally.byNetwork[item.network] = (tally.byNetwork[item.network] || 0) + 1;
-    const price = sellPrice(item.price, provider.currency, provider.usdRate, markupFor(provider, item.operator || ""));
+    const price = sellPrice(item.price, provider.currency, provider.usdRate, markupFor(provider, item.operator || ""), `${item.externalId}|${item.name}|${item.country}|${item.operator}`, item.category);
     const existing = byExternal.get(item.externalId);
     if (existing) {
       existing.name = item.name;
@@ -673,7 +683,7 @@ export function repairCatalog(doc: Data): Data {
   const priced = products.map((product) => {
     const provider = providers.find((item) => item.id === product.providerId);
     if (!provider || !(product.cost > 0)) return product;
-    const price = sellPrice(product.cost, provider.currency, provider.usdRate, provider.markup);
+    const price = sellPrice(product.cost, provider.currency, provider.usdRate, provider.markup, `${product.externalId}|${product.name}|${product.country}|${product.operator}`, product.category);
     if (price > 0 && price !== product.price) {
       changed = true;
       return { ...product, price };

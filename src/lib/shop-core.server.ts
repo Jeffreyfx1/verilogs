@@ -963,7 +963,7 @@ async function stepFromMemory(jobId: string) {
         service: item.service,
         country: item.country,
         network: item.network,
-        price: sellPrice(item.price, held.provider.currency, held.provider.usdRate, markupFor(held.provider, item.operator || "")),
+        price: sellPrice(item.price, held.provider.currency, held.provider.usdRate, markupFor(held.provider, item.operator || ""), `${item.externalId}|${item.name}|${item.country}|${item.operator}`, item.category),
         cost: item.price,
         stock: item.stock,
         operator: item.operator || "",
