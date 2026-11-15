@@ -291,7 +291,7 @@ function ImportPage() {
           <Field label="Markup" hint="5sim uses 1.6. A $0.10 number becomes 0.10 × rate × markup.">
             <input className={inputClass} inputMode="decimal" value={markup} onChange={(e) => setMarkup(Number(e.target.value))} />
           </Field>
-          <p className="text-xs text-muted">Example: $0.10 sells at ₦{Math.ceil((0.1 * (usdRate || 0) * (markup || 1)) / 5) * 5}. Prices update on the next import.</p>
+          <p className="text-xs text-muted">Example: $0.10 sells at ₦{Math.ceil((0.1 * (usdRate || 0) * (markup || 1)) / 5) * 5}. Prices update on the next import. Airtime, data, bills and VPN JSON import as those categories. They only show up as an SMS server if the file actually contains numbers.</p>
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} className="mt-1" />
             <span>Put new services live immediately. Leave this off if you want to review first. Already-enabled rows stay as they are.</span>
