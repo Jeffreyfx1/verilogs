@@ -1,4 +1,6 @@
 {
   "title": "VeriLogs",
-  "card": "custom"
+  "description": "Virtual numbers, data, airtime and bills. Fund a naira wallet and buy in one place.",
+  "card": "custom",
+  "image": "/og.jpg"
 }

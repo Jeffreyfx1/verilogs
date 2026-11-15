@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
 import { useStore, useUser } from "@/lib/store";
@@ -10,6 +11,8 @@ function ProfilePage() {
   const user = useUser();
   const update = useStore((s) => s.updateProfile);
   const change = useStore((s) => s.changePassword);
+  const logout = useStore((s) => s.logout);
+  const nav = useNavigate();
   const [name, setName] = useState(user?.name || "");
   const [phone, setPhone] = useState(user?.phone || "");
   const [oldPw, setOldPw] = useState("");
@@ -56,6 +59,17 @@ function ProfilePage() {
         </div>
         <Button type="submit" className="w-full">Save password</Button>
       </form>
+      <button
+        type="button"
+        onClick={() => {
+          logout();
+          nav({ to: "/login" });
+        }}
+        className="flex w-full items-center justify-center gap-2 rounded-card border border-line bg-card px-4 py-3 text-sm font-bold text-danger"
+      >
+        <LogOut className="size-4" />
+        Log out
+      </button>
     </div>
   );
 }
