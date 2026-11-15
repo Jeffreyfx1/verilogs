@@ -1,7 +1,7 @@
 import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/react-start/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
-import { freshData, isLive, normalizeData, quoteProduct, repairCatalog, sellPrice, markupFor, withMargin, serverLabel, topupQuote, withAdminLogin, applyImportSlice, type Data, type Product, type SyncReport } from "@/lib/catalog";
+import { freshData, isLive, isUsaWhatsapp, normalizeData, quoteProduct, rankUsaWhatsapp, repairCatalog, sellPrice, markupFor, usaWhatsappPrice, withMargin, serverLabel, topupQuote, withAdminLogin, applyImportSlice, type Data, type Product, type SyncReport } from "@/lib/catalog";
 import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, shapeImport, airtimeProductsFromPayload, MAJOR_SERVICES, type ImportKind, type ParsedItem } from "@/lib/categorize";
 import { IMPORT_BATCH, importBatchCount } from "@/lib/import-batch";
 import { uid } from "@/lib/money";
@@ -521,9 +521,14 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
   const quoted = found ? quoteProduct(found, doc) : null;
   const provider = quoted && doc.providers.find((item) => item.id === quoted.providerId && item.enabled);
   if (!quoted?.enabled || !provider) return { error: "That service is not available.", data: doc };
+  let sticker = quoted.price;
+  if (isUsaWhatsapp(quoted.country, quoted.service)) {
+    const siblings = await queryOperators({ providerId: quoted.providerId, category: quoted.category === "rent" ? "rent" : "numbers", country: quoted.country, service: quoted.service, q: "", admin: false, enabledProviderIds: [quoted.providerId] });
+    sticker = rankUsaWhatsapp(siblings).find((row) => row.id === quoted.id)?.price || usaWhatsappPrice(0);
+  }
   const ready = { ...doc, products: [quoted, ...doc.products.filter((item) => item.id !== quoted.id)] };
   const user = userId ? ready.users.find((item) => item.id === userId) : null;
-  const face = quoted.variable ? Math.round(extra.amount || 0) : quoted.price;
+  const face = quoted.variable ? Math.round(extra.amount || 0) : sticker;
   const charge = quoted.variable && (quoted.category === "airtime" || quoted.category === "electricity") ? withMargin(face, markupFor(provider, quoted.operator)) : face;
   if (!user) return { error: "Sign in first.", data: doc };
   if (quoted.category === "airtime" && (face < 50 || face > 50000)) return { error: "Airtime must be between ₦50 and ₦50,000.", data: doc };
@@ -1182,7 +1187,7 @@ export async function browseNumbers(input: { providerId?: string; category?: str
     const rows = await queryServices(query);
     const best = new Map<string, number>();
     for (const row of rows) {
-      const price = quoteProduct(
+      const price = isUsaWhatsapp(input.country || "", row.service) ? usaWhatsappPrice(0) : quoteProduct(
         { id: "", providerId: row.providerId, externalId: "", category: want, name: row.service, service: row.service, country: "", network: "", price: row.price, cost: row.cost, stock: 0, operator: "", rate: 0, rates: "", enabled: true, validity: "", variable: false, description: "" },
         doc,
       ).price;
@@ -1196,7 +1201,8 @@ export async function browseNumbers(input: { providerId?: string; category?: str
     return { ...empty, countries };
   }
   if (input.detail && input.service && input.country) {
-    const operators = (await queryOperators(query)).map((row) => quoteProduct(row, doc)).sort((a, b) => a.price - b.price);
+    const rows = (await queryOperators(query)).map((row) => quoteProduct(row, doc));
+    const operators = isUsaWhatsapp(input.country, input.service) ? rankUsaWhatsapp(rows).sort((a, b) => a.price - b.price) : rows.sort((a, b) => a.price - b.price);
     return { ...empty, operators };
   }
   if (input.list === "services" || !input.service) return { ...empty, services: await serviceList() };

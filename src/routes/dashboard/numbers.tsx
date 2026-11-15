@@ -214,6 +214,7 @@ function NumbersPage() {
             {operators.map((op) => (
               <article key={op.id} className="rounded-2xl border border-line bg-paper p-3">
                 <p className="font-extrabold">{op.operator || "any"} <span className="text-sm font-bold text-ok">Stock: {op.stock.toLocaleString("en-US")}</span></p>
+                {op.rate > 0 ? <p className="text-xs font-bold text-muted">Success {op.rate}%</p> : op.rates ? <p className="text-xs font-bold text-muted">{op.rates}</p> : null}
                 <p className="text-lg font-extrabold text-ok">{naira(op.price)}</p>
                 <button type="button" disabled={buying === op.id} className="mt-2 inline-flex items-center gap-2 rounded-xl bg-violet-700 px-5 py-2 text-sm font-extrabold text-white disabled:opacity-60" onClick={() => {
                   if ((user?.balance || 0) < op.price) {

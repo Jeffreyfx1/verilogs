@@ -367,6 +367,25 @@ function spreadPrice(seed: string) {
   return 1850 + ((hash >>> 0) % slots) * 50;
 }
 
+export const USA_WA_PRICES = [4600, 4800, 4950];
+
+export function isUsaWhatsapp(country: string, service: string) {
+  const place = country.trim().toLowerCase();
+  const name = service.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const usa = place === "united states" || place === "usa" || place === "us" || place === "america";
+  return usa && (name === "whatsapp" || name === "wa");
+}
+
+export function usaWhatsappPrice(rank: number) {
+  return USA_WA_PRICES[Math.min(Math.max(0, rank), USA_WA_PRICES.length - 1)];
+}
+
+export function rankUsaWhatsapp<T extends { id: string; operator: string; rate: number }>(rows: T[]) {
+  return [...rows]
+    .sort((a, b) => b.rate - a.rate || a.operator.localeCompare(b.operator) || a.id.localeCompare(b.id))
+    .map((row, index) => ({ ...row, price: usaWhatsappPrice(index) }));
+}
+
 export function withMargin(amount: number, markup: number) {
   if (!(amount > 0)) return 0;
   const factor = markup > 0 ? markup : 1;
