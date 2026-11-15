@@ -99,7 +99,7 @@ const quick = [
   { to: "/dashboard/bills", label: "TV Sub", icon: MonitorPlay },
   { to: "/dashboard/bills", label: "Electricity", icon: Zap },
   { to: "/dashboard/numbers", label: "Buy Number", icon: FileDigit, search: buySearch },
-  { to: "/dashboard/history", label: "Buy Logs", icon: FileText },
+  { to: "/dashboard/extra", label: "Buy Logs", icon: FileText },
   { to: "/dashboard/numbers", label: "Rent Number", icon: Crown, search: rentSearch },
   { to: "/dashboard/announcements", label: "Posts", icon: MessageSquareMore },
   { to: "/faq", label: "Tutorials", icon: SquarePlay },
