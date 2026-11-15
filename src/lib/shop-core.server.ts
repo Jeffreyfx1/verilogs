@@ -1281,28 +1281,51 @@ function localAnswer(q: string, doc: Data) {
   return `${doc.settings.supportWelcome} You can also open ${doc.settings.telegram}.`;
 }
 
+export function publicOrigin(request: Request) {
+  const url = new URL(request.url);
+  const forwarded = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
+  const host = forwarded.split(",")[0].trim();
+  const proto = (request.headers.get("x-forwarded-proto") || "https").split(",")[0].trim();
+  if (host && !/localhost|127\.0\.0\.1/i.test(host)) return `${proto}://${host}`.replace(/\/$/, "");
+  return (process.env.APP_URL || url.origin).replace(/\/$/, "");
+}
+
+export function googleRedirect(origin: string) {
+  return origin.replace(/\/$/, "") + "/api/google/callback";
+}
+
 export function googleConfigured() {
   return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 }
 
-export function googleStartUrl(origin: string) {
-  const id = process.env.GOOGLE_CLIENT_ID || "";
-  const redirect = origin.replace(/\/$/, "") + "/api/google/callback";
+export function googleStartUrl(redirect: string) {
+  const id = (process.env.GOOGLE_CLIENT_ID || "").trim();
   const auth = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   auth.searchParams.set("client_id", id);
   auth.searchParams.set("redirect_uri", redirect);
   auth.searchParams.set("response_type", "code");
   auth.searchParams.set("scope", "openid email profile");
   auth.searchParams.set("prompt", "select_account");
+  auth.searchParams.set("include_granted_scopes", "true");
   return auth.toString();
 }
 
-export async function googleExchange(code: string, origin: string) {
-  const redirect = origin.replace(/\/$/, "") + "/api/google/callback";
+function googleProfile(idToken: string) {
+  try {
+    const part = idToken.split(".")[1] || "";
+    const json = Buffer.from(part, "base64url").toString("utf8");
+    const payload = JSON.parse(json) as { email?: string; name?: string };
+    return { email: payload.email || "", name: payload.name || "" };
+  } catch {
+    return { email: "", name: "" };
+  }
+}
+
+export async function googleExchange(code: string, redirect: string) {
   const body = new URLSearchParams({
     code,
-    client_id: process.env.GOOGLE_CLIENT_ID || "",
-    client_secret: process.env.GOOGLE_CLIENT_SECRET || "",
+    client_id: (process.env.GOOGLE_CLIENT_ID || "").trim(),
+    client_secret: (process.env.GOOGLE_CLIENT_SECRET || "").trim(),
     redirect_uri: redirect,
     grant_type: "authorization_code",
   });
@@ -1311,12 +1334,26 @@ export async function googleExchange(code: string, origin: string) {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
-  const token = (await tokenRes.json()) as { access_token?: string };
-  if (!token.access_token) return null;
-  const profileRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
-    headers: { Authorization: `Bearer ${token.access_token}` },
-  });
-  const profile = (await profileRes.json()) as { email?: string; name?: string };
-  if (!profile.email) return null;
-  return connectGoogle({ email: profile.email, name: profile.name || profile.email });
+  const token = (await tokenRes.json()) as { access_token?: string; id_token?: string; error?: string; error_description?: string };
+  if (!token.access_token && !token.id_token) {
+    return { error: token.error_description || token.error || "Google rejected the sign-in.", needsPhone: false, role: "customer" as const, token: "" };
+  }
+  let email = "";
+  let name = "";
+  if (token.id_token) {
+    const fromId = googleProfile(token.id_token);
+    email = fromId.email;
+    name = fromId.name;
+  }
+  if (!email && token.access_token) {
+    const profileRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: { Authorization: `Bearer ${token.access_token}` },
+    });
+    const profile = (await profileRes.json()) as { email?: string; name?: string };
+    email = profile.email || "";
+    name = name || profile.name || "";
+  }
+  if (!email) return { error: "Google did not share an email for this account.", needsPhone: false, role: "customer" as const, token: "" };
+  const linked = await connectGoogle({ email, name: name || email });
+  return { error: null as string | null, ...linked };
 }

@@ -42,7 +42,7 @@
   input,
   select,
   textarea {
-    font-size: 16px;
+    font-size: 16px !important;
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {
@@ -370,7 +370,15 @@ html[data-form="phone"] .stat-row {
 .shell-screen {
   height: 100vh;
   height: 100svh;
+  width: 100%;
   max-width: 100%;
+  overflow-x: hidden;
+}
+
+@media (max-width: 1023px) {
+  .shell-aside {
+    position: fixed !important;
+  }
 }
 
 .bottom-nav {

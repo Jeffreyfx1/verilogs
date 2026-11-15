@@ -151,20 +151,21 @@ function PromoCarousel() {
 
   return (
     <div>
+      <div className="min-w-0 max-w-full overflow-hidden">
       <div
         ref={trackRef}
         onScroll={onScroll}
         onPointerDown={() => (paused.current = true)}
         onPointerUp={() => window.setTimeout(() => (paused.current = false), 3000)}
         onPointerCancel={() => (paused.current = false)}
-        className="no-scrollbar flex snap-x snap-mandatory gap-3 overflow-x-auto"
+        className="no-scrollbar flex w-full min-w-0 snap-x snap-mandatory gap-3 overflow-x-auto"
       >
         {slides.map((s) => (
           <Link
             key={s.id}
             to="/dashboard/numbers"
             search={s.search}
-            className={`promo-slide slide-${s.tone} relative flex min-h-[8.75rem] w-full shrink-0 snap-start items-center gap-3 overflow-hidden rounded-[1.4rem] p-4 md:w-[calc(50%-0.375rem)] xl:w-[calc(33.333%-0.5rem)]`}
+            className={`promo-slide slide-${s.tone} relative flex min-h-[8.75rem] w-full min-w-full max-w-full shrink-0 basis-full snap-start items-center gap-3 overflow-hidden rounded-[1.4rem] p-4 md:min-w-0 md:max-w-none md:basis-auto md:w-[calc(50%-0.375rem)] xl:w-[calc(33.333%-0.5rem)]`}
           >
             {s.image ? (
               <img
@@ -208,6 +209,7 @@ function PromoCarousel() {
             }`}
           />
         ))}
+      </div>
       </div>
     </div>
   );

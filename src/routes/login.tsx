@@ -30,9 +30,10 @@ function LoginPage() {
   }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("google") === "failed") {
-      toast.error("Google did not finish sign-in. The redirect must be https://veri-logs.com/api/google/callback.");
-    }
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("google") !== "failed") return;
+    toast.error(params.get("reason") || "Google did not finish sign-in. Try again.");
   }, []);
 
   const draft = useStore((s) => s.googleDraft);
