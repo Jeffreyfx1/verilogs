@@ -413,7 +413,7 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
       error = out.error;
       if (!error) await setRowsEnabled(ids as string[], !!payload.enabled);
     } else if (op === "setProvider") {
-      const patch: { enabled?: boolean; name?: string; usdRate?: number; markup?: number; currency?: "NGN" | "USD"; operatorMarkups?: Record<string, number> } = {};
+      const patch: { enabled?: boolean; name?: string; usdRate?: number; markup?: number; currency?: "NGN" | "USD"; operatorMarkups?: Record<string, number>; operatorPrices?: Record<string, number> } = {};
       if (typeof payload.enabled === "boolean") patch.enabled = payload.enabled;
       if (str("name")) patch.name = str("name");
       if (Number.isFinite(num("usdRate")) && num("usdRate") > 0) patch.usdRate = num("usdRate");
@@ -427,6 +427,15 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
           if (name && markup > 0) marks[name] = markup;
         }
         patch.operatorMarkups = marks;
+      }
+      if (payload.operatorPrices && typeof payload.operatorPrices === "object") {
+        const prices: Record<string, number> = {};
+        for (const [key, value] of Object.entries(payload.operatorPrices as Record<string, unknown>)) {
+          const price = Number(value);
+          const name = key.trim().toLowerCase();
+          if (name && price > 0) prices[name] = price;
+        }
+        patch.operatorPrices = prices;
       }
       const out = setProvider(doc, userId, str("id"), patch);
       doc = out.data;
@@ -775,6 +784,7 @@ function withProvider(doc: Data, meta: ImportMeta, providerId: string) {
       usdRate: meta.usdRate > 0 ? meta.usdRate : five ? 2646 : doc.settings.usdNgn,
       markup: meta.markup > 0 ? meta.markup : five ? 1.6 : 1 + doc.settings.margin / 100,
       operatorMarkups: {},
+      operatorPrices: {},
       createdAt: now,
       lastSync: null,
     };

@@ -77,7 +77,8 @@ const SERVICE_CANON: Record<string, string> = {
   netflix: "Netflix", apple: "Apple", microsoft: "Microsoft", uber: "Uber", bolt: "Bolt",
   paypal: "PayPal", binance: "Binance", steam: "Steam", tinder: "Tinder", outlook: "Outlook",
   yahoo: "Yahoo", viber: "Viber", wechat: "WeChat", line: "Line", linkedin: "LinkedIn",
-  reddit: "Reddit", "1688": "1688", "163.com": "163.com", "115.com": "115.com", "11exch": "11exch",
+  reddit: "Reddit", chatgpt: "ChatGPT", openai: "OpenAI", youtube: "YouTube", threads: "Threads",
+  douyin: "Douyin", "1688": "1688", "163.com": "163.com", "115.com": "115.com", "11exch": "11exch",
   "1xbet": "1xbet", "pof.com": "pof.com", "163com": "163.com",
 };
 
@@ -219,7 +220,8 @@ function sectionOfKey(key: string): Category | "" {
   if (/\b(airtime|vtu)\b/.test(s) && !/\bdata\b/.test(s)) return "airtime";
   if (/\b(dataplans?|bundles?|dataplan)\b/.test(s) || s === "data" || s === "sme") return "data";
   if (/\b(rent|hosting)\b/.test(s)) return "rent";
-  if (/\b(sms|otp|activation|virtual|numbers)\b/.test(s)) return "numbers";
+  if (/\bvpn\b|proxy|wireguard|openvpn/.test(s)) return "";
+  if (/\b(sms|otp|activation|numbers)\b/.test(s)) return "numbers";
   return "";
 }
 
@@ -340,6 +342,7 @@ function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedI
   else if (/\b(betting|sportbook|\bbet\b)\b/.test(blob) || hint === "betting") category = "betting";
   else if (hint === "airtime" || (/airtime|\bvtu\b/.test(blob) && !/\d+(\.\d+)?\s?(gb|mb)/.test(blob))) category = "airtime";
   else if (looksData && hint !== "numbers") category = "data";
+  else if (/\bvpn\b|\bproxy\b|wireguard|openvpn/.test(blob) || hint === "vpn") category = "other";
   else if (hint === "numbers" || (raw.country && raw.service && !raw.network)) category = "numbers";
   else if (raw.network) category = "data";
   else if (raw.country && raw.service) category = "numbers";

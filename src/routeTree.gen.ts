@@ -34,6 +34,7 @@ import { Route as DashboardAirtimeRouteImport } from './routes/dashboard/airtime
 import { Route as DashboardAnnouncementsRouteImport } from './routes/dashboard/announcements'
 import { Route as DashboardBillsRouteImport } from './routes/dashboard/bills'
 import { Route as DashboardDataRouteImport } from './routes/dashboard/data'
+import { Route as DashboardExtraRouteImport } from './routes/dashboard/extra'
 import { Route as DashboardHistoryRouteImport } from './routes/dashboard/history'
 import { Route as DashboardNumbersRouteImport } from './routes/dashboard/numbers'
 import { Route as DashboardProfileRouteImport } from './routes/dashboard/profile'
@@ -168,6 +169,11 @@ const DashboardDataRoute = DashboardDataRouteImport.update({
   path: '/data',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardExtraRoute = DashboardExtraRouteImport.update({
+  id: '/extra',
+  path: '/extra',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardHistoryRoute = DashboardHistoryRouteImport.update({
   id: '/history',
   path: '/history',
@@ -233,6 +239,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
   '/dashboard/bills': typeof DashboardBillsRoute
   '/dashboard/data': typeof DashboardDataRoute
+  '/dashboard/extra': typeof DashboardExtraRoute
   '/dashboard/history': typeof DashboardHistoryRoute
   '/dashboard/numbers': typeof DashboardNumbersRoute
   '/dashboard/profile': typeof DashboardProfileRoute
@@ -266,6 +273,7 @@ export interface FileRoutesByTo {
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
   '/dashboard/bills': typeof DashboardBillsRoute
   '/dashboard/data': typeof DashboardDataRoute
+  '/dashboard/extra': typeof DashboardExtraRoute
   '/dashboard/history': typeof DashboardHistoryRoute
   '/dashboard/numbers': typeof DashboardNumbersRoute
   '/dashboard/profile': typeof DashboardProfileRoute
@@ -302,6 +310,7 @@ export interface FileRoutesById {
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
   '/dashboard/bills': typeof DashboardBillsRoute
   '/dashboard/data': typeof DashboardDataRoute
+  '/dashboard/extra': typeof DashboardExtraRoute
   '/dashboard/history': typeof DashboardHistoryRoute
   '/dashboard/numbers': typeof DashboardNumbersRoute
   '/dashboard/profile': typeof DashboardProfileRoute
@@ -339,6 +348,7 @@ export interface FileRouteTypes {
     | '/dashboard/announcements'
     | '/dashboard/bills'
     | '/dashboard/data'
+    | '/dashboard/extra'
     | '/dashboard/history'
     | '/dashboard/numbers'
     | '/dashboard/profile'
@@ -372,6 +382,7 @@ export interface FileRouteTypes {
     | '/dashboard/announcements'
     | '/dashboard/bills'
     | '/dashboard/data'
+    | '/dashboard/extra'
     | '/dashboard/history'
     | '/dashboard/numbers'
     | '/dashboard/profile'
@@ -407,6 +418,7 @@ export interface FileRouteTypes {
     | '/dashboard/announcements'
     | '/dashboard/bills'
     | '/dashboard/data'
+    | '/dashboard/extra'
     | '/dashboard/history'
     | '/dashboard/numbers'
     | '/dashboard/profile'
@@ -614,6 +626,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardDataRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/extra': {
+      id: '/dashboard/extra'
+      path: '/extra'
+      fullPath: '/dashboard/extra'
+      preLoaderRoute: typeof DashboardExtraRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/history': {
       id: '/dashboard/history'
       path: '/history'
@@ -702,6 +721,7 @@ interface DashboardRouteChildren {
   DashboardAnnouncementsRoute: typeof DashboardAnnouncementsRoute
   DashboardBillsRoute: typeof DashboardBillsRoute
   DashboardDataRoute: typeof DashboardDataRoute
+  DashboardExtraRoute: typeof DashboardExtraRoute
   DashboardHistoryRoute: typeof DashboardHistoryRoute
   DashboardNumbersRoute: typeof DashboardNumbersRoute
   DashboardProfileRoute: typeof DashboardProfileRoute
@@ -715,6 +735,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardAnnouncementsRoute: DashboardAnnouncementsRoute,
   DashboardBillsRoute: DashboardBillsRoute,
   DashboardDataRoute: DashboardDataRoute,
+  DashboardExtraRoute: DashboardExtraRoute,
   DashboardHistoryRoute: DashboardHistoryRoute,
   DashboardNumbersRoute: DashboardNumbersRoute,
   DashboardProfileRoute: DashboardProfileRoute,

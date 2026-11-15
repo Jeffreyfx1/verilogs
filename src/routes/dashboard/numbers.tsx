@@ -134,7 +134,7 @@ function NumbersPage() {
 
   return (
     <div className="space-y-4">
-      <section className="overflow-hidden rounded-[1.4rem] bg-gradient-to-r from-cyan-400 via-teal-400 to-blue-600 p-4 text-white">
+      <section className="wallet-band overflow-hidden bg-gradient-to-r from-cyan-400 via-teal-400 to-blue-600 p-4 text-white sm:rounded-[1.4rem]">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs font-bold text-white/80">Wallet balance</p>

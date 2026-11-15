@@ -90,27 +90,40 @@ function ProviderMargin({ provider }: { provider: Provider }) {
   const setProvider = useStore((s) => s.setProvider);
   const [rate, setRate] = useState(provider.usdRate || 2646);
   const [markup, setMarkup] = useState(provider.markup || 1.6);
-  const [lines, setLines] = useState(Object.entries(provider.operatorMarkups || {}).map(([name, value]) => `${name} ${value}`).join("\n"));
+  const names = [...new Set([...Object.keys(provider.operatorMarkups || {}), ...Object.keys(provider.operatorPrices || {})])];
+  const [rows, setRows] = useState(names.length ? names.map((name) => ({ name, markup: String(provider.operatorMarkups?.[name] || ""), price: String(provider.operatorPrices?.[name] || "") })) : [{ name: "virtual8", markup: "", price: "" }]);
   const five = /5sim/i.test(`${provider.name} ${provider.baseUrl}`);
   const sample = Math.ceil((0.1 * (Number(rate) || 0) * (Number(markup) || 1)) / 5) * 5;
   const save = () => {
     const operatorMarkups: Record<string, number> = {};
-    for (const line of lines.split("\n")) {
-      const match = line.trim().match(/^(\S+)\s+([0-9]*\.?[0-9]+)$/);
-      if (match) operatorMarkups[match[1].toLowerCase()] = Number(match[2]);
+    const operatorPrices: Record<string, number> = {};
+    for (const row of rows) {
+      const name = row.name.trim().toLowerCase();
+      if (!name) continue;
+      if (Number(row.markup) > 0) operatorMarkups[name] = Number(row.markup);
+      if (Number(row.price) > 0) operatorPrices[name] = Number(row.price);
     }
-    setProvider(provider.id, { usdRate: Number(rate) || 2646, markup: Number(markup) || 1, currency: provider.currency === "NGN" ? "NGN" : "USD", operatorMarkups });
+    setProvider(provider.id, { usdRate: Number(rate) || 2646, markup: Number(markup) || 1, currency: provider.currency === "NGN" ? "NGN" : "USD", operatorMarkups, operatorPrices });
   };
   return (
     <div className="mt-3 grid gap-2 sm:grid-cols-2">
       <Field label="Naira per 1 USD"><input className={inputClass} inputMode="decimal" value={rate} onChange={(e) => setRate(Number(e.target.value))} /></Field>
       <Field label="Normal markup"><input className={inputClass} inputMode="decimal" value={markup} onChange={(e) => setMarkup(Number(e.target.value))} /></Field>
       {five ? (
-        <Field label="Each 5sim server markup" hint="One server per line, for example virtual8 1.4. A server listed here does not use the normal markup.">
-          <textarea className={inputClass} rows={4} value={lines} onChange={(e) => setLines(e.target.value)} placeholder={"virtual8 1.4\nvirtual63 1.8"} />
-        </Field>
+        <div className="space-y-2 sm:col-span-2">
+          <p className="text-sm font-semibold">Each 5sim server</p>
+          <p className="text-xs text-muted">A naira price here replaces the formula for that server only. Leave the naira blank and set a markup if you only want a different multiplier. virtual8 at $0.85 with markup 1.6 and rate {rate || 0} is {naira(Math.ceil((0.85 * (Number(rate) || 0) * 1.6) / 5) * 5)}.</p>
+          {rows.map((row, index) => (
+            <div key={index} className="grid grid-cols-[1fr_5rem_6rem] gap-2">
+              <input className={inputClass} value={row.name} placeholder="virtual8" onChange={(e) => setRows(rows.map((item, i) => i === index ? { ...item, name: e.target.value } : item))} />
+              <input className={inputClass} inputMode="decimal" value={row.markup} placeholder="×" onChange={(e) => setRows(rows.map((item, i) => i === index ? { ...item, markup: e.target.value } : item))} />
+              <input className={inputClass} inputMode="decimal" value={row.price} placeholder="₦" onChange={(e) => setRows(rows.map((item, i) => i === index ? { ...item, price: e.target.value } : item))} />
+            </div>
+          ))}
+          <Button tone="soft" onClick={() => setRows([...rows, { name: "", markup: "", price: "" }])}>Add a server</Button>
+        </div>
       ) : null}
-      <p className="text-xs text-muted sm:col-span-2">$0.10 at the normal markup sells at {naira(sample)}. A listed server uses its own number instead.</p>
+      <p className="text-xs text-muted sm:col-span-2">$0.10 at the normal markup sells at {naira(sample)}.</p>
       <Button tone="soft" onClick={save}>Save this API margin</Button>
     </div>
   );

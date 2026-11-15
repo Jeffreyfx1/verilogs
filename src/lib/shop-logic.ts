@@ -241,7 +241,7 @@ export function setEnabled(data: Data, userId: string | null, ids: string[], ena
   return { error: null, data: { ...data, products: data.products.map((p) => (setIds.has(p.id) ? { ...p, enabled } : p)) } };
 }
 
-export function setProvider(data: Data, userId: string | null, id: string, patch: { enabled?: boolean; name?: string; usdRate?: number; markup?: number; currency?: "NGN" | "USD"; operatorMarkups?: Record<string, number> }) {
+export function setProvider(data: Data, userId: string | null, id: string, patch: { enabled?: boolean; name?: string; usdRate?: number; markup?: number; currency?: "NGN" | "USD"; operatorMarkups?: Record<string, number>; operatorPrices?: Record<string, number> }) {
   const denied = adminGuard(data, userId);
   if (denied) return { error: denied, data };
   const providers = data.providers.map((p) => (p.id === id ? { ...p, ...patch } : p));

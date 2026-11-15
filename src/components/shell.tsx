@@ -46,6 +46,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
     { to: "/dashboard/data", label: "Data", icon: Radio },
     { to: "/dashboard/airtime", label: "Airtime", icon: Smartphone },
     { to: "/dashboard/bills", label: "Bills", icon: Receipt },
+    { to: "/dashboard/extra", label: "More services", icon: Package },
     { to: "/dashboard/announcements", label: "Announcements", icon: Megaphone },
   ];
   const historyNav: Item[] = [
@@ -168,7 +169,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
           <span className="rounded-full bg-paper px-3 py-1 text-sm font-extrabold">{naira(user.balance)}</span>
         </div>
         <div className="app-pad flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-6xl px-1.5 py-4 sm:px-4 sm:py-6">{children}</div>
+          <div className="mx-auto w-full max-w-6xl px-3 py-4 sm:px-4 sm:py-6">{children}</div>
         </div>
         <nav className="bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-line bg-card px-2 py-2">
           {(admin

@@ -28,6 +28,7 @@ export type Provider = {
   usdRate: number;
   markup: number;
   operatorMarkups: Record<string, number>;
+  operatorPrices: Record<string, number>;
   createdAt: string;
   lastSync: {
     at: string;
@@ -214,6 +215,7 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
         usdRate: provider.usdRate > 0 ? provider.usdRate : five ? 2646 : base.usdNgn,
         markup: provider.markup > 0 ? provider.markup : five ? 1.6 : 1 + base.margin / 100,
         operatorMarkups: operatorMarkupsOf(provider.operatorMarkups),
+        operatorPrices: operatorMarkupsOf(provider.operatorPrices),
       };
     }),
     products: src.products ?? [],
@@ -237,8 +239,8 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
       brand: incoming?.brand || base.brand,
       supportWelcome: incoming?.supportWelcome || base.supportWelcome,
       popup: { ...base.popup, ...incoming?.popup },
-      wantedServices: incoming?.wantedServices?.map((name) => name.trim()).filter(Boolean).slice(0, 80).length
-        ? incoming.wantedServices.map((name) => name.trim()).filter(Boolean).slice(0, 80)
+      wantedServices: incoming?.wantedServices?.map((name) => name.trim()).filter(Boolean).slice(0, 200).length
+        ? incoming.wantedServices.map((name) => name.trim()).filter(Boolean).slice(0, 200)
         : base.wantedServices,
     },
   };
@@ -357,7 +359,10 @@ export function sellPrice(cost: number, currency: "NGN" | "USD", rate: number, m
 
 export function quoteProduct(product: Product, doc: Pick<Data, "providers" | "settings">): Product {
   const provider = doc.providers.find((item) => item.id === product.providerId);
-  if (!provider || !(product.cost > 0) || product.variable) return product;
+  if (!provider) return product;
+  const fixed = provider.operatorPrices?.[product.operator.trim().toLowerCase()];
+  if (fixed && fixed > 0) return { ...product, price: Math.ceil(fixed / 5) * 5 };
+  if (!(product.cost > 0) || product.variable) return product;
   if (provider.currency === "USD" && product.cost > 500) return product;
   const five = /5sim/i.test(`${provider.name} ${provider.baseUrl}`);
   const rate = provider.usdRate > 0 ? provider.usdRate : five ? 2646 : doc.settings.usdNgn;
@@ -435,6 +440,7 @@ export function applyImportSlice(
       usdRate: input.usdRate && input.usdRate > 0 ? input.usdRate : /5sim/i.test(input.name + input.baseUrl) ? 2646 : data.settings.usdNgn,
       markup: input.markup && input.markup > 0 ? input.markup : /5sim/i.test(input.name + input.baseUrl) ? 1.6 : 1 + data.settings.margin / 100,
       operatorMarkups: {},
+      operatorPrices: {},
       createdAt: now,
       lastSync: null,
     };

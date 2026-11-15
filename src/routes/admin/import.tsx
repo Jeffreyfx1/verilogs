@@ -197,7 +197,7 @@ function ImportPage() {
             tone="soft"
             disabled={busy}
             onClick={() => {
-              const wantedServices = names.split(/\n+/).map((name) => name.trim()).filter(Boolean).slice(0, 80);
+              const wantedServices = names.split(/\n+/).map((name) => name.trim()).filter(Boolean).slice(0, 200);
               if (!wantedServices.length) return toast.error("Keep at least one service name.");
               void saveSettings({ wantedServices }).then((err) => {
                 if (err) toast.error(err);
