@@ -313,7 +313,7 @@ function ImportPage() {
           <Field label="Markup" hint="5sim uses 1.6. A $0.10 number becomes 0.10 × rate × markup.">
             <input className={inputClass} inputMode="decimal" value={markup} onChange={(e) => setMarkup(Number(e.target.value))} />
           </Field>
-          <p className="text-xs text-muted">Example: $0.10 sells at ₦{Math.ceil((0.1 * (usdRate || 0) * (markup || 1)) / 5) * 5}. A Numbers import does not delete VTU, VPN or SMM on the same server.</p>
+          <p className="text-xs text-muted">$1 is ₦1,343. If that, or a naira API price, is under ₦2,000, the shop sells it at ₦2,000. Above that, the markup still applies. Example: $0.10 sells at ₦2,000.</p>
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} className="mt-1" />
             <span>Put new services live immediately. Leave this off if you want to review first. Already-enabled rows stay as they are.</span>

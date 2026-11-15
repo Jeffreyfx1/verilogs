@@ -81,7 +81,7 @@ function AdminHome() {
           );
         })}
       </section>
-      <p className="text-xs text-muted">{users.filter((u) => u.role === "customer").length} customers · {orders.length} orders · wallet float {naira(users.reduce((s, u) => s + u.balance, 0))}</p>
+      <p className="text-xs text-muted">{users.filter((u) => u.role === "customer").length} customers · {orders.length} orders · your gain {naira(orders.reduce((sum, order) => sum + (order.status === "refunded" ? 0 : order.gain || 0), 0))} · wallet float {naira(users.reduce((s, u) => s + u.balance, 0))}</p>
     </div>
   );
 }

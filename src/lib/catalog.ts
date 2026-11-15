@@ -75,6 +75,8 @@ export type Order = {
   code: string;
   status: "waiting" | "received" | "completed" | "refunded";
   detail: string;
+  cost: number;
+  gain: number;
   createdAt: string;
 };
 
@@ -157,7 +159,7 @@ export type Data = {
 
 export function defaultSettings(): Settings {
   return {
-    usdNgn: 1650,
+    usdNgn: 1343,
     margin: 12,
     paystackPercent: 0,
     paystackFlat: 0,
@@ -350,9 +352,18 @@ export function markupFor(provider: Pick<Provider, "markup" | "operatorMarkups">
   return provider.markup > 0 ? provider.markup : 1;
 }
 
-export function sellPrice(cost: number, currency: "NGN" | "USD", rate: number, markup: number) {
-  const ngn = currency === "USD" ? cost * (rate > 0 ? rate : 1) : cost;
+export const USD_NGN = 1343;
+export const MIN_SELL = 2000;
+
+export function nairaCost(cost: number, currency: "NGN" | "USD") {
+  if (!(cost > 0)) return 0;
+  return Math.round(currency === "USD" ? cost * USD_NGN : cost);
+}
+
+export function sellPrice(cost: number, currency: "NGN" | "USD", _rate: number, markup: number) {
+  const ngn = nairaCost(cost, currency);
   if (ngn <= 0) return 0;
+  if (ngn < MIN_SELL) return MIN_SELL;
   const factor = markup > 0 ? markup : 1;
   return Math.ceil((ngn * factor) / 5) * 5;
 }
@@ -361,14 +372,16 @@ export function quoteProduct(product: Product, doc: Pick<Data, "providers" | "se
   const provider = doc.providers.find((item) => item.id === product.providerId);
   if (!provider) return product;
   const fixed = provider.operatorPrices?.[product.operator.trim().toLowerCase()];
-  if (fixed && fixed > 0) return { ...product, price: Math.ceil(fixed / 5) * 5 };
+  if (fixed && fixed > 0) {
+    const price = Math.ceil(fixed / 5) * 5;
+    return { ...product, price: price < MIN_SELL ? MIN_SELL : price };
+  }
   if (!(product.cost > 0) || product.variable) return product;
   if (provider.currency === "USD" && product.cost > 500) return product;
   const five = /5sim/i.test(`${provider.name} ${provider.baseUrl}`);
-  const rate = provider.usdRate > 0 ? provider.usdRate : five ? 2646 : doc.settings.usdNgn;
   const fallback = provider.markup > 0 ? provider.markup : five ? 1.6 : 1 + doc.settings.margin / 100;
   const custom = provider.operatorMarkups?.[product.operator.trim().toLowerCase()];
-  const price = sellPrice(product.cost, provider.currency, rate, custom && custom > 0 ? custom : fallback);
+  const price = sellPrice(product.cost, provider.currency, USD_NGN, custom && custom > 0 ? custom : fallback);
   return price > 0 ? { ...product, price } : product;
 }
 

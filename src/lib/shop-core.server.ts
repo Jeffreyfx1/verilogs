@@ -5,6 +5,7 @@ import { freshData, isLive, normalizeData, quoteProduct, repairCatalog, sellPric
 import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, shapeImport, airtimeProductsFromPayload, MAJOR_SERVICES, type ImportKind, type ParsedItem } from "@/lib/categorize";
 import { IMPORT_BATCH, importBatchCount } from "@/lib/import-batch";
 import { uid } from "@/lib/money";
+import { placeOnProvider } from "@/lib/fulfill.server";
 import {
   clearProducts,
   countExistingProducts,
@@ -397,12 +398,7 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
       doc = out.data;
       error = out.error;
     } else if (op === "buy") {
-      const product = await readProduct(str("productId"));
-      if (product) {
-        const quoted = quoteProduct(product, doc);
-        doc = { ...doc, products: [quoted, ...doc.products.filter((item) => item.id !== quoted.id)] };
-      }
-      const out = buyProduct(doc, userId, str("productId"), { phone: str("phone"), amount: num("amount"), detail: str("detail") });
+      const out = await completePurchase(doc, userId, str("productId"), { phone: str("phone"), amount: num("amount"), detail: str("detail") });
       doc = out.data;
       error = out.error;
     } else if (op === "refund") {
@@ -520,13 +516,28 @@ export async function connectGoogle(profile: { email: string; name: string }) {
   return { needsPhone: out.needsPhone, role: out.userId ? doc.users.find((u) => u.id === out.userId)?.role : "customer" };
 }
 
+async function completePurchase(doc: Data, userId: string | null, productId: string, extra: { phone?: string; amount?: number; detail?: string }) {
+  const found = productId ? await readProduct(productId) : null;
+  const quoted = found ? quoteProduct(found, doc) : null;
+  const provider = quoted && doc.providers.find((item) => item.id === quoted.providerId && item.enabled);
+  if (!quoted?.enabled || !provider) return { error: "That service is not available.", data: doc };
+  const ready = { ...doc, products: [quoted, ...doc.products.filter((item) => item.id !== quoted.id)] };
+  const user = userId ? ready.users.find((item) => item.id === userId) : null;
+  const charge = quoted.variable ? Math.round(extra.amount || 0) : quoted.price;
+  if (!user) return { error: "Sign in first.", data: doc };
+  if (quoted.category === "airtime" && (charge < 50 || charge > 50000)) return { error: "Airtime must be between ₦50 and ₦50,000.", data: doc };
+  if (quoted.category === "electricity" && (charge < 1000 || charge > 200000)) return { error: "Electricity must be between ₦1,000 and ₦200,000.", data: doc };
+  if (!quoted.variable && charge <= 0) return { error: "This item has no price yet.", data: doc };
+  if (user.balance < charge) return { error: "Insufficient balance. Top up your balance to make this purchase.", data: doc };
+  const placed = await placeOnProvider({ product: quoted, provider, apiKey: await readProviderKey(provider.id), phone: extra.phone || "", amount: charge });
+  if (!placed.ok) return { error: placed.error, data: doc };
+  const cost = placed.cost;
+  return buyProduct(ready, userId, quoted.id, { phone: placed.phone || extra.phone, amount: charge, detail: extra.detail, cost, gain: charge - cost, code: placed.ref, status: placed.waiting ? "waiting" : "completed" });
+}
+
 async function finishPaidNumber(doc: Data, userId: string, productId: string) {
   if (!productId) return { data: doc, bought: false, error: null as string | null };
-  const found = await readProduct(productId);
-  if (!found?.enabled) return { data: doc, bought: false, error: "Payment is in your wallet, but that number is no longer available." };
-  const product = quoteProduct(found, doc);
-  const withProduct = { ...doc, products: [product, ...doc.products.filter((item) => item.id !== product.id)] };
-  const bought = buyProduct(withProduct, userId, productId, {});
+  const bought = await completePurchase(doc, userId, productId, {});
   if (bought.error) return { data: doc, bought: false, error: `Payment is in your wallet. ${bought.error}` };
   return { data: bought.data, bought: true, error: null };
 }

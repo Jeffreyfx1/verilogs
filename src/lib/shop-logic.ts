@@ -162,7 +162,7 @@ export async function changePassword(data: Data, userId: string | null, oldPw: s
   return { error: null, data: { ...data, users } };
 }
 
-export function buyProduct(data: Data, userId: string | null, productId: string, extra: { phone?: string; amount?: number; detail?: string }) {
+export function buyProduct(data: Data, userId: string | null, productId: string, extra: { phone?: string; amount?: number; detail?: string; cost?: number; gain?: number; code?: string; status?: Order["status"] }) {
   const user = actor(data, userId);
   if (!user) return { error: "Sign in first.", data };
   const product = data.products.find((p) => p.id === productId && p.enabled);
@@ -174,6 +174,9 @@ export function buyProduct(data: Data, userId: string | null, productId: string,
   if (!product.variable && amount <= 0) return { error: "This item has no price yet.", data };
   if (user.balance < amount) return { error: "Insufficient balance. Top up your balance to make this purchase.", data };
   const server = serverLabel(data.providers, provider.id) || provider.name;
+  const cost = Math.max(0, Math.round(extra.cost ?? 0));
+  const gain = Math.round(extra.gain ?? amount - cost);
+  const number = product.category === "numbers" || product.category === "rent";
   const order: Order = {
     id: uid("ord"),
     userId: user.id,
@@ -183,10 +186,12 @@ export function buyProduct(data: Data, userId: string | null, productId: string,
     server,
     network: product.network,
     amount,
-    phone: product.category === "numbers" || product.category === "rent" ? virtualPhone(product.country) : (extra.phone || "").trim(),
-    code: "",
-    status: product.category === "numbers" || product.category === "rent" ? "waiting" : "completed",
+    phone: (extra.phone || "").trim() || (number ? virtualPhone(product.country) : ""),
+    code: extra.code || "",
+    status: extra.status || (number ? "waiting" : "completed"),
     detail: extra.detail || product.description,
+    cost,
+    gain,
     createdAt: new Date().toISOString(),
   };
   let next: Data = {
@@ -208,7 +213,7 @@ export function refundOrder(data: Data, userId: string | null, orderId: string) 
   const next = pushNote(
     {
       ...data,
-      orders: data.orders.map((o) => (o.id === order.id ? { ...o, status: "refunded" as const } : o)),
+      orders: data.orders.map((o) => (o.id === order.id ? { ...o, status: "refunded" as const, gain: 0 } : o)),
       users: data.users.map((u) => (u.id === order.userId ? { ...u, balance: u.balance + order.amount } : u)),
       txns: [{ id: uid("txn"), userId: order.userId, kind: "refund" as const, amount: order.amount, note: "Refund · " + order.title, createdAt: new Date().toISOString() }, ...data.txns],
     },
