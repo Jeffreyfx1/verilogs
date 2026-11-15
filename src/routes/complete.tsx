@@ -14,9 +14,12 @@ function CompletePage() {
   const [phone, setPhone] = useState("");
   const [terms, setTerms] = useState(false);
 
+  const ready = useStore((s) => s.ready);
+
   useEffect(() => {
-    if (!draft) nav({ to: "/login", replace: true });
-  }, [draft, nav]);
+    if (!ready || draft) return;
+    nav({ to: "/login", replace: true });
+  }, [ready, draft, nav]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,7 +30,7 @@ function CompletePage() {
     else nav({ to: "/dashboard" });
   };
 
-  if (!draft) return null;
+  if (!ready || !draft) return null;
   return (
     <div className="mesh flex min-h-screen flex-col">
       <header className="px-4 py-5"><Link to="/"><Logo /></Link></header>

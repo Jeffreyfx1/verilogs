@@ -60,13 +60,13 @@ export const useStore = create<Store>((set) => {
     boot: () => {
       if (booted || typeof window === "undefined") return;
       booted = true;
-      set({ ready: true });
       const mine = ++rev;
       void pullShop()
         .then((res) => {
           if (mine === rev) adopt(res.state);
+          else set({ ready: true });
         })
-        .catch(() => undefined);
+        .catch(() => set({ ready: true }));
     },
     register: async (input) => (await run("register", input)).error,
     login: async (email, password, remember = true) => (await run("login", { email, password, remember })).error,

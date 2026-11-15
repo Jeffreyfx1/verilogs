@@ -517,7 +517,7 @@ export async function connectGoogle(profile: { email: string; name: string }) {
   const token = crypto.randomUUID();
   await writeSession(token, out.userId, out.needsPhone ? out.draft : null);
   touchCookie(token);
-  return { needsPhone: out.needsPhone, role: out.userId ? doc.users.find((u) => u.id === out.userId)?.role : "customer" };
+  return { needsPhone: out.needsPhone, role: out.userId ? doc.users.find((u) => u.id === out.userId)?.role : "customer", token };
 }
 
 async function completePurchase(doc: Data, userId: string | null, productId: string, extra: { phone?: string; amount?: number; detail?: string }) {

@@ -10,8 +10,14 @@ export const Route = createFileRoute("/api/google/callback")({
         const code = url.searchParams.get("code") || "";
         if (!code) return Response.redirect(origin.replace(/\/$/, "") + "/login", 302);
         const linked = await googleExchange(code, origin);
-        const next = !linked ? "/login" : linked.needsPhone ? "/complete" : linked.role === "admin" ? "/admin" : "/dashboard";
-        return Response.redirect(origin.replace(/\/$/, "") + next, 302);
+        const base = origin.replace(/\/$/, "");
+        const next = !linked ? "/login?google=failed" : linked.needsPhone ? "/complete" : linked.role === "admin" ? "/admin" : "/dashboard";
+        const headers = new Headers({ Location: base + next });
+        if (linked?.token) {
+          const secure = base.startsWith("https://");
+          headers.append("Set-Cookie", `vl_session=${linked.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 30}${secure ? "; Secure" : ""}`);
+        }
+        return new Response(null, { status: 302, headers });
       },
     },
   },

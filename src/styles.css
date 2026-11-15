@@ -27,12 +27,22 @@
 @layer base {
   html {
     scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    max-width: 100%;
   }
   body {
     font-family: var(--font-sans);
     background: #0e071c;
     color: #f7f4ff;
     min-height: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  input,
+  select,
+  textarea {
+    font-size: 16px;
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {
@@ -357,10 +367,17 @@ html[data-form="phone"] .stat-row {
   align-items: flex-end;
 }
 
+.shell-screen {
+  height: 100vh;
+  height: 100svh;
+  max-width: 100%;
+}
+
 .bottom-nav {
   display: none;
   justify-content: space-around;
   align-items: center;
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
 }
 
 html[data-lock="1"] body {

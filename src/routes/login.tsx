@@ -30,9 +30,19 @@ function LoginPage() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-    nav({ to: user.role === "admin" ? "/admin" : "/dashboard", replace: true });
-  }, [user, nav]);
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("google") === "failed") {
+      toast.error("Google did not finish sign-in. The redirect must be https://veri-logs.com/api/google/callback.");
+    }
+  }, []);
+
+  const draft = useStore((s) => s.googleDraft);
+  const ready = useStore((s) => s.ready);
+
+  useEffect(() => {
+    if (!ready) return;
+    if (draft) nav({ to: "/complete", replace: true });
+    else if (user) nav({ to: user.role === "admin" ? "/admin" : "/dashboard", replace: true });
+  }, [ready, draft, user, nav]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

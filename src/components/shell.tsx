@@ -86,7 +86,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-paper text-ink">
+    <div className="shell-screen flex overflow-hidden bg-paper text-ink">
       {open ? <button className="fixed inset-0 z-30 bg-deep/40 lg:hidden" aria-label="Close menu" onClick={() => setOpen(false)} /> : null}
       <aside className={`shell-aside fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-line bg-card transition-transform lg:static lg:translate-x-0 ${open ? "is-open translate-x-0" : "-translate-x-full"}`}>
         <div className="flex items-center justify-between px-4 py-4">
@@ -143,15 +143,15 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="shell-mobilebar flex items-center gap-2 border-b border-line bg-card px-3 py-3 lg:hidden">
-          <button onClick={() => setOpen(true)} className="rounded-xl border border-line p-2" aria-label="Open menu">
+        <div className="shell-mobilebar flex min-w-0 items-center gap-2 border-b border-line bg-card px-3 py-3 lg:hidden">
+          <button onClick={() => setOpen(true)} className="shrink-0 rounded-xl border border-line p-2" aria-label="Open menu">
             <Menu className="size-5" />
           </button>
-          <Link to={admin ? "/admin" : "/dashboard"} className="mr-auto">
+          <Link to={admin ? "/admin" : "/dashboard"} className="mr-auto min-w-0">
             <Logo compact />
           </Link>
           <NoticeBell />
-          <span className="rounded-full bg-paper px-3 py-1 text-sm font-extrabold">{naira(user.balance)}</span>
+          <span className="max-w-[7.5rem] truncate rounded-full bg-paper px-3 py-1 text-sm font-extrabold">{naira(user.balance)}</span>
         </div>
         <div className="app-pad flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-6xl px-3 py-4 sm:px-4 sm:py-6">{children}</div>
