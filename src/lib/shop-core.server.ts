@@ -1290,6 +1290,10 @@ export function publicOrigin(request: Request) {
   return (process.env.APP_URL || url.origin).replace(/\/$/, "");
 }
 
+export function googlePublicOrigin() {
+  return "https://veri-logs.com";
+}
+
 export function googleRedirect(origin: string) {
   return origin.replace(/\/$/, "") + "/api/google/callback";
 }

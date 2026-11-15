@@ -4,8 +4,8 @@ export const Route = createFileRoute("/api/google/start")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const { googleConfigured, googleRedirect, googleStartUrl, publicOrigin } = await import("@/lib/shop-core.server");
-        const origin = publicOrigin(request);
+        const { googleConfigured, googleRedirect, googleStartUrl, googlePublicOrigin } = await import("@/lib/shop-core.server");
+        const origin = googlePublicOrigin();
         const redirect = googleRedirect(origin);
         if (!googleConfigured()) {
           return new Response(

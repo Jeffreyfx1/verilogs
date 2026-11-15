@@ -17,9 +17,9 @@ export const Route = createFileRoute("/api/google/callback")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const { googleExchange, googleRedirect, publicOrigin } = await import("@/lib/shop-core.server");
+        const { googleExchange, googleRedirect, googlePublicOrigin } = await import("@/lib/shop-core.server");
         const url = new URL(request.url);
-        const origin = publicOrigin(request);
+        const origin = googlePublicOrigin();
         const base = origin.replace(/\/$/, "");
         const redirect = savedRedirect(request, googleRedirect(origin));
         const fail = (reason: string) => {
