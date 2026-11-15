@@ -213,8 +213,7 @@ export function refundOrder(data: Data, userId: string | null, orderId: string) 
       txns: [{ id: uid("txn"), userId: order.userId, kind: "refund" as const, amount: order.amount, note: "Refund · " + order.title, createdAt: new Date().toISOString() }, ...data.txns],
     },
     order.userId,
-    "Refund sent",
-    `${order.title} is back in your wallet.`,
+    "Refund sent", `${order.title} is back in your wallet.`,
     "wallet",
   );
   return { error: null, data: next };
