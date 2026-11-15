@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Bell } from "lucide-react";
 import { when } from "@/lib/money";
 import { useStore } from "@/lib/store";
@@ -8,6 +8,24 @@ export function NoticeBell() {
   const session = useStore((s) => s.sessionUserId);
   const mark = useStore((s) => s.markNotes);
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: Event) => {
+      const node = event.target;
+      const box = node instanceof Element ? node : node instanceof Node ? node.parentElement : null;
+      if (box?.closest(".notice-pop")) return;
+      setOpen(false);
+    };
+    const scroller = document.querySelector(".app-pad");
+    scroller?.addEventListener("scroll", close, { passive: true });
+    scroller?.addEventListener("touchmove", close, { passive: true });
+    window.addEventListener("wheel", close, { passive: true });
+    return () => {
+      scroller?.removeEventListener("scroll", close);
+      scroller?.removeEventListener("touchmove", close);
+      window.removeEventListener("wheel", close);
+    };
+  }, [open]);
   if (!session) return null;
   const unread = notes.filter((n) => !n.read).length;
   return (
