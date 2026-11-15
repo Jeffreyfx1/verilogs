@@ -313,7 +313,7 @@ function ImportPage() {
           <Field label="Markup" hint="5sim uses 1.6. A $0.10 number becomes 0.10 × rate × markup.">
             <input className={inputClass} inputMode="decimal" value={markup} onChange={(e) => setMarkup(Number(e.target.value))} />
           </Field>
-          <p className="text-xs text-muted">$1 is ₦1,343. A margin price above ₦2,000 stays as it is. A cheaper number, VPN or boost is spread from ₦1,850 to ₦2,700. Airtime, data and bills are left alone.</p>
+          <p className="text-xs text-muted">$1 is ₦1,343. A margin price above ₦2,000 stays as it is. A cheaper number, VPN or boost is spread from ₦1,850 to ₦2,700. Data, airtime and bills keep the markup you set on that server.</p>
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} className="mt-1" />
             <span>Put new services live immediately. Leave this off if you want to review first. Already-enabled rows stay as they are.</span>

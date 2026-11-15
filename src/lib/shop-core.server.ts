@@ -1,7 +1,7 @@
 import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/react-start/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
-import { freshData, isLive, normalizeData, quoteProduct, repairCatalog, sellPrice, markupFor, serverLabel, topupQuote, withAdminLogin, applyImportSlice, type Data, type Product, type SyncReport } from "@/lib/catalog";
+import { freshData, isLive, normalizeData, quoteProduct, repairCatalog, sellPrice, markupFor, withMargin, serverLabel, topupQuote, withAdminLogin, applyImportSlice, type Data, type Product, type SyncReport } from "@/lib/catalog";
 import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, shapeImport, airtimeProductsFromPayload, MAJOR_SERVICES, type ImportKind, type ParsedItem } from "@/lib/categorize";
 import { IMPORT_BATCH, importBatchCount } from "@/lib/import-batch";
 import { uid } from "@/lib/money";
@@ -523,16 +523,17 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
   if (!quoted?.enabled || !provider) return { error: "That service is not available.", data: doc };
   const ready = { ...doc, products: [quoted, ...doc.products.filter((item) => item.id !== quoted.id)] };
   const user = userId ? ready.users.find((item) => item.id === userId) : null;
-  const charge = quoted.variable ? Math.round(extra.amount || 0) : quoted.price;
+  const face = quoted.variable ? Math.round(extra.amount || 0) : quoted.price;
+  const charge = quoted.variable && (quoted.category === "airtime" || quoted.category === "electricity") ? withMargin(face, markupFor(provider, quoted.operator)) : face;
   if (!user) return { error: "Sign in first.", data: doc };
-  if (quoted.category === "airtime" && (charge < 50 || charge > 50000)) return { error: "Airtime must be between ₦50 and ₦50,000.", data: doc };
-  if (quoted.category === "electricity" && (charge < 1000 || charge > 200000)) return { error: "Electricity must be between ₦1,000 and ₦200,000.", data: doc };
+  if (quoted.category === "airtime" && (face < 50 || face > 50000)) return { error: "Airtime must be between ₦50 and ₦50,000.", data: doc };
+  if (quoted.category === "electricity" && (face < 1000 || face > 200000)) return { error: "Electricity must be between ₦1,000 and ₦200,000.", data: doc };
   if (!quoted.variable && charge <= 0) return { error: "This item has no price yet.", data: doc };
   if (user.balance < charge) return { error: "Insufficient balance. Top up your balance to make this purchase.", data: doc };
-  const placed = await placeOnProvider({ product: quoted, provider, apiKey: await readProviderKey(provider.id), phone: extra.phone || "", amount: charge });
+  const placed = await placeOnProvider({ product: quoted, provider, apiKey: await readProviderKey(provider.id), phone: extra.phone || "", amount: quoted.variable ? face : charge });
   if (!placed.ok) return { error: placed.error, data: doc };
   const cost = placed.cost;
-  return buyProduct(ready, userId, quoted.id, { phone: placed.phone || extra.phone, amount: charge, detail: extra.detail, cost, gain: charge - cost, code: placed.ref, status: placed.waiting ? "waiting" : "completed" });
+  return buyProduct(ready, userId, quoted.id, { phone: placed.phone || extra.phone, amount: quoted.variable ? face : charge, charge, detail: extra.detail, cost, gain: charge - cost, code: placed.ref, status: placed.waiting ? "waiting" : "completed" });
 }
 
 async function finishPaidNumber(doc: Data, userId: string, productId: string) {

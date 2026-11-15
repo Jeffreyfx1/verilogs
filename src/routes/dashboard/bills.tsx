@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
-import { isLive, type Product } from "@/lib/catalog";
+import { isLive, quoteProduct, type Product } from "@/lib/catalog";
 import { naira } from "@/lib/money";
 import { useStore } from "@/lib/store";
 
@@ -19,7 +19,8 @@ const TABS = [
 function BillsPage() {
   const all = useStore((s) => s.products);
   const providers = useStore((s) => s.providers);
-  const products = useMemo(() => all.filter((p) => isLive(p, providers)), [all, providers]);
+  const settings = useStore((s) => s.settings);
+  const products = useMemo(() => all.filter((p) => isLive(p, providers)).map((p) => quoteProduct(p, { providers, settings })), [all, providers, settings]);
   const buy = useStore((s) => s.buy);
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("cable");
   const [phone, setPhone] = useState("");

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
-import { isLive } from "@/lib/catalog";
+import { isLive, markupFor, withMargin } from "@/lib/catalog";
 import { naira } from "@/lib/money";
 import { useStore } from "@/lib/store";
 
@@ -25,17 +25,20 @@ function AirtimePage() {
   const [amount, setAmount] = useState("500");
   const [net, setNet] = useState(products[0]?.network || "MTN");
   const current = products.find((p) => p.network === net) || products[0];
+  const provider = providers.find((item) => item.id === current?.providerId);
+  const face = Number(amount) || 0;
+  const charge = withMargin(face, provider ? markupFor(provider, current?.operator || "") : 1);
   const purchase = async () => {
     if (!current) return;
     if (phone.trim().length < 8) return toast.error("Enter the phone number.");
-    const err = await buy(current.id, { phone, amount: Number(amount) });
+    const err = await buy(current.id, { phone, amount: face });
     if (err) toast.error(err);
     else toast.success("Airtime sent");
   };
   return (
     <div className="mx-auto max-w-xl space-y-4">
       <h1 className="text-2xl font-extrabold">Airtime</h1>
-      <p className="text-sm text-muted">Pick the SIM. The amount is the recharge, taken from your naira wallet.</p>
+      <p className="text-sm text-muted">The SIM receives the amount you type. Your wallet pays that amount with this server's margin.</p>
       <div className="grid grid-cols-2 gap-2">
         {products.map((p) => (
           <button key={p.id} type="button" onClick={() => setNet(p.network)} className={`rounded-card border p-4 text-left ${current?.id === p.id ? "border-primary" : "border-line bg-card"}`}>
@@ -46,7 +49,7 @@ function AirtimePage() {
       </div>
       <Field label="Phone number"><input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="080…" /></Field>
       <Field label="Amount" hint="₦50 to ₦50,000"><input className={inputClass} inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))} /></Field>
-      <Button className="w-full" disabled={!current} onClick={purchase}>Recharge {current ? naira(Number(amount) || 0) : ""}</Button>
+      <Button className="w-full" disabled={!current} onClick={purchase}>Recharge {current ? naira(charge) : ""}</Button>
     </div>
   );
 }

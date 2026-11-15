@@ -354,7 +354,7 @@ export function markupFor(provider: Pick<Provider, "markup" | "operatorMarkups">
 
 export const USD_NGN = 1343;
 
-const BILL_PRICE = new Set(["airtime", "data", "cable", "electricity", "exam"]);
+const BILL_PRICE = new Set(["airtime", "data", "cable", "electricity", "exam", "giftcard", "betting"]);
 
 function spreadPrice(seed: string) {
   let hash = 2166136261;
@@ -365,6 +365,12 @@ function spreadPrice(seed: string) {
   }
   const slots = (2700 - 1850) / 50 + 1;
   return 1850 + ((hash >>> 0) % slots) * 50;
+}
+
+export function withMargin(amount: number, markup: number) {
+  if (!(amount > 0)) return 0;
+  const factor = markup > 0 ? markup : 1;
+  return Math.ceil((amount * factor) / 5) * 5;
 }
 
 export function nairaCost(cost: number, currency: "NGN" | "USD") {
@@ -683,7 +689,7 @@ export function repairCatalog(doc: Data): Data {
   const priced = products.map((product) => {
     const provider = providers.find((item) => item.id === product.providerId);
     if (!provider || !(product.cost > 0)) return product;
-    const price = sellPrice(product.cost, provider.currency, provider.usdRate, provider.markup, `${product.externalId}|${product.name}|${product.country}|${product.operator}`, product.category);
+    const price = sellPrice(product.cost, provider.currency, provider.usdRate, markupFor(provider, product.operator), `${product.externalId}|${product.name}|${product.country}|${product.operator}`, product.category);
     if (price > 0 && price !== product.price) {
       changed = true;
       return { ...product, price };

@@ -162,15 +162,16 @@ export async function changePassword(data: Data, userId: string | null, oldPw: s
   return { error: null, data: { ...data, users } };
 }
 
-export function buyProduct(data: Data, userId: string | null, productId: string, extra: { phone?: string; amount?: number; detail?: string; cost?: number; gain?: number; code?: string; status?: Order["status"] }) {
+export function buyProduct(data: Data, userId: string | null, productId: string, extra: { phone?: string; amount?: number; detail?: string; cost?: number; gain?: number; code?: string; status?: Order["status"]; charge?: number }) {
   const user = actor(data, userId);
   if (!user) return { error: "Sign in first.", data };
   const product = data.products.find((p) => p.id === productId && p.enabled);
   const provider = product && data.providers.find((p) => p.id === product.providerId && p.enabled);
   if (!product || !provider) return { error: "That service is not available.", data };
-  const amount = product.variable ? Math.round(extra.amount || 0) : product.price;
-  if (product.category === "airtime" && (amount < 50 || amount > 50000)) return { error: "Airtime must be between ₦50 and ₦50,000.", data };
-  if (product.category === "electricity" && (amount < 1000 || amount > 200000)) return { error: "Electricity must be between ₦1,000 and ₦200,000.", data };
+  const face = product.variable ? Math.round(extra.amount || 0) : product.price;
+  const amount = extra.charge && extra.charge > 0 ? Math.round(extra.charge) : face;
+  if (product.category === "airtime" && (face < 50 || face > 50000)) return { error: "Airtime must be between ₦50 and ₦50,000.", data };
+  if (product.category === "electricity" && (face < 1000 || face > 200000)) return { error: "Electricity must be between ₦1,000 and ₦200,000.", data };
   if (!product.variable && amount <= 0) return { error: "This item has no price yet.", data };
   if (user.balance < amount) return { error: "Insufficient balance. Top up your balance to make this purchase.", data };
   const server = serverLabel(data.providers, provider.id) || provider.name;

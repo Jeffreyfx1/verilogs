@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
-import { isLive } from "@/lib/catalog";
+import { isLive, quoteProduct } from "@/lib/catalog";
 import { naira } from "@/lib/money";
 import { useStore } from "@/lib/store";
 
@@ -21,8 +21,9 @@ const TONE: Record<string, string> = {
 function DataPage() {
   const products = useStore((s) => s.products);
   const providers = useStore((s) => s.providers);
+  const settings = useStore((s) => s.settings);
   const buy = useStore((s) => s.buy);
-  const plans = products.filter((p) => p.category === "data" && isLive(p, providers));
+  const plans = products.filter((p) => p.category === "data" && isLive(p, providers)).map((p) => quoteProduct(p, { providers, settings }));
   const present = [...ORDER.filter((n) => plans.some((p) => p.network === n)), ...(plans.some((p) => !p.network || !ORDER.includes(p.network)) ? ["Other"] : [])];
   const [net, setNet] = useState(present[0] || "MTN");
   const [phone, setPhone] = useState("");
