@@ -134,14 +134,14 @@ function NumbersPage() {
 
   return (
     <div className="space-y-4">
-      <section className="wallet-band overflow-hidden bg-gradient-to-r from-cyan-400 via-teal-400 to-blue-600 p-4 text-white sm:rounded-[1.4rem]">
+      <section className="wallet-band overflow-hidden rounded-[1.85rem] bg-gradient-to-r from-cyan-400 via-teal-400 to-blue-600 px-5 py-5 text-white shadow-[0_12px_30px_rgba(8,50,74,0.18)]">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs font-bold text-white/80">Wallet balance</p>
-            <p className="text-3xl font-extrabold">{naira(user?.balance || 0)}</p>
+            <p className="text-4xl font-extrabold tracking-tight">{naira(user?.balance || 0)}</p>
             <p className="mt-2 text-xs font-bold">⚡ {bought} SMS purchased</p>
           </div>
-          <Link to="/dashboard/wallet" className="rounded-full bg-white/20 px-3 py-1 text-xs font-extrabold">+ Fund wallet</Link>
+          <Link to="/dashboard/wallet" className="rounded-full bg-white/20 px-3 py-1.5 text-xs font-extrabold">+ Fund wallet</Link>
         </div>
         <div className="mt-3 text-right">
           <Link to="/dashboard/history" hash="numbers" className="text-xs font-extrabold underline">View history →</Link>
