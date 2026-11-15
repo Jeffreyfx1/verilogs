@@ -3,6 +3,7 @@ import {
   ingest,
   isLive,
   normalizeData,
+  markupFor,
   sellPrice,
   serverLabel,
   type Announcement,
@@ -212,7 +213,8 @@ export function refundOrder(data: Data, userId: string | null, orderId: string) 
       txns: [{ id: uid("txn"), userId: order.userId, kind: "refund" as const, amount: order.amount, note: "Refund · " + order.title, createdAt: new Date().toISOString() }, ...data.txns],
     },
     order.userId,
-    "Refund sent", `${order.title} is back in your wallet.`,
+    "Refund sent",
+    `${order.title} is back in your wallet.`,
     "wallet",
   );
   return { error: null, data: next };
@@ -240,7 +242,7 @@ export function setEnabled(data: Data, userId: string | null, ids: string[], ena
   return { error: null, data: { ...data, products: data.products.map((p) => (setIds.has(p.id) ? { ...p, enabled } : p)) } };
 }
 
-export function setProvider(data: Data, userId: string | null, id: string, patch: { enabled?: boolean; name?: string; usdRate?: number; markup?: number; currency?: "NGN" | "USD" }) {
+export function setProvider(data: Data, userId: string | null, id: string, patch: { enabled?: boolean; name?: string; usdRate?: number; markup?: number; currency?: "NGN" | "USD"; operatorMarkups?: Record<string, number> }) {
   const denied = adminGuard(data, userId);
   if (denied) return { error: denied, data };
   const providers = data.providers.map((p) => (p.id === id ? { ...p, ...patch } : p));
@@ -248,7 +250,7 @@ export function setProvider(data: Data, userId: string | null, id: string, patch
   const products = provider
     ? data.products.map((product) => {
         if (product.providerId !== id || !(product.cost > 0)) return product;
-        const price = sellPrice(product.cost, provider.currency, provider.usdRate, provider.markup);
+        const price = sellPrice(product.cost, provider.currency, provider.usdRate, markupFor(provider, product.operator));
         return price > 0 && price !== product.price ? { ...product, price } : product;
       })
     : data.products;
