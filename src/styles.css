@@ -209,9 +209,64 @@
 
 @media (prefers-reduced-motion: reduce) {
   .rise,
-  .tier-photo { animation: none; }
+  .tier-photo,
+  .promo-enter { animation: none; }
   .service-card,
-  .uk-card { transition: none; }
+  .uk-card,
+  .promo-dot { transition: none; }
+}
+
+.promo-wrapper { position: relative; width: 100%; }
+.promo-viewport { width: 100%; overflow: hidden; border-radius: 1.5rem; }
+.promo-card {
+  position: relative;
+  isolation: isolate;
+  min-height: 170px;
+  border: 1px solid #c084fc;
+  background: #16052f;
+  box-shadow: 0 0 0 1px #7c3aed, 0 0 24px #9333ea99, inset 0 0 30px #6d28d944;
+}
+.promo-enter { animation: promoSlide 0.55s ease both; }
+@keyframes promoSlide {
+  from { opacity: 0.3; transform: translateX(35px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.promo-arrow {
+  position: absolute;
+  z-index: 20;
+  top: 50%;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid #d8b4fe66;
+  border-radius: 50%;
+  background: #16052fcc;
+  color: white;
+  transform: translateY(-50%);
+}
+.promo-prev { left: 5px; }
+.promo-next { right: 5px; }
+.promo-dots {
+  position: absolute;
+  z-index: 20;
+  bottom: 8px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transform: translateX(-50%);
+}
+.promo-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 20px;
+  background: #ffffff66;
+}
+.promo-dot.active {
+  width: 23px;
+  background: #c084fc;
+  box-shadow: 0 0 12px #c084fc;
 }
 
 .hero-wash {
@@ -285,7 +340,7 @@ html[data-form="phone"] .stat-row {
 }
 
 .notice-pop {
-  width: min(18rem, 80vw);
+  width: min(24rem, calc(100vw - 0.75rem));
 }
 
 .note-list {
