@@ -292,7 +292,7 @@ function ImportPage() {
             </div>
           </Field>
           <p className="text-xs text-muted">
-            Numbers uses the saved names. VTU files airtime and data. VPN and SMM keep the API’s own group names. Random imports every priced service and arranges it under the category that site already uses.
+            Numbers uses the saved names. VTU tries GET and POST, then keeps the airtime and data from both. Random keeps every service the API returns, from GET and POST, under the category that site already uses.
           </p>
           <Field label="Catalogue URL" hint="The saved name list only filters a Numbers import.">
             <input className={inputClass} value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="https://provider.example/api/services" />

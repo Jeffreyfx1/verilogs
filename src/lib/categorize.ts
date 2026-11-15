@@ -383,6 +383,16 @@ function keptGroup(item: ParsedItem) {
 }
 
 export function shapeImport(items: ParsedItem[], kind: ImportKind, wanted: string[]) {
+  if (kind === "random") {
+    return items
+      .filter((item) => !!(item.name || item.service))
+      .map((item) => ({
+        ...item,
+        name: item.name || item.service,
+        service: keptGroup(item) || item.service || "Other",
+        variable: item.variable || !(item.price > 0),
+      }));
+  }
   const priced = items.filter((item) => item.price > 0 && !!item.name);
   if (kind === "numbers") {
     return priced.filter((item) => (item.category === "numbers" || item.category === "rent") && serviceAllowed(item.service || item.name, wanted));

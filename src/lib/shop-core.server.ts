@@ -657,7 +657,7 @@ export function integrationStatus() {
   };
 }
 
-export async function pullRemote(input: { url: string; apiKey?: string; providerId?: string; allow?: string[] }) {
+export async function pullRemote(input: { url: string; apiKey?: string; providerId?: string; allow?: string[]; kind?: ImportKind }) {
   const session = await readSession();
   const doc = await loadLight();
   const me = doc.users.find((u) => u.id === session.userId);
@@ -704,31 +704,64 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     const res = await fetch(url, { headers, signal: ctrl.signal });
     const text = await res.text();
     if (text.length > 16_000_000) return { ok: false as const, error: "That catalogue is larger than 16MB." };
-    if (!res.ok) {
+    const both = input.kind === "vtu" || input.kind === "random";
+    if (!res.ok && !both) {
       const detail = text.replace(/\s+/g, " ").trim().slice(0, 160);
       return { ok: false as const, error: detail ? `The API replied ${res.status}. ${detail}` : `The API replied ${res.status}.` };
     }
-    const parsed = JSON.parse(text) as unknown;
-    let payload: unknown = parsed;
-    if (!url.hostname.endsWith("5sim.net") && key && !Array.isArray(parsed)) {
-      const keys = parsed && typeof parsed === "object" ? Object.keys(parsed as object) : [];
-      if (keys.length < 3) {
-        const posted = await fetch(url, {
-          method: "POST",
-          headers: { ...headers, "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ key, apiKey: key, action: "services" }),
-          signal: ctrl.signal,
-        });
-        const postedText = await posted.text();
-        if (posted.ok && postedText.length <= 16_000_000) {
+    let payload: unknown = null;
+    if (res.ok && text) {
+      try {
+        payload = JSON.parse(text) as unknown;
+      } catch {
+        if (!both) return { ok: false as const, error: "The API did not return JSON." };
+      }
+    }
+    if (both || (!url.hostname.endsWith("5sim.net") && key && payload && !Array.isArray(payload) && typeof payload === "object" && Object.keys(payload as object).length < 3)) {
+      const actions = input.kind === "vtu" ? ["", "plans", "data", "airtime"] : input.kind === "random" ? ["", "services", "plans", "products"] : ["services"];
+      const found: unknown[] = [];
+      if (payload != null && extractCatalog(payload).items.length) found.push(payload);
+      const keyed = new URL(url);
+      if (key && !keyed.searchParams.has("api_key") && !keyed.searchParams.has("apikey")) keyed.searchParams.set("api_key", key);
+      if (keyed.toString() !== url.toString()) {
+        try {
+          const extra = await fetch(keyed, { headers, signal: ctrl.signal });
+          const extraText = await extra.text();
+          if (extra.ok && extraText && extraText.length <= 16_000_000) {
+            const parsed = JSON.parse(extraText) as unknown;
+            if (extractCatalog(parsed).items.length) found.push(parsed);
+          }
+        } catch {
+          // The plain GET is still usable.
+        }
+      }
+      for (const action of actions) {
+        const form = new URLSearchParams();
+        if (key) {
+          form.set("key", key);
+          form.set("api_key", key);
+          form.set("apiKey", key);
+        }
+        if (action) form.set("action", action);
+        const attempts: RequestInit[] = [
+          { method: "POST", headers: { ...headers, "Content-Type": "application/x-www-form-urlencoded" }, body: form, signal: ctrl.signal },
+          { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries(form)), signal: ctrl.signal },
+        ];
+        for (const init of attempts) {
           try {
-            payload = JSON.parse(postedText) as unknown;
+            const posted = await fetch(url, init);
+            const postedText = await posted.text();
+            if (!posted.ok || !postedText || postedText.length > 16_000_000) continue;
+            const parsed = JSON.parse(postedText) as unknown;
+            if (extractCatalog(parsed).items.length) found.push(parsed);
           } catch {
-            payload = parsed;
+            // Try the next method.
           }
         }
       }
+      if (found.length) payload = found.length === 1 ? found[0] : found;
     }
+    if (payload == null) return { ok: false as const, error: both ? "The API did not return a catalogue. Tried GET and POST." : "The API did not return JSON." };
     const hint = /hosting|rent/i.test(url.search + url.pathname) ? "hosting" : "";
     const parts = url.pathname.split("/").filter(Boolean);
     const at = parts.findIndex((part) => part === "products");
@@ -766,7 +799,7 @@ const KIND_EMPTY: Record<ImportKind, string> = {
   vtu: "No airtime or data plans were in that catalogue.",
   vpn: "No VPN plans were in that catalogue.",
   smm: "No social boost services were in that catalogue.",
-  random: "That catalogue had no priced services.",
+  random: "That catalogue had no services.",
 };
 
 function importKindOf(value: string | undefined): ImportKind {
@@ -784,7 +817,7 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
   const wantedForPull = routed.product ? [...wanted, routed.product] : wanted;
   let payload = input.payload;
   if (input.url) {
-    const fetched = await pullRemote({ url: input.url, apiKey: input.apiKey, providerId: input.providerId, allow: kind === "numbers" ? wantedForPull : [] });
+    const fetched = await pullRemote({ url: input.url, apiKey: input.apiKey, providerId: input.providerId, allow: kind === "numbers" ? wantedForPull : [], kind });
     if (!fetched.ok) return emptyImport(fetched.error);
     payload = fetched.payload;
   }
