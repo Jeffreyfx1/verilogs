@@ -8,6 +8,7 @@ import { SupportBot } from "@/components/support-bot";
 import appCss from "../styles.css?url";
 
 export const Route = createRootRoute({
+  headers: () => ({ "cache-control": "no-cache" }),
   head: () => ({
     meta: [
       { charSet: "utf-8" },
