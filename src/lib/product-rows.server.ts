@@ -137,10 +137,10 @@ export async function queryExtras(input: { q?: string; providerIds: string[] }) 
   ];
   if (input.q) {
     values.push(`%${input.q.replace(/[%_]/g, "")}%`);
-    parts.push(`(name ilike $${values.length} or service ilike $${values.length})`);
+    parts.push(`(name ilike $${values.length} or service ilike $${values.length} or description ilike $${values.length} or category ilike $${values.length})`);
   }
   const rows = await sql.query<Record<string, unknown>>(
-    `select * from shop_products where ${parts.join(" and ")} order by service, name limit 400`,
+    `select * from shop_products where ${parts.join(" and ")} order by service, name limit 800`,
     values,
   );
   return rows.map(rowOf);

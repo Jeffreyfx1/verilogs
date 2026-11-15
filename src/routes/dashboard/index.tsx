@@ -18,6 +18,7 @@ import {
   Plus,
   Send,
   ShieldCheck,
+  Shield,
   Signal,
   Smartphone,
   SquarePlay,
@@ -101,10 +102,11 @@ const slides = [
 const quick = [
   { to: "/dashboard/airtime", label: "Airtime", icon: Smartphone, popular: true },
   { to: "/dashboard/data", label: "Data", icon: Signal, popular: true },
-  { to: "/dashboard/bills", label: "TV Sub", icon: MonitorPlay },
-  { to: "/dashboard/bills", label: "Electricity", icon: Zap },
+  { to: "/dashboard/bills", label: "TV Sub", icon: MonitorPlay, soon: true },
+  { to: "/dashboard/bills", label: "Electricity", icon: Zap, soon: true },
   { to: "/dashboard/numbers", label: "Buy Number", icon: FileDigit, search: buySearch },
   { to: "/dashboard/extra", label: "Buy Logs", icon: FileText },
+  { to: "/dashboard/extra", label: "VPN", icon: Shield, hash: "vpn" },
   { to: "/dashboard/numbers", label: "Rent Number", icon: Crown, search: rentSearch },
   { to: "/dashboard/announcements", label: "Posts", icon: MessageSquareMore },
   { to: "/faq", label: "Tutorials", icon: SquarePlay },
@@ -354,24 +356,39 @@ function DashHome() {
         </div>
 
         <div className="mt-3 grid grid-cols-4 gap-2.5 sm:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
-          {tiles.map((q) => (
-            <Link
-              key={q.label}
-              to={q.to}
-              search={"search" in q ? q.search : undefined}
-              className="service-card relative flex min-h-[5.6rem] flex-col items-center justify-center gap-2 rounded-2xl px-1 py-3 text-center"
-            >
-              {"popular" in q && q.popular ? (
-                <span className="popular-badge absolute -top-2 right-1.5 rounded-full px-2 py-0.5 text-[9px] font-extrabold">
-                  Popular
-                </span>
-              ) : null}
-
-              <q.icon className="size-8 fill-violet-400/40 text-violet-300" strokeWidth={2} />
-
-              <span className="text-[11px] font-bold leading-tight text-white">{q.label}</span>
-            </Link>
-          ))}
+          {tiles.map((q) => {
+            const soon = "soon" in q && q.soon;
+            const body = (
+              <>
+                {"popular" in q && q.popular ? (
+                  <span className="popular-badge absolute -top-2 right-1.5 rounded-full px-2 py-0.5 text-[9px] font-extrabold">Popular</span>
+                ) : null}
+                {soon ? (
+                  <span className="popular-badge absolute -top-2 right-1.5 rounded-full px-2 py-0.5 text-[9px] font-extrabold">Coming Soon</span>
+                ) : null}
+                <q.icon className={`size-8 fill-violet-400/40 text-violet-300 ${soon ? "opacity-40" : ""}`} strokeWidth={2} />
+                <span className={`text-[11px] font-bold leading-tight ${soon ? "text-white/45" : "text-white"}`}>{q.label}</span>
+              </>
+            );
+            if (soon) {
+              return (
+                <div key={q.label} className="service-card relative flex min-h-[5.6rem] cursor-default flex-col items-center justify-center gap-2 rounded-2xl px-1 py-3 text-center">
+                  {body}
+                </div>
+              );
+            }
+            return (
+              <Link
+                key={q.label}
+                to={q.to}
+                search={"search" in q ? q.search : undefined}
+                hash={"hash" in q ? q.hash : undefined}
+                className="service-card relative flex min-h-[5.6rem] flex-col items-center justify-center gap-2 rounded-2xl px-1 py-3 text-center"
+              >
+                {body}
+              </Link>
+            );
+          })}
         </div>
       </section>
 
