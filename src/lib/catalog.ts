@@ -410,11 +410,15 @@ export function nairaCost(cost: number, currency: "NGN" | "USD") {
 }
 
 export function sellPrice(cost: number, currency: "NGN" | "USD", _rate: number, markup: number, seed = "", category = "") {
+  const factor = markup > 0 ? markup : 1;
+  if (BILL_PRICE.has(category)) {
+    if (!(cost > 0)) return 0;
+    return Math.ceil((cost * factor) / 5) * 5;
+  }
   const ngn = nairaCost(cost, currency);
   if (ngn <= 0) return 0;
-  const factor = markup > 0 ? markup : 1;
   const priced = Math.ceil((ngn * factor) / 5) * 5;
-  if (BILL_PRICE.has(category) || priced > 2000) return priced;
+  if (priced > 2000) return priced;
   return spreadPrice(seed || `${category}|${ngn}|${factor}`);
 }
 
@@ -423,13 +427,14 @@ export function quoteProduct(product: Product, doc: Pick<Data, "providers" | "se
   if (!provider) return product;
   const operator = String(product.operator || "").trim().toLowerCase();
   const fixed = provider.operatorPrices?.[operator];
-  if (fixed && fixed > 0) return { ...product, price: Math.ceil(fixed / 5) * 5 };
+  if (fixed && fixed > 0 && !BILL_PRICE.has(product.category)) return { ...product, price: Math.ceil(fixed / 5) * 5 };
   if (!(product.cost > 0) || product.variable) return product;
-  if (provider.currency === "USD" && product.cost > 500) return product;
+  const bill = BILL_PRICE.has(product.category);
+  if (!bill && provider.currency === "USD" && product.cost > 500) return product;
   const five = /5sim/i.test(`${provider.name || ""} ${provider.baseUrl || ""}`);
   const fallback = provider.markup > 0 ? provider.markup : five ? 1.6 : 1 + (doc.settings?.margin || 0) / 100;
   const custom = provider.operatorMarkups?.[operator];
-  const price = sellPrice(product.cost, provider.currency, USD_NGN, custom && custom > 0 ? custom : fallback, `${product.externalId}|${product.name}|${product.country}|${product.operator}`, product.category);
+  const price = sellPrice(product.cost, bill ? "NGN" : provider.currency, USD_NGN, custom && custom > 0 ? custom : fallback, `${product.externalId}|${product.name}|${product.country}|${product.operator}`, product.category);
   return price > 0 ? { ...product, price } : product;
 }
 

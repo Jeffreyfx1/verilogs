@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
@@ -23,7 +23,10 @@ function DataPage() {
   const providers = useStore((s) => s.providers);
   const settings = useStore((s) => s.settings);
   const buy = useStore((s) => s.buy);
-  const plans = products.filter((p) => p.category === "data" && isLive(p, providers)).map((p) => quoteProduct(p, { providers, settings }));
+  const plans = useMemo(
+    () => products.filter((p) => p.category === "data" && isLive(p, providers)).map((p) => quoteProduct(p, { providers, settings })),
+    [products, providers, settings],
+  );
   const present = [...ORDER.filter((n) => plans.some((p) => p.network === n)), ...(plans.some((p) => !p.network || !ORDER.includes(p.network)) ? ["Other"] : [])];
   const [net, setNet] = useState(present[0] || "MTN");
   const [phone, setPhone] = useState("");

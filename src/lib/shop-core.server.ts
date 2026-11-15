@@ -286,41 +286,45 @@ function result(doc: Data, userId: string | null, draft: Draft | null, error: st
 const LIGHT = new Set(["login", "register", "logout", "resetPassword", "completeGoogle"]);
 
 let sweptBoost = false;
+let lightSyncedAt = 0;
 const LIGHT_CATS = ["airtime", "data", "cable", "electricity", "exam", "giftcard", "betting", "other"];
 
 export async function currentShop(): Promise<ApplyResult> {
   let doc = await loadLight();
-  try {
-    const ids = new Set(await providerIdsWithNumbers());
-    if (ids.size) {
-      let changed = false;
-      const providers = doc.providers.map((provider) => {
-        if (!ids.has(provider.id) || provider.servesNumbers) return provider;
-        changed = true;
-        return { ...provider, servesNumbers: true, enabled: provider.enabled };
-      });
-      if (changed) {
-        doc = { ...doc, providers };
+  if (Date.now() - lightSyncedAt > 120000) {
+    lightSyncedAt = Date.now();
+    try {
+      const ids = new Set(await providerIdsWithNumbers());
+      if (ids.size) {
+        let changed = false;
+        const providers = doc.providers.map((provider) => {
+          if (!ids.has(provider.id) || provider.servesNumbers) return provider;
+          changed = true;
+          return { ...provider, servesNumbers: true, enabled: provider.enabled };
+        });
+        if (changed) {
+          doc = { ...doc, providers };
+          await writeState(doc);
+        }
+      }
+    } catch {
+      // Table appears after the next deploy migration.
+    }
+    try {
+      if (!sweptBoost) {
+        await dropMisfiledBoost();
+        sweptBoost = true;
+      }
+      const rows = await readShopRows(LIGHT_CATS, 2000);
+      const have = new Set(doc.products.map((product) => `${product.providerId}|${product.externalId}`));
+      const missing = rows.filter((product) => product.externalId && !have.has(`${product.providerId}|${product.externalId}`));
+      if (missing.length) {
+        doc = { ...doc, products: [...doc.products, ...missing] };
         await writeState(doc);
       }
+    } catch {
+      // Catalogue table is created by the next migration.
     }
-  } catch {
-    // Table appears after the next deploy migration.
-  }
-  try {
-    if (!sweptBoost) {
-      await dropMisfiledBoost();
-      sweptBoost = true;
-    }
-    const rows = await readShopRows(LIGHT_CATS, 2000);
-    const have = new Set(doc.products.map((product) => `${product.providerId}|${product.externalId}`));
-    const missing = rows.filter((product) => product.externalId && !have.has(`${product.providerId}|${product.externalId}`));
-    if (missing.length) {
-      doc = { ...doc, products: [...doc.products, ...missing] };
-      await writeState(doc);
-    }
-  } catch {
-    // Catalogue table is created by the next migration.
   }
   const session = await readSession();
   return result(doc, session.userId, session.draft, null);
