@@ -17,7 +17,17 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [help, setHelp] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("verilogs.email");
+      if (saved) setEmail(saved);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -28,8 +38,16 @@ function LoginPage() {
     e.preventDefault();
     setBusy(true);
     try {
-      const err = await login(email, password);
+      const err = await login(email, password, remember);
       if (err) toast.error(err);
+      else {
+        try {
+          if (remember) localStorage.setItem("verilogs.email", email);
+          else localStorage.removeItem("verilogs.email");
+        } catch {
+          /* ignore */
+        }
+      }
     } catch {
       toast.error("Could not reach the shop. Try again.");
     } finally {
@@ -60,6 +78,10 @@ function LoginPage() {
                 </button>
               </span>
             </Field>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+              Remember me on this device
+            </label>
             <Button type="submit" className="w-full" disabled={busy}>{busy ? "Checking…" : "Log in"}</Button>
           </form>
           <div className="my-4 text-center text-xs text-muted">or</div>

@@ -66,18 +66,18 @@ function locked<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
-function cookieOpts() {
+function cookieOpts(remember = true) {
   return {
     httpOnly: true,
     path: "/",
     sameSite: "lax" as const,
-    maxAge: 60 * 60 * 24 * 30,
+    ...(remember ? { maxAge: 60 * 60 * 24 * 30 } : {}),
     secure: (process.env.APP_URL || "").startsWith("https://"),
   };
 }
 
-function touchCookie(token: string) {
-  setCookie(COOKIE, token, cookieOpts());
+function touchCookie(token: string, remember = true) {
+  setCookie(COOKIE, token, cookieOpts(remember));
 }
 
 async function readSession() {
@@ -358,7 +358,7 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
         userId = out.userId;
         draft = null;
         await writeSession(token, userId, null);
-        touchCookie(token);
+        touchCookie(token, payload.remember !== false);
       }
     } else if (op === "login") {
       const out = await loginUser(doc, str("email"), str("password"));
@@ -367,7 +367,7 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
         userId = out.userId;
         draft = null;
         await writeSession(token, userId, null);
-        touchCookie(token);
+        touchCookie(token, payload.remember !== false);
       }
     } else if (op === "logout") {
       userId = null;

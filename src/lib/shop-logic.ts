@@ -64,6 +64,7 @@ export function projectShop(doc: Data, userId: string | null, draft: Draft | nul
     tickets: admin ? clean.tickets : clean.tickets.filter((t) => t.userId === userId),
     notifications: (clean.notifications || []).filter((n) => n.userId === userId),
     products: (admin ? clean.products : clean.products.filter((p) => isLive(p, clean.providers))).filter((p) => p.category !== "numbers" && p.category !== "rent"),
+    providers: clean.providers.map((provider) => (admin ? provider : { ...provider, name: provider.servesNumbers ? "" : provider.name, baseUrl: "" })),
   };
 }
 

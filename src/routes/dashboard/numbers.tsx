@@ -152,7 +152,7 @@ function NumbersPage() {
         <button type="button" onClick={() => { setCountryName("United States"); setPicked(false); setOperators([]); }} className={`shrink-0 rounded-full px-4 py-2 text-sm font-extrabold ${countryName === "United States" ? "bg-primary text-on-primary" : "bg-[#12081f] text-white"}`}>🇺🇸 USA</button>
         {liveServers.map((s) => (
           <Link key={s.id} to="/dashboard/numbers" search={{ server: s.id, country: lockedCountry, kind, service: preset }} className={`shrink-0 rounded-full px-4 py-2 text-sm font-extrabold ${s.id === activeId ? "bg-violet-600 text-white" : "bg-[#12081f] text-white"}`}>
-            {s.label || s.name}
+            {s.label || "Server"}
           </Link>
         ))}
       </div>

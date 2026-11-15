@@ -12,8 +12,8 @@ async function act(op: string, payload?: Record<string, unknown>): Promise<ShopS
 type Actions = {
   ready: boolean;
   boot: () => void;
-  register: (input: { name: string; email: string; phone: string; password: string }) => Promise<string | null>;
-  login: (email: string, password: string) => Promise<string | null>;
+  register: (input: { name: string; email: string; phone: string; password: string; remember?: boolean }) => Promise<string | null>;
+  login: (email: string, password: string, remember?: boolean) => Promise<string | null>;
   logout: () => void;
   completeGoogle: (input: { name: string; phone: string }) => Promise<string | null>;
   resetPassword: (email: string, password: string) => Promise<string | null>;
@@ -69,7 +69,7 @@ export const useStore = create<Store>((set) => {
         .catch(() => undefined);
     },
     register: async (input) => (await run("register", input)).error,
-    login: async (email, password) => (await run("login", { email, password })).error,
+    login: async (email, password, remember = true) => (await run("login", { email, password, remember })).error,
     logout: () => void run("logout"),
     completeGoogle: async (input) => (await run("completeGoogle", input)).error,
     resetPassword: async (email, password) => (await run("resetPassword", { email, password })).error,

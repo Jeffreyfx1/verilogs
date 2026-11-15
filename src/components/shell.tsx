@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
@@ -25,7 +25,7 @@ import { Logo } from "@/components/ui";
 import { NoticeBell } from "@/components/bell";
 import { DevicePicker } from "@/components/device-picker";
 import { naira } from "@/lib/money";
-import { useServers, useStore, useUser } from "@/lib/store";
+import { useStore, useUser } from "@/lib/store";
 
 type Item = { to: string; label: string; icon: typeof LayoutDashboard; end?: boolean };
 
@@ -34,8 +34,6 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
   const logout = useStore((s) => s.logout);
   const nav = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const serverList = useServers();
-  const servers = useMemo(() => serverList.filter((s) => s.enabled), [serverList]);
   const [open, setOpen] = useState(false);
   if (!user) return null;
 
@@ -110,19 +108,6 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
           ))}
           {!admin ? (
             <div className="pt-2">
-              <p className="px-3 pb-1 text-xs font-semibold tracking-wide text-muted">SERVERS</p>
-              {servers.map((s) => (
-                <Link
-                  key={s.id}
-                  to="/dashboard/numbers"
-                  search={{ server: s.id, country: "", kind: "", service: "" }}
-                  onClick={() => setOpen(false)}
-                  className="flex items-center justify-between rounded-xl px-3 py-2 text-sm hover:bg-paper"
-                >
-                  <span>{s.label}</span>
-                  <span className="truncate pl-2 text-xs text-muted">{s.name}</span>
-                </Link>
-              ))}
               <Link to="/dashboard/numbers" search={{ server: "", country: "United States", kind: "", service: "" }} onClick={() => setOpen(false)} className="block rounded-xl px-3 py-2 text-sm hover:bg-paper">
                 USA numbers
               </Link>

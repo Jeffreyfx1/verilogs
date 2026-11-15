@@ -15,6 +15,7 @@ function RegisterPage() {
   const nav = useNavigate();
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", confirm: "" });
   const [terms, setTerms] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });
@@ -30,7 +31,7 @@ function RegisterPage() {
     if (form.phone.trim().length < 8) return toast.error("Enter a real phone number.");
     setBusy(true);
     try {
-      const err = await register(form);
+      const err = await register({ ...form, remember });
       if (err) toast.error(err);
       else nav({ to: "/dashboard" });
     } catch {
@@ -58,6 +59,10 @@ function RegisterPage() {
             </span>
           </Field>
           <Field label="Confirm password"><input className={inputClass} type={show ? "text" : "password"} required value={form.confirm} onChange={set("confirm")} placeholder="Repeat password" /></Field>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+            Remember me on this device
+          </label>
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} className="mt-1" />
             <span>I agree to the <Link to="/terms" className="font-semibold text-primary">terms</Link> and want to create my account.</span>
