@@ -533,7 +533,7 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
   const ready = { ...doc, products: [quoted, ...doc.products.filter((item) => item.id !== quoted.id)] };
   const user = userId ? ready.users.find((item) => item.id === userId) : null;
   const face = quoted.variable ? Math.round(extra.amount || 0) : sticker;
-  const charge = quoted.variable && (quoted.category === "airtime" || quoted.category === "electricity") ? withMargin(face, markupFor(provider, quoted.operator)) : face;
+  const charge = quoted.variable && quoted.category === "electricity" ? withMargin(face, markupFor(provider, quoted.operator)) : face;
   if (!user) return { error: "Sign in first.", data: doc };
   if (quoted.category === "airtime" && (face < 50 || face > 50000)) return { error: "Airtime must be between ₦50 and ₦50,000.", data: doc };
   if (quoted.category === "electricity" && (face < 1000 || face > 200000)) return { error: "Electricity must be between ₦1,000 and ₦200,000.", data: doc };
@@ -1214,12 +1214,12 @@ export async function browseNumbers(input: { providerId?: string; category?: str
   return { ...empty, countries };
 }
 
-export async function browseExtras(input: { q?: string }) {
+export async function browseExtras(input: { q?: string; kind?: string }) {
   const doc = await loadLight();
   const session = await readSession();
   if (!session.userId) return [] as Product[];
   const providerIds = doc.providers.filter((provider) => provider.enabled).map((provider) => provider.id);
-  const rows = await queryExtras({ q: (input.q || "").trim(), providerIds });
+  const rows = await queryExtras({ q: (input.q || "").trim(), providerIds, kind: input.kind === "vpn" ? "vpn" : "shop" });
   return rows.map((row) => quoteProduct(row, doc));
 }
 

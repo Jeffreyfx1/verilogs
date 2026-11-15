@@ -48,7 +48,11 @@ function facts(row: Product) {
   return [row.category, row.service, row.country, row.network, row.operator, row.validity, row.stock > 0 ? `${row.stock} in stock` : ""].filter(Boolean).join(" · ");
 }
 
-function ExtraPage() {
+function isVpn(item: Product) {
+  return item.category === "vpn" || /\bvpn\b/i.test(`${item.name} ${item.service}`);
+}
+
+export function Marketplace({ kind }: { kind: "vpn" | "shop" }) {
   const user = useUser();
   const all = useStore((s) => s.products);
   const providers = useStore((s) => s.providers);
@@ -61,13 +65,9 @@ function ExtraPage() {
   const [remote, setRemote] = useState<Product[]>([]);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && window.location.hash === "#vpn") setQ("vpn");
-  }, []);
-
-  useEffect(() => {
     let stop = false;
     const timer = setTimeout(() => {
-      browseExtras({ data: { q } })
+      browseExtras({ data: { q, kind } })
         .then((rows) => {
           if (!stop) setRemote(rows);
         })
@@ -77,18 +77,19 @@ function ExtraPage() {
       stop = true;
       clearTimeout(timer);
     };
-  }, [q]);
+  }, [q, kind]);
 
   const items = useMemo(() => {
     const seen = new Set(remote.map((row) => row.id));
     const needle = q.trim().toLowerCase();
     const local = all.filter((p) => {
-      if (KNOWN.has(p.category) || seen.has(p.id) || !isLive(p, providers)) return false;
+      if (seen.has(p.id) || !isLive(p, providers)) return false;
+      if (kind === "vpn" ? !isVpn(p) : KNOWN.has(p.category) || isVpn(p)) return false;
       if (!needle) return true;
       return `${p.service} ${p.name} ${p.description} ${p.category} ${p.country} ${p.network}`.toLowerCase().includes(needle);
     });
     return [...remote, ...local];
-  }, [all, providers, q, remote]);
+  }, [all, providers, q, remote, kind]);
 
   const groups = useMemo(() => groupByWord(items), [items]);
   const shown = cat === "All" ? items : groups.find(([name]) => name === cat)?.[1] || [];
@@ -123,11 +124,11 @@ function ExtraPage() {
       <div className="market-marquee rounded-xl">
         <span className="px-4 text-sm font-bold">Please enable VPN for faster success rates. Please enable VPN for faster success rates.</span>
       </div>
-      <h1 className="mt-4 text-2xl font-extrabold text-slate-900">Marketplace</h1>
-      <p className="mt-1 text-sm text-slate-600">Search a word such as house and the matching products stay together, with the full name and details.</p>
+      <h1 className="mt-4 text-2xl font-extrabold text-slate-900">{kind === "vpn" ? "VPN" : "Marketplace"}</h1>
+      <p className="mt-1 text-sm text-slate-600">{kind === "vpn" ? "VPN plans only. This list is separate from the other marketplace." : "Search a word such as house and the matching products stay together, with the full name and details."}</p>
       <input
         className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900"
-        placeholder="Search products or a category"
+        placeholder={kind === "vpn" ? "Search VPN plans" : "Search products or a category"}
         value={q}
         onChange={(e) => { setQ(e.target.value); setCat("All"); setOpen(null); }}
       />
@@ -151,7 +152,7 @@ function ExtraPage() {
               </button>
             ))}
           </div>
-          {!shown.length ? <p className="mt-6 text-sm text-slate-500">No products yet. Import a catalogue and turn the rows on.</p> : null}
+          {!shown.length ? <p className="mt-6 text-sm text-slate-500">{kind === "vpn" ? "No VPN plans yet. Import a VPN catalogue and turn the rows on." : "No products yet. Import a catalogue and turn the rows on."}</p> : null}
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {shown.map((row) => (
               <article key={row.id} className="flex flex-col rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm">
@@ -198,4 +199,8 @@ function Checkout({ row, balance, buying, paying, onBuy, onTopUp }: { row: Produ
       )}
     </div>
   );
+}
+
+function ExtraPage() {
+  return <Marketplace kind="shop" />;
 }

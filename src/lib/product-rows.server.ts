@@ -126,15 +126,21 @@ export async function readShopRows(categories: string[], limit = 2000) {
   return rows.map(rowOf);
 }
 
-export async function queryExtras(input: { q?: string; providerIds: string[] }) {
+export async function queryExtras(input: { q?: string; providerIds: string[]; kind?: "vpn" | "shop" }) {
   if (!input.providerIds.length) return [];
   const sql = await getSql();
   const values: unknown[] = [input.providerIds];
   const parts = [
-    "category not in ('numbers','rent','airtime','data','cable','electricity','exam')",
     "enabled = true",
     "provider_id = any($1::text[])",
   ];
+  if (input.kind === "vpn") {
+    parts.push("(category = 'vpn' or name ~* '\\mvpn\\M' or service ~* '\\mvpn\\M')");
+  } else {
+    parts.push("category not in ('numbers','rent','airtime','data','cable','electricity','exam','vpn')");
+    parts.push("name !~* '\\mvpn\\M'");
+    parts.push("service !~* '\\mvpn\\M'");
+  }
   if (input.q) {
     values.push(`%${input.q.replace(/[%_]/g, "")}%`);
     parts.push(`(name ilike $${values.length} or service ilike $${values.length} or description ilike $${values.length} or category ilike $${values.length})`);

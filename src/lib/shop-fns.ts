@@ -126,7 +126,7 @@ export const browseNumbers = createServerFn({ method: "POST" })
   });
 
 export const browseExtras = createServerFn({ method: "POST" })
-  .validator((input: { q?: string }) => ({ q: String(input?.q || "").slice(0, 60) }))
+  .validator((input: { q?: string; kind?: string }) => ({ q: String(input?.q || "").slice(0, 60), kind: input?.kind === "vpn" ? "vpn" as const : "shop" as const }))
   .handler(async ({ data }) => {
     const { browseExtras } = await core();
     return browseExtras(data);

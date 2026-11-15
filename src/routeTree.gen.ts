@@ -39,6 +39,7 @@ import { Route as DashboardHistoryRouteImport } from './routes/dashboard/history
 import { Route as DashboardNumbersRouteImport } from './routes/dashboard/numbers'
 import { Route as DashboardProfileRouteImport } from './routes/dashboard/profile'
 import { Route as DashboardSupportRouteImport } from './routes/dashboard/support'
+import { Route as DashboardVpnRouteImport } from './routes/dashboard/vpn'
 import { Route as DashboardWalletRouteImport } from './routes/dashboard/wallet'
 import { Route as ApiGoogleCallbackRouteImport } from './routes/api/google/callback'
 import { Route as ApiGoogleStartRouteImport } from './routes/api/google/start'
@@ -194,6 +195,11 @@ const DashboardSupportRoute = DashboardSupportRouteImport.update({
   path: '/support',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardVpnRoute = DashboardVpnRouteImport.update({
+  id: '/vpn',
+  path: '/vpn',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardWalletRoute = DashboardWalletRouteImport.update({
   id: '/wallet',
   path: '/wallet',
@@ -244,6 +250,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/numbers': typeof DashboardNumbersRoute
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/support': typeof DashboardSupportRoute
+  '/dashboard/vpn': typeof DashboardVpnRoute
   '/dashboard/wallet': typeof DashboardWalletRoute
   '/admin/': typeof AdminIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
@@ -278,6 +285,7 @@ export interface FileRoutesByTo {
   '/dashboard/numbers': typeof DashboardNumbersRoute
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/support': typeof DashboardSupportRoute
+  '/dashboard/vpn': typeof DashboardVpnRoute
   '/dashboard/wallet': typeof DashboardWalletRoute
   '/admin': typeof AdminIndexRoute
   '/dashboard': typeof DashboardIndexRoute
@@ -315,6 +323,7 @@ export interface FileRoutesById {
   '/dashboard/numbers': typeof DashboardNumbersRoute
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/support': typeof DashboardSupportRoute
+  '/dashboard/vpn': typeof DashboardVpnRoute
   '/dashboard/wallet': typeof DashboardWalletRoute
   '/admin/': typeof AdminIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
@@ -353,6 +362,7 @@ export interface FileRouteTypes {
     | '/dashboard/numbers'
     | '/dashboard/profile'
     | '/dashboard/support'
+    | '/dashboard/vpn'
     | '/dashboard/wallet'
     | '/admin/'
     | '/dashboard/'
@@ -387,6 +397,7 @@ export interface FileRouteTypes {
     | '/dashboard/numbers'
     | '/dashboard/profile'
     | '/dashboard/support'
+    | '/dashboard/vpn'
     | '/dashboard/wallet'
     | '/admin'
     | '/dashboard'
@@ -423,6 +434,7 @@ export interface FileRouteTypes {
     | '/dashboard/numbers'
     | '/dashboard/profile'
     | '/dashboard/support'
+    | '/dashboard/vpn'
     | '/dashboard/wallet'
     | '/admin/'
     | '/dashboard/'
@@ -661,6 +673,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardSupportRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/vpn': {
+      id: '/dashboard/vpn'
+      path: '/vpn'
+      fullPath: '/dashboard/vpn'
+      preLoaderRoute: typeof DashboardVpnRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/wallet': {
       id: '/dashboard/wallet'
       path: '/wallet'
@@ -726,6 +745,7 @@ interface DashboardRouteChildren {
   DashboardNumbersRoute: typeof DashboardNumbersRoute
   DashboardProfileRoute: typeof DashboardProfileRoute
   DashboardSupportRoute: typeof DashboardSupportRoute
+  DashboardVpnRoute: typeof DashboardVpnRoute
   DashboardWalletRoute: typeof DashboardWalletRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
 }
@@ -740,6 +760,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardNumbersRoute: DashboardNumbersRoute,
   DashboardProfileRoute: DashboardProfileRoute,
   DashboardSupportRoute: DashboardSupportRoute,
+  DashboardVpnRoute: DashboardVpnRoute,
   DashboardWalletRoute: DashboardWalletRoute,
   DashboardIndexRoute: DashboardIndexRoute,
 }

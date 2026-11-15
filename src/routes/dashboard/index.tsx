@@ -106,7 +106,7 @@ const quick = [
   { to: "/dashboard/bills", label: "Electricity", icon: Zap, soon: true },
   { to: "/dashboard/numbers", label: "Buy Number", icon: FileDigit, search: buySearch },
   { to: "/dashboard/extra", label: "Buy Logs", icon: FileText },
-  { to: "/dashboard/extra", label: "VPN", icon: Shield, hash: "vpn" },
+  { to: "/dashboard/vpn", label: "VPN", icon: Shield },
   { to: "/dashboard/numbers", label: "Rent Number", icon: Crown, search: rentSearch },
   { to: "/dashboard/announcements", label: "Posts", icon: MessageSquareMore },
   { to: "/faq", label: "Tutorials", icon: SquarePlay },
@@ -382,7 +382,6 @@ function DashHome() {
                 key={q.label}
                 to={q.to}
                 search={"search" in q ? q.search : undefined}
-                hash={"hash" in q ? q.hash : undefined}
                 className="service-card relative flex min-h-[5.6rem] flex-col items-center justify-center gap-2 rounded-2xl px-1 py-3 text-center"
               >
                 {body}
