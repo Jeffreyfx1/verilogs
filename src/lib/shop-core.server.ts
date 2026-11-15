@@ -2,7 +2,7 @@ import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/rea
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
 import { freshData, isLive, normalizeData, quoteProduct, repairCatalog, sellPrice, markupFor, serverLabel, topupQuote, withAdminLogin, applyImportSlice, type Data, type Product, type SyncReport } from "@/lib/catalog";
-import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, shapeImport, MAJOR_SERVICES, type ImportKind, type ParsedItem } from "@/lib/categorize";
+import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, shapeImport, airtimeProductsFromPayload, MAJOR_SERVICES, type ImportKind, type ParsedItem } from "@/lib/categorize";
 import { IMPORT_BATCH, importBatchCount } from "@/lib/import-batch";
 import { uid } from "@/lib/money";
 import {
@@ -673,7 +673,8 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
   const key = input.apiKey?.trim() || (input.providerId ? await readProviderKey(input.providerId) : "");
   const headers: Record<string, string> = { Accept: "application/json" };
   if (key) {
-    headers.Authorization = "Bearer " + key;
+    const tokenAuth = /smeapi\.com\.ng$/i.test(url.hostname);
+    headers.Authorization = (tokenAuth ? "Token " : "Bearer ") + key;
     headers["X-API-KEY"] = key;
     headers["api-key"] = key;
   }
@@ -700,6 +701,17 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
       }
       if (!Object.keys(merged).length) return { ok: false as const, error: "None of the saved services came back from 5sim." };
       return { ok: true as const, payload: slimFiveSim(merged, "", allow, {}) };
+    }
+    if (input.kind === "vtu" && /\/airtime\/?$/i.test(url.pathname)) {
+      const plans = new URL("/api/dataplans/?format=json", url.origin);
+      const listed = await fetch(plans, { headers, signal: ctrl.signal });
+      const listedText = await listed.text();
+      if (!listed.ok || !listedText) return { ok: false as const, error: "That airtime address only places a purchase. The network list could not be read from the data plans." };
+      try {
+        return { ok: true as const, payload: JSON.parse(listedText) as unknown };
+      } catch {
+        return { ok: false as const, error: "The data plans did not come back as JSON, so the airtime networks could not be built." };
+      }
     }
     const res = await fetch(url, { headers, signal: ctrl.signal });
     const text = await res.text();
@@ -823,7 +835,10 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
   }
   if (payload == null) return emptyImport("Add a catalogue URL or paste JSON.");
   const extracted = extractCatalog(payload);
-  const items = shapeImport(extracted.items, kind, wantedForPull);
+  const airtime = kind === "vtu" ? airtimeProductsFromPayload(payload) : [];
+  const shaped = shapeImport(extracted.items, kind, wantedForPull);
+  const have = new Set(shaped.filter((item) => item.category === "airtime").map((item) => item.network.toLowerCase()));
+  const items = [...shaped, ...airtime.filter((item) => !have.has(item.network.toLowerCase()))];
   if (!items.length) return emptyImport(KIND_EMPTY[kind]);
   const jobId = crypto.randomUUID();
   const meta: ImportMeta = {

@@ -382,6 +382,51 @@ function keptGroup(item: ParsedItem) {
   return item.service || "General";
 }
 
+function networkLabel(name: string) {
+  const low = name.trim().toLowerCase();
+  if (low === "mtn") return "MTN";
+  if (low === "airtel") return "Airtel";
+  if (low === "glo") return "Glo";
+  if (low === "9mobile" || low === "9 mobile" || low === "etisalat") return "9mobile";
+  return name.trim();
+}
+
+export function airtimeProductsFromPayload(payload: unknown): ParsedItem[] {
+  const nets = new Map<string, string>();
+  const walk = (node: unknown) => {
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (!node || typeof node !== "object") return;
+    const rec = node as Record<string, unknown>;
+    const rawId = rec.network_id ?? rec.networkId;
+    const rawName = rec.network_name ?? rec.networkName ?? rec.network;
+    const id = typeof rawId === "number" || (typeof rawId === "string" && /^\d+$/.test(rawId)) ? String(rawId) : "";
+    const name = typeof rawName === "string" ? rawName.trim() : "";
+    if (id && name && !/^\d+$/.test(name)) nets.set(id, networkLabel(name));
+    for (const value of Object.values(rec)) if (value && typeof value === "object") walk(value);
+  };
+  walk(payload);
+  if (nets.has("1") && nets.has("2") && nets.has("4") && !nets.has("3") && ![...nets.values()].some((name) => name === "9mobile")) nets.set("3", "9mobile");
+  return [...nets.entries()].map(([id, network]) => ({
+    externalId: `airtime|${id}|${network.toLowerCase()}`,
+    category: "airtime" as const,
+    name: `${network} Airtime`,
+    service: "Airtime",
+    country: "Nigeria",
+    network,
+    operator: id,
+    price: 0,
+    stock: 0,
+    rate: 0,
+    rates: "",
+    validity: "",
+    variable: true,
+    description: `Network ${id}. The customer chooses the amount.`,
+  }));
+}
+
 export function shapeImport(items: ParsedItem[], kind: ImportKind, wanted: string[]) {
   if (kind === "random") {
     return items
@@ -393,7 +438,7 @@ export function shapeImport(items: ParsedItem[], kind: ImportKind, wanted: strin
         variable: item.variable || !(item.price > 0),
       }));
   }
-  const priced = items.filter((item) => item.price > 0 && !!item.name);
+  const priced = items.filter((item) => !!item.name && (item.price > 0 || item.category === "airtime" || item.variable));
   if (kind === "numbers") {
     return priced.filter((item) => (item.category === "numbers" || item.category === "rent") && serviceAllowed(item.service || item.name, wanted));
   }
