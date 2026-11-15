@@ -27,6 +27,7 @@ export type Provider = {
   currency: "NGN" | "USD";
   usdRate: number;
   markup: number;
+  operatorMarkups: Record<string, number>;
   createdAt: string;
   lastSync: {
     at: string;
@@ -212,6 +213,7 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
         ...provider,
         usdRate: provider.usdRate > 0 ? provider.usdRate : five ? 2646 : base.usdNgn,
         markup: provider.markup > 0 ? provider.markup : five ? 1.6 : 1 + base.margin / 100,
+        operatorMarkups: operatorMarkupsOf(provider.operatorMarkups),
       };
     }),
     products: src.products ?? [],
@@ -329,6 +331,23 @@ export function mixedPayload() {
   return { ...smsPayload(0.92), ...vtuPayload() };
 }
 
+export function operatorMarkupsOf(input: unknown): Record<string, number> {
+  if (!input || typeof input !== "object") return {};
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    const markup = Number(value);
+    const name = key.trim().toLowerCase();
+    if (name && markup > 0) out[name] = markup;
+  }
+  return out;
+}
+
+export function markupFor(provider: Pick<Provider, "markup" | "operatorMarkups">, operator: string) {
+  const custom = provider.operatorMarkups?.[operator.trim().toLowerCase()];
+  if (custom && custom > 0) return custom;
+  return provider.markup > 0 ? provider.markup : 1;
+}
+
 export function sellPrice(cost: number, currency: "NGN" | "USD", rate: number, markup: number) {
   const ngn = currency === "USD" ? cost * (rate > 0 ? rate : 1) : cost;
   if (ngn <= 0) return 0;
@@ -342,8 +361,9 @@ export function quoteProduct(product: Product, doc: Pick<Data, "providers" | "se
   if (provider.currency === "USD" && product.cost > 500) return product;
   const five = /5sim/i.test(`${provider.name} ${provider.baseUrl}`);
   const rate = provider.usdRate > 0 ? provider.usdRate : five ? 2646 : doc.settings.usdNgn;
-  const markup = provider.markup > 0 ? provider.markup : five ? 1.6 : 1 + doc.settings.margin / 100;
-  const price = sellPrice(product.cost, provider.currency, rate, markup);
+  const fallback = provider.markup > 0 ? provider.markup : five ? 1.6 : 1 + doc.settings.margin / 100;
+  const custom = provider.operatorMarkups?.[product.operator.trim().toLowerCase()];
+  const price = sellPrice(product.cost, provider.currency, rate, custom && custom > 0 ? custom : fallback);
   return price > 0 ? { ...product, price } : product;
 }
 
@@ -414,6 +434,7 @@ export function applyImportSlice(
       currency: input.currency,
       usdRate: input.usdRate && input.usdRate > 0 ? input.usdRate : /5sim/i.test(input.name + input.baseUrl) ? 2646 : data.settings.usdNgn,
       markup: input.markup && input.markup > 0 ? input.markup : /5sim/i.test(input.name + input.baseUrl) ? 1.6 : 1 + data.settings.margin / 100,
+      operatorMarkups: {},
       createdAt: now,
       lastSync: null,
     };
@@ -445,7 +466,7 @@ export function applyImportSlice(
   for (const item of input.items) {
     tally.byCategory[item.category] = (tally.byCategory[item.category] || 0) + 1;
     if (item.network) tally.byNetwork[item.network] = (tally.byNetwork[item.network] || 0) + 1;
-    const price = sellPrice(item.price, provider.currency, provider.usdRate, provider.markup);
+    const price = sellPrice(item.price, provider.currency, provider.usdRate, markupFor(provider, item.operator || ""));
     const existing = byExternal.get(item.externalId);
     if (existing) {
       existing.name = item.name;
