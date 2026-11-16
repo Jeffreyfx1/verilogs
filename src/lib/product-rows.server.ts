@@ -1,5 +1,6 @@
 import type { Product } from "@/lib/catalog";
 import { getSql } from "@/lib/db";
+import { SHELF_CATEGORIES, shelfOf } from "@/lib/shelves";
 
 const COLS = 19;
 
@@ -129,30 +130,25 @@ export async function readShopRows(categories: string[], limit = 2000) {
   return rows.map(rowOf);
 }
 
-export async function queryExtras(input: { q?: string; providerIds: string[]; kind?: "vpn" | "shop" }) {
-  if (!input.providerIds.length) return [];
+export async function queryExtras(input: { q?: string; providerIds: string[]; kind?: "vpn" | "smm" | "random" | "shop"; page?: number }) {
+  if (!input.providerIds.length) return { rows: [], more: false };
   const sql = await getSql();
-  const values: unknown[] = [input.providerIds];
-  const parts = [
-    "enabled = true",
-    "provider_id = any($1::text[])",
-  ];
-  if (input.kind === "vpn") {
-    parts.push("(category = 'vpn' or name ~* '\\mvpn\\M' or service ~* '\\mvpn\\M')");
-  } else {
-    parts.push("category not in ('numbers','rent','airtime','data','cable','electricity','exam','vpn')");
-    parts.push("name !~* '\\mvpn\\M'");
-    parts.push("service !~* '\\mvpn\\M'");
-  }
+  const shelf = shelfOf(input.kind === "shop" ? "random" : input.kind);
+  const values: unknown[] = [input.providerIds, [...SHELF_CATEGORIES[shelf]]];
+  const parts = ["enabled = true", "provider_id = any($1::text[])", "category = any($2::text[])"];
   if (input.q) {
     values.push(`%${input.q.replace(/[%_]/g, "")}%`);
     parts.push(`(name ilike $${values.length} or service ilike $${values.length} or description ilike $${values.length} or category ilike $${values.length})`);
   }
+  const page = Math.max(0, Math.min(5000, Math.floor(Number(input.page) || 0)));
+  const limit = 40;
+  values.push(limit + 1, page * limit);
   const rows = await sql.query<Record<string, unknown>>(
-    `select * from shop_products where ${parts.join(" and ")} order by service, name limit 800`,
+    `select * from shop_products where ${parts.join(" and ")} order by service, name limit $${values.length - 1} offset $${values.length}`,
     values,
   );
-  return rows.map(rowOf);
+  const more = rows.length > limit;
+  return { rows: rows.slice(0, limit).map(rowOf), more };
 }
 
 export async function readProduct(id: string) {

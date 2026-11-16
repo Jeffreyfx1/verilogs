@@ -1,4 +1,5 @@
 import { parseMoney } from "@/lib/money";
+import { onShelf, shelfOf, type Shelf } from "@/lib/shelves";
 
 export const MAJOR_SERVICES = [
   "WhatsApp",
@@ -406,6 +407,8 @@ function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedI
 
 export type ImportKind = "numbers" | "vtu" | "vpn" | "smm" | "random";
 
+export { onShelf, shelfOf, type Shelf };
+
 function keptGroup(item: ParsedItem) {
   const group = item.service.trim();
   if (group && group !== item.name && group.length < 48) return group;
@@ -463,6 +466,7 @@ export function shapeImport(items: ParsedItem[], kind: ImportKind, wanted: strin
       .filter((item) => !!(item.name || item.service))
       .map((item) => ({
         ...item,
+        category: "other" as const,
         name: item.name || item.service,
         service: keptGroup(item) || item.service || "Other",
         variable: item.variable || !(item.price > 0),

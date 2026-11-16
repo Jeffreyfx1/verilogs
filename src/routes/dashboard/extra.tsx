@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute, useRouterState } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { isLive, type Product } from "@/lib/catalog";
 import { naira } from "@/lib/money";
 import { beginPaystack, browseExtras } from "@/lib/shop-fns";
+import { onShelf, type Shelf } from "@/lib/shelves";
 import { useStore, useUser } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/extra")({ component: ExtraPage });
 
-const KNOWN = new Set(["numbers", "rent", "airtime", "data", "cable", "electricity", "exam"]);
 const SKIP = new Set(["the", "and", "for", "with", "from", "your", "this", "that", "service", "services", "other", "default", "item", "items", "product", "products", "buy", "new", "premium", "basic", "pro", "plan", "plans", "account", "accounts", "order", "pack", "more", "all", "get", "top", "best", "cheap", "fast"]);
 
 function wordsOf(item: Product) {
@@ -48,11 +48,25 @@ function facts(row: Product) {
   return [row.category, row.service, row.country, row.network, row.operator, row.validity, row.stock > 0 ? `${row.stock} in stock` : ""].filter(Boolean).join(" · ");
 }
 
-function isVpn(item: Product) {
-  return item.category === "vpn" || /\bvpn\b/i.test(`${item.name} ${item.service}`);
-}
+const COPY: Record<Shelf, { title: string; body: string; empty: string }> = {
+  vpn: {
+    title: "VPN plans",
+    body: "VPN plans stay on their own shelf. Random and SMM products never appear here.",
+    empty: "No VPN plans yet. Import a VPN catalogue and turn the rows on.",
+  },
+  smm: {
+    title: "SMM services",
+    body: "Social services imported as SMM. VPN, numbers and random products stay off this shelf.",
+    empty: "No SMM services yet. Import an SMM catalogue and turn the rows on.",
+  },
+  random: {
+    title: "Random marketplace",
+    body: "Miscellaneous products stored as category other. They do not mix into VPN, SMM, numbers or VTU.",
+    empty: "No random products yet. Import a Random catalogue and turn the rows on.",
+  },
+};
 
-export function Marketplace({ kind }: { kind: "vpn" | "shop" }) {
+export function Marketplace({ kind }: { kind: Shelf }) {
   const user = useUser();
   const all = useStore((s) => s.products);
   const providers = useStore((s) => s.providers);
@@ -65,34 +79,55 @@ export function Marketplace({ kind }: { kind: "vpn" | "shop" }) {
   const [buying, setBuying] = useState("");
   const [paying, setPaying] = useState(false);
   const [open, setOpen] = useState<Product | null>(null);
-  const [remote, setRemote] = useState<Product[]>([]);
+  const [remote, setRemote] = useState<Product[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [more, setMore] = useState(false);
+  const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    setPage(0);
+    setRemote(null);
+    setFailed(false);
+    setMore(false);
+    setOpen(null);
+  }, [q, kind]);
 
   useEffect(() => {
     let stop = false;
     const timer = setTimeout(() => {
-      browseExtras({ data: { q, kind } })
-        .then((rows) => {
-          if (!stop) setRemote(rows);
+      browseExtras({ data: { q, kind, page } })
+        .then((res) => {
+          if (stop) return;
+          const rows = (res?.rows || []).filter((row) => onShelf(row.category, kind));
+          setRemote((prev) => (page === 0 ? rows : [...(prev || []), ...rows]));
+          setMore(!!res?.more);
+          setFailed(false);
         })
-        .catch(() => undefined);
+        .catch(() => {
+          if (stop) return;
+          if (page === 0) {
+            setFailed(true);
+            setRemote([]);
+          }
+        });
     }, 200);
     return () => {
       stop = true;
       clearTimeout(timer);
     };
-  }, [q, kind]);
+  }, [q, kind, page]);
 
   const items = useMemo(() => {
-    const seen = new Set(remote.map((row) => row.id));
-    const needle = q.trim().toLowerCase();
-    const local = all.filter((p) => {
-      if (seen.has(p.id) || !isLive(p, providers)) return false;
-      if (kind === "vpn" ? !isVpn(p) : KNOWN.has(p.category) || isVpn(p)) return false;
-      if (!needle) return true;
-      return `${p.service} ${p.name} ${p.description} ${p.category} ${p.country} ${p.network}`.toLowerCase().includes(needle);
-    });
-    return [...remote, ...local];
-  }, [all, providers, q, remote, kind]);
+    if (failed) {
+      const needle = q.trim().toLowerCase();
+      return all.filter((p) => {
+        if (!isLive(p, providers) || !onShelf(p.category, kind)) return false;
+        if (!needle) return true;
+        return `${p.service} ${p.name} ${p.description} ${p.category} ${p.country} ${p.network}`.toLowerCase().includes(needle);
+      }).slice(0, 40);
+    }
+    return (remote || []).filter((row) => onShelf(row.category, kind));
+  }, [all, providers, q, remote, kind, failed]);
 
   const groups = useMemo(() => groupByWord(items), [items]);
   const picked = cat === "All" ? items : groups.find(([name]) => name === cat)?.[1] || [];
@@ -136,12 +171,15 @@ export function Marketplace({ kind }: { kind: "vpn" | "shop" }) {
     }
   };
 
+  const copy = COPY[kind];
+  const loading = remote === null && !failed;
+
   return (
     <div className="-mx-3 min-h-full bg-[#EEF7FA] px-3 py-4 text-ink">
       <section className="rounded-[1.6rem] bg-gradient-to-br from-[#174C70] to-[#286D86] p-5 text-white shadow-[0_12px_28px_rgba(23,76,112,0.16)]">
         <p className="text-[11px] font-bold tracking-[0.14em] text-white/75">INSTANT DELIVERY</p>
-        <h1 className="mt-1 text-2xl font-extrabold">{kind === "vpn" ? "VPN plans" : "Marketplace"}</h1>
-        <p className="mt-1 max-w-sm text-sm text-white/85">{kind === "vpn" ? "VPN plans stay on their own shelf, separate from the rest of the shop." : "Ready products from your catalogues. Open a card to read the full description before you pay."}</p>
+        <h1 className="mt-1 text-2xl font-extrabold">{copy.title}</h1>
+        <p className="mt-1 max-w-sm text-sm text-white/85">{copy.body}</p>
         <div className="mt-4 rounded-2xl bg-white/12 px-4 py-3">
           <p className="text-[11px] font-bold tracking-wide text-white/70">WALLET BALANCE</p>
           <p className="text-2xl font-extrabold">{naira(user?.balance || 0)}</p>
@@ -184,7 +222,8 @@ export function Marketplace({ kind }: { kind: "vpn" | "shop" }) {
         </article>
       ) : (
         <>
-          {!shown.length ? <p className="mt-6 text-sm text-slate-500">{kind === "vpn" ? "No VPN plans yet. Import a VPN catalogue and turn the rows on." : "No products yet. Import a catalogue and turn the rows on."}</p> : null}
+          {loading ? <p className="mt-6 text-sm text-slate-500">Loading this shelf…</p> : null}
+          {!loading && !shown.length ? <p className="mt-6 text-sm text-slate-500">{copy.empty}</p> : null}
           <div className="mt-3 grid grid-cols-1 gap-3">
             {shown.map((row) => (
               <article key={row.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -194,13 +233,18 @@ export function Marketplace({ kind }: { kind: "vpn" | "shop" }) {
                 <p className="mt-2 text-xs font-bold text-emerald-700">{row.stock > 0 ? `${row.stock} in stock` : "Availability updates at checkout"}</p>
                 <div className="mt-3 flex items-end justify-between gap-3">
                   <p className="text-lg font-extrabold">{row.price > 0 ? naira(row.price) : "Price not set"}</p>
-                  <button type="button" className="rounded-xl bg-[#0c6e8a] px-4 py-2 text-sm font-extrabold text-white" onClick={() => { setQty(1); setOpen(row); }}>
+                  <button type="button" className="btn-accent rounded-xl px-4 py-2 text-sm font-extrabold text-white" onClick={() => { setQty(1); setOpen(row); }}>
                     View & buy
                   </button>
                 </div>
               </article>
             ))}
           </div>
+          {more && !failed ? (
+            <button type="button" className="btn-accent mt-4 w-full rounded-xl py-2.5 text-sm font-extrabold text-white" onClick={() => setPage((n) => n + 1)}>
+              Load more
+            </button>
+          ) : null}
         </>
       )}
     </div>
@@ -230,13 +274,13 @@ function Checkout({ row, qty, setQty, balance, buying, paying, onBuy, onTopUp }:
       {row.validity ? <p className="mt-2 text-sm text-slate-600">Expires: {row.validity}</p> : null}
       {unit <= 0 ? <p className="mt-2 text-sm font-bold text-red-700">This product has no price yet.</p> : short > 0 ? (
         <>
-          <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-700">Your balance is {naira(short)} short. Fund your wallet to continue.</p>
-          <button type="button" disabled={paying} className="mt-3 w-full rounded-xl bg-red-700 py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={onTopUp}>
+          <p className="mt-2 rounded-xl bg-[#eef4ff] px-3 py-2 text-sm font-bold text-[#1e3a8a]">Your balance is {naira(short)} short. Fund your wallet to continue.</p>
+          <button type="button" disabled={paying} className="btn-accent mt-3 w-full rounded-xl py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={onTopUp}>
             {paying ? "Opening Paystack…" : `Top up ${naira(price)}`}
           </button>
         </>
       ) : (
-        <button type="button" disabled={buying} className="mt-3 w-full rounded-xl bg-[#0c6e8a] py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={onBuy}>
+        <button type="button" disabled={buying} className="btn-accent mt-3 w-full rounded-xl py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={onBuy}>
           {buying ? "Buying…" : `Pay ${naira(price)} and get ${qty}`}
         </button>
       )}
@@ -245,5 +289,7 @@ function Checkout({ row, qty, setQty, balance, buying, paying, onBuy, onTopUp }:
 }
 
 function ExtraPage() {
-  return <Marketplace kind="shop" />;
+  const hash = useRouterState({ select: (s) => s.location.hash });
+  const kind: Shelf = String(hash || "").replace(/^#/, "") === "smm" ? "smm" : "random";
+  return <Marketplace kind={kind} />;
 }

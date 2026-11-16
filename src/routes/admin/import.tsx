@@ -366,7 +366,7 @@ function ImportPage() {
             </div>
           </Field>
           <p className="text-xs text-muted">
-            Numbers uses the saved names. VTU tries GET and POST. An airtime purchase URL has no catalogue, so VTU reads the data plans and adds MTN, Airtel, Glo and 9mobile as top-up amounts. Random keeps every service from a real product list, under the category that site already uses.
+            Numbers uses the saved names. VTU tries GET and POST. An airtime purchase URL has no catalogue, so VTU reads the data plans and adds MTN, Airtel, Glo and 9mobile as top-up amounts. Random stores those rows as category “other”, so they stay on the Random shelf and never mix into VPN, SMM, numbers or VTU.
           </p>
           <Field label="Catalogue URL" hint="The saved name list only filters a Numbers import.">
             <input className={inputClass} value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="https://provider.example/api/services" />

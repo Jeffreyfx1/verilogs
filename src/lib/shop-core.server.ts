@@ -44,6 +44,7 @@ import {
   resetShop,
   saveFaqs,
   saveSettings,
+  setAnnouncements,
   setEnabled,
   editListing,
   setProvider,
@@ -495,6 +496,11 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
       doc = out.data;
       error = out.error;
       if (!error && "mails" in out) mail = out.mails;
+    } else if (op === "setAnnouncements") {
+      const items = Array.isArray(payload.announcements) ? payload.announcements : [];
+      const out = setAnnouncements(doc, userId, items as Data["announcements"]);
+      doc = out.data;
+      error = out.error;
     } else if (op === "markNotes") {
       doc = markNotes(doc, userId);
     } else if (op === "mailUser") {
@@ -1426,13 +1432,14 @@ export async function browseNumbers(input: { providerId?: string; category?: str
   return { ...empty, countries };
 }
 
-export async function browseExtras(input: { q?: string; kind?: string }) {
+export async function browseExtras(input: { q?: string; kind?: string; page?: number }) {
   const doc = await loadLight();
   const session = await readSession();
-  if (!session.userId) return [] as Product[];
+  if (!session.userId) return { rows: [] as Product[], more: false };
   const providerIds = doc.providers.filter((provider) => provider.enabled).map((provider) => provider.id);
-  const rows = await queryExtras({ q: (input.q || "").trim(), providerIds, kind: input.kind === "vpn" ? "vpn" : "shop" });
-  return rows.map((row) => quoteProduct(row, doc));
+  const kind = input.kind === "vpn" || input.kind === "smm" ? input.kind : "random";
+  const page = await queryExtras({ q: (input.q || "").trim(), providerIds, kind, page: input.page });
+  return { rows: page.rows.map((row) => quoteProduct(row, doc)), more: page.more };
 }
 
 export async function browseCatalog(input: { q?: string; category?: string; providerId?: string; only?: string; page?: number }) {
