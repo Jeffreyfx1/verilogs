@@ -44,7 +44,8 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
     { to: "/dashboard/data", label: "Data", icon: Radio },
     { to: "/dashboard/airtime", label: "Airtime", icon: Smartphone },
     { to: "/dashboard/bills", label: "Bills", icon: Receipt },
-    { to: "/dashboard/extra", label: "More services", icon: Package },
+    { to: "/dashboard/extra", label: "Marketplace", icon: Package },
+    { to: "/dashboard/vpn", label: "VPN", icon: Radio },
     { to: "/dashboard/announcements", label: "Announcements", icon: Megaphone },
   ];
   const historyNav: Item[] = [
@@ -151,6 +152,9 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
             <Logo compact />
           </Link>
           <NoticeBell />
+          <Link to="/dashboard/profile" className="grid size-9 shrink-0 place-items-center rounded-full border border-line" aria-label="Profile">
+            <UserRound className="size-4" />
+          </Link>
           <span className="max-w-[7.5rem] truncate rounded-full bg-paper px-3 py-1 text-sm font-extrabold">{naira(user.balance)}</span>
         </div>
         <div className="app-pad flex-1 overflow-y-auto">

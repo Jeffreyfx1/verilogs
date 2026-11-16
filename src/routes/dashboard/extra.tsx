@@ -59,6 +59,9 @@ export function Marketplace({ kind }: { kind: "vpn" | "shop" }) {
   const buy = useStore((s) => s.buy);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("All");
+  const [sort, setSort] = useState("popular");
+  const [stockOnly, setStockOnly] = useState(false);
+  const [qty, setQty] = useState(1);
   const [buying, setBuying] = useState("");
   const [paying, setPaying] = useState(false);
   const [open, setOpen] = useState<Product | null>(null);
@@ -92,20 +95,34 @@ export function Marketplace({ kind }: { kind: "vpn" | "shop" }) {
   }, [all, providers, q, remote, kind]);
 
   const groups = useMemo(() => groupByWord(items), [items]);
-  const shown = cat === "All" ? items : groups.find(([name]) => name === cat)?.[1] || [];
+  const picked = cat === "All" ? items : groups.find(([name]) => name === cat)?.[1] || [];
+  const shown = useMemo(() => {
+    const rows = stockOnly ? picked.filter((row) => row.stock > 0) : [...picked];
+    rows.sort((a, b) => {
+      if (sort === "price-asc") return a.price - b.price;
+      if (sort === "price-desc") return b.price - a.price;
+      if (sort === "name") return a.name.localeCompare(b.name);
+      return b.stock - a.stock || a.name.localeCompare(b.name);
+    });
+    return rows;
+  }, [picked, sort, stockOnly]);
 
   const purchase = async (row: Product) => {
-    const price = Math.round(row.price);
+    const price = Math.round(row.price) * qty;
     if ((user?.balance || 0) < price) return;
     setBuying(row.id);
-    const err = await buy(row.id, {});
+    let err: string | null = null;
+    for (let i = 0; i < qty; i += 1) {
+      err = await buy(row.id, {});
+      if (err) break;
+    }
     setBuying("");
     if (err) toast.error(err);
-    else toast.success("Order placed");
+    else toast.success(qty > 1 ? `${qty} orders placed` : "Order placed");
   };
 
   const topUp = async (row: Product) => {
-    const price = Math.round(row.price);
+    const price = Math.round(row.price) * qty;
     if (price < 100) return toast.error("This product price is not ready for Paystack yet.");
     setPaying(true);
     try {
@@ -128,44 +145,54 @@ export function Marketplace({ kind }: { kind: "vpn" | "shop" }) {
       <p className="mt-1 text-sm text-slate-600">{kind === "vpn" ? "VPN plans only. This list is separate from the other marketplace." : "Search a word such as house and the matching products stay together, with the full name and details."}</p>
       <input
         className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900"
-        placeholder={kind === "vpn" ? "Search VPN plans" : "Search products or a category"}
+        placeholder="Search by name"
         value={q}
         onChange={(e) => { setQ(e.target.value); setCat("All"); setOpen(null); }}
       />
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <select className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base" value={cat} onChange={(e) => { setCat(e.target.value); setOpen(null); }}>
+          <option value="All">All products</option>
+          {groups.map(([name]) => <option key={name} value={name}>{name}</option>)}
+        </select>
+        <select className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base" value={sort} onChange={(e) => setSort(e.target.value)}>
+          <option value="popular">Most popular</option>
+          <option value="price-asc">Price: low to high</option>
+          <option value="price-desc">Price: high to low</option>
+          <option value="name">Name</option>
+        </select>
+      </div>
+      <label className="mt-2 flex items-center gap-2 text-sm text-slate-700">
+        <input type="checkbox" checked={stockOnly} onChange={(e) => setStockOnly(e.target.checked)} />
+        In stock only
+        <span className="ml-auto text-xs text-slate-500">{shown.length} products</span>
+      </label>
       {open ? (
         <article className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <button type="button" className="mb-3 inline-flex items-center gap-1 text-sm font-bold text-slate-700" onClick={() => setOpen(null)}>
+          <button type="button" className="mb-3 inline-flex items-center gap-1 text-sm font-bold text-slate-700" onClick={() => { setOpen(null); setQty(1); }}>
             <ArrowLeft className="size-4" /> Back to products
           </button>
-          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{open.category || "Product"}</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-[#0c6e8a]">{open.category || "Product"}</p>
           <h2 className="mt-1 text-xl font-extrabold leading-snug break-words">{open.name}</h2>
-          <p className="mt-2 text-sm leading-relaxed break-words text-slate-700">{facts(open)}</p>
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed break-words text-slate-800">{open.description || "The supplier did not send a longer description. The name and attributes above are the full product information on file."}</p>
-          <Checkout row={open} balance={user?.balance || 0} buying={buying === open.id} paying={paying} onBuy={() => void purchase(open)} onTopUp={() => void topUp(open)} />
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed break-words text-slate-700">{open.description || facts(open)}</p>
+          <p className="mt-2 text-sm text-slate-600">{facts(open)}</p>
+          <Checkout row={open} qty={qty} setQty={setQty} balance={user?.balance || 0} buying={buying === open.id} paying={paying} onBuy={() => void purchase(open)} onTopUp={() => void topUp(open)} />
         </article>
       ) : (
         <>
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-            {["All", ...groups.map(([name]) => name)].map((name) => (
-              <button key={name} type="button" onClick={() => setCat(name)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${cat === name ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"}`}>
-                {name}
-              </button>
-            ))}
-          </div>
           {!shown.length ? <p className="mt-6 text-sm text-slate-500">{kind === "vpn" ? "No VPN plans yet. Import a VPN catalogue and turn the rows on." : "No products yet. Import a catalogue and turn the rows on."}</p> : null}
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="mt-3 grid grid-cols-1 gap-3">
             {shown.map((row) => (
-              <article key={row.id} className="flex flex-col rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm">
-                <button type="button" className="text-left" onClick={() => setOpen(row)}>
-                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{row.category}</p>
-                  <p className="mt-1 text-sm font-bold leading-snug break-words text-slate-900">{row.name}</p>
-                  <p className="mt-1 text-xs leading-relaxed break-words text-slate-600">{facts(row)}</p>
-                  {row.description ? <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed break-words text-slate-700">{row.description}</p> : null}
-                </button>
-                <p className="mt-3 text-base font-extrabold">{row.price > 0 ? naira(row.price) : "Price not set"}</p>
-                <button type="button" className="mt-2 w-full rounded-xl bg-slate-900 py-2 text-xs font-extrabold text-white" onClick={() => setOpen(row)}>
-                  Buy
-                </button>
+              <article key={row.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                <p className="text-[11px] font-bold text-[#0c6e8a]">{row.category}{row.service ? ` · ${row.service}` : ""}</p>
+                <p className="mt-1 text-sm font-extrabold leading-snug break-words text-slate-900">{row.name}</p>
+                {row.description ? <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed break-words text-slate-600">{row.description}</p> : <p className="mt-1 text-xs leading-relaxed break-words text-slate-600">{facts(row)}</p>}
+                <p className="mt-2 text-xs font-bold text-emerald-700">{row.stock > 0 ? `${row.stock} in stock` : "Availability updates at checkout"}</p>
+                <div className="mt-3 flex items-end justify-between gap-3">
+                  <p className="text-lg font-extrabold">{row.price > 0 ? naira(row.price) : "Price not set"}</p>
+                  <button type="button" className="rounded-xl bg-[#0c6e8a] px-4 py-2 text-sm font-extrabold text-white" onClick={() => { setQty(1); setOpen(row); }}>
+                    View & buy
+                  </button>
+                </div>
               </article>
             ))}
           </div>
@@ -175,26 +202,37 @@ export function Marketplace({ kind }: { kind: "vpn" | "shop" }) {
   );
 }
 
-function Checkout({ row, balance, buying, paying, onBuy, onTopUp }: { row: Product; balance: number; buying: boolean; paying: boolean; onBuy: () => void; onTopUp: () => void }) {
-  const price = Math.round(row.price);
+function Checkout({ row, qty, setQty, balance, buying, paying, onBuy, onTopUp }: { row: Product; qty: number; setQty: (n: number) => void; balance: number; buying: boolean; paying: boolean; onBuy: () => void; onTopUp: () => void }) {
+  const unit = Math.round(row.price);
+  const price = unit * qty;
   const short = price - balance;
+  const cap = row.stock > 0 ? Math.min(row.stock, 20) : 20;
   return (
     <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
       <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Checkout</p>
-      <p className="mt-1 text-sm font-semibold break-words">{row.name} · 1x</p>
-      {row.validity ? <p className="mt-1 text-sm text-slate-600">Expires: {row.validity}</p> : null}
-      <p className="mt-2 text-lg font-extrabold">{price > 0 ? naira(price) : "Price not set"}</p>
-      <p className="text-sm text-slate-600">Wallet balance {naira(balance)}</p>
-      {price <= 0 ? <p className="mt-2 text-sm font-bold text-red-700">This product has no price yet.</p> : short > 0 ? (
+      <div className="mt-2 flex items-center gap-2">
+        <button type="button" className="grid size-9 place-items-center rounded-xl bg-white text-lg font-bold" onClick={() => setQty(Math.max(1, qty - 1))}>−</button>
+        <span className="min-w-8 text-center text-base font-extrabold">{qty}</span>
+        <button type="button" className="grid size-9 place-items-center rounded-xl bg-white text-lg font-bold" onClick={() => setQty(Math.min(cap, qty + 1))}>+</button>
+        <span className="text-xs text-slate-500">{row.stock > 0 ? `${row.stock} available` : "1 per tap, up to 20"}</span>
+      </div>
+      <div className="mt-3 space-y-1 text-sm">
+        <p className="flex justify-between"><span>Price each</span><span>{unit > 0 ? naira(unit) : "Not set"}</span></p>
+        <p className="flex justify-between"><span>Quantity</span><span>× {qty}</span></p>
+        <p className="flex justify-between text-base font-extrabold"><span>Total to pay</span><span>{unit > 0 ? naira(price) : "—"}</span></p>
+        <p className="flex justify-between"><span>Wallet balance</span><span className="font-bold text-[#0c6e8a]">{naira(balance)}</span></p>
+      </div>
+      {row.validity ? <p className="mt-2 text-sm text-slate-600">Expires: {row.validity}</p> : null}
+      {unit <= 0 ? <p className="mt-2 text-sm font-bold text-red-700">This product has no price yet.</p> : short > 0 ? (
         <>
-          <p className="mt-2 text-sm font-bold text-red-700">Please top up to make this purchase. You are {naira(short)} short.</p>
+          <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-700">Your balance is {naira(short)} short. Fund your wallet to continue.</p>
           <button type="button" disabled={paying} className="mt-3 w-full rounded-xl bg-red-700 py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={onTopUp}>
             {paying ? "Opening Paystack…" : `Top up ${naira(price)}`}
           </button>
         </>
       ) : (
-        <button type="button" disabled={buying} className="mt-3 w-full rounded-xl bg-slate-900 py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={onBuy}>
-          {buying ? "Buying…" : `Pay ${naira(price)}`}
+        <button type="button" disabled={buying} className="mt-3 w-full rounded-xl bg-[#0c6e8a] py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={onBuy}>
+          {buying ? "Buying…" : `Pay ${naira(price)} and get ${qty}`}
         </button>
       )}
     </div>
