@@ -151,35 +151,70 @@ export function stripInstallParams(url) {
   return rest ? `${path}?${rest}` : path;
 }
 
+const BRAND_NAVY = "#174C70";
+
+/**
+ * Installed-app identity. Published *.grok.me hosts keep the host slug, black
+ * theme, and platform icon so those tests stay stable. Every other host uses
+ * the site title (VeriLogs) and the app's own icons when site.json has one.
+ */
+export function installedBrand(hostHeader) {
+  const hostName = appNameFromHost(hostHeader);
+  const platform = {
+    name: hostName,
+    theme: "#000000",
+    background: "#000000",
+    statusBar: "black",
+    appleIcon: "/__grok/icon-180.png",
+    description: "",
+    platformMark: true,
+    icons: [{ src: "/__grok/icon-180.png", sizes: "180x180", type: "image/png" }],
+  };
+  if (hostName !== DEFAULT_APP_NAME) return platform;
+  const title = String(readOgSite().title || "").trim();
+  if (!title) return { ...platform, name: DEFAULT_APP_NAME };
+  return {
+    name: title.slice(0, 40),
+    theme: BRAND_NAVY,
+    background: BRAND_NAVY,
+    statusBar: "default",
+    appleIcon: "/icon-180.png",
+    description: "VeriLogs – Virtual Numbers, Digital Services and Marketplace.",
+    platformMark: false,
+    icons: [
+      { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+    ],
+  };
+}
+
 export function renderInstallPageHtml(template, { host, url } = {}) {
+  const brand = installedBrand(host);
   return String(template)
-    .replaceAll("{{APP_NAME}}", escapeHtml(appNameFromHost(host)))
-    .replaceAll("{{APP_URL}}", escapeHtml(stripInstallParams(url)));
+    .replaceAll("{{APP_NAME}}", escapeHtml(brand.name))
+    .replaceAll("{{APP_URL}}", escapeHtml(stripInstallParams(url)))
+    .replaceAll("{{THEME_COLOR}}", escapeHtml(brand.theme))
+    .replaceAll("{{STATUS_BAR}}", escapeHtml(brand.statusBar))
+    .replaceAll("{{APP_ICON}}", escapeHtml(brand.appleIcon))
+    .replaceAll("{{POWERED_ATTR}}", brand.platformMark ? "" : "display:none");
 }
 
 export function renderWebManifest(hostHeader) {
-  const name = appNameFromHost(hostHeader);
-  return JSON.stringify(
-    {
-      name,
-      short_name: name,
-      id: "/",
-      start_url: "/",
-      scope: "/",
-      display: "standalone",
-      background_color: "#000000",
-      theme_color: "#000000",
-      icons: [
-        {
-          src: "/__grok/icon-180.png",
-          sizes: "180x180",
-          type: "image/png",
-        },
-      ],
-    },
-    null,
-    2,
-  );
+  const brand = installedBrand(hostHeader);
+  const manifest = {
+    name: brand.name,
+    short_name: brand.name,
+    id: "/",
+    start_url: "/",
+    scope: "/",
+    display: "standalone",
+    background_color: brand.background,
+    theme_color: brand.theme,
+    icons: brand.icons,
+  };
+  if (brand.description) manifest.description = brand.description;
+  return JSON.stringify(manifest, null, 2);
 }
 
 export function grokPwaHeadTags(appName = DEFAULT_APP_NAME) {
@@ -451,7 +486,7 @@ export function injectGrokPwaHead(html, ctx = {}) {
   const missing = grokPwaHeadTags(appName)
     .filter(([key]) => {
       if (key === "manifest") return !next.includes('href="/__grok/manifest.webmanifest"');
-      if (key === "apple-touch-icon") return !next.includes('href="/__grok/icon-180.png"');
+      if (key === "apple-touch-icon") return !/rel=["']apple-touch-icon["']/i.test(next);
       return !next.includes(`name="${key}"`);
     })
     .map(([, tag]) => tag);

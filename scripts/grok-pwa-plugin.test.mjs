@@ -513,6 +513,26 @@ test("renders the manifest with the per-app name", () => {
   assert.equal(manifest.name, "Wild Race");
   assert.equal(manifest.short_name, "Wild Race");
   assert.equal(manifest.icons[0].src, "/__grok/icon-180.png");
+  assert.equal(manifest.theme_color, "#000000");
+});
+
+test("local hosts install as the site title, not the platform name", () => {
+  const manifest = JSON.parse(renderWebManifest("localhost:8080"));
+  assert.equal(manifest.name, "VeriLogs");
+  assert.equal(manifest.short_name, "VeriLogs");
+  assert.equal(manifest.theme_color, "#174C70");
+  assert.equal(manifest.background_color, "#174C70");
+  assert.equal(manifest.display, "standalone");
+  assert.equal(manifest.icons[0].src, "/icon-192.png");
+  const html = renderInstallPage("localhost:8080", "/?install=1&platform=ios");
+  assert.match(html, /Add VeriLogs to your/);
+  assert.match(html, /href="\/icon-180\.png"/);
+  assert.match(html, /content="#174C70"/);
+  assert.equal(html.includes("{{APP_NAME}}"), false);
+  assert.equal(html.includes("{{APP_URL}}"), false);
+  assert.equal(html.includes("{{THEME_COLOR}}"), false);
+  assert.equal(html.includes("{{APP_ICON}}"), false);
+  assert.equal(html.includes("{{POWERED_ATTR}}"), false);
 });
 
 // Tripwires: the deployed-app path only works if Nitro scans server/ — an

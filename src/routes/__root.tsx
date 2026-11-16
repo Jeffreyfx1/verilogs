@@ -5,6 +5,7 @@ import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import { AppBoot } from "@/components/app-boot";
 import { DeviceFrame } from "@/components/device-picker";
 import { SupportBot } from "@/components/support-bot";
+import { PwaRegister } from "@/components/pwa-register";
 import appCss from "../styles.css?url";
 
 export const Route = createRootRoute({
@@ -24,7 +25,7 @@ export const Route = createRootRoute({
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
       { rel: "stylesheet", href: appCss },
       { rel: "manifest", href: "/__grok/manifest.webmanifest" },
-      { rel: "apple-touch-icon", href: "/__grok/icon-180.png" },
+      { rel: "apple-touch-icon", href: "/icon-180.png" },
     ],
   }),
   component: RootComponent,
@@ -38,6 +39,7 @@ function RootComponent() {
       </head>
       <body>
         <PreviewHostBridge />
+        <PwaRegister />
         <AuthProvider>
           <DeviceFrame>
             <AppBoot>
