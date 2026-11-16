@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Menu, X } from "lucide-react";
+import { Glyph, glyph } from "@/components/icons";
 import { NoticeBell } from "@/components/bell";
 import { AnnounceBar } from "@/components/announce-bar";
 import { Logo } from "@/components/ui";
@@ -49,7 +49,7 @@ export function PublicHeader() {
           )}
         </div>
         <button className="nav-phone rounded-xl border border-line p-2" onClick={() => setOpen((v) => !v)} aria-label="Menu">
-          {open ? <X className="size-5" /> : <Menu className="size-5" />}
+          {open ? <Glyph icon={glyph.close} className="size-5" /> : <Glyph icon={glyph.menu} className="size-5 text-[#5b4cdb]" />}
         </button>
       </div>
       {open ? (

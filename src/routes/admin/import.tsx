@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
-import { CATEGORY_LABEL, type SyncReport } from "@/lib/catalog";
+import { CATEGORY_LABEL } from "@/lib/catalog";
 import { extractCatalog, shapeImport, type ImportKind } from "@/lib/categorize";
 import { batchWindow } from "@/lib/import-batch";
+import { resumeCatalogRun, startCatalogRun, useImportRun } from "@/lib/import-run";
 import { naira } from "@/lib/money";
-import { beginCatalogImport, browseRemoteCatalog, clearNumberCatalog, stepCatalogImport } from "@/lib/shop-fns";
+import { browseRemoteCatalog, clearNumberCatalog } from "@/lib/shop-fns";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/import")({ component: ImportPage });
@@ -36,19 +37,13 @@ function ImportPage() {
   const [text, setText] = useState("");
   const [apiUrl, setApiUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [report, setReport] = useState<SyncReport | null>(null);
-  const [phase, setPhase] = useState<"idle" | "fetch" | "save" | "done" | "fail">("idle");
-  const [total, setTotal] = useState(0);
-  const [saved, setSaved] = useState(0);
-  const [doneBatches, setDoneBatches] = useState(0);
-  const [batches, setBatches] = useState(0);
-  const [batchSize, setBatchSize] = useState(2000);
+  const run = useImportRun();
+  const cleared = useRef("");
+  const { phase, total, saved, doneBatches, batches, batchSize, status, jobId, failedSteps, report } = run;
   const settings = useStore((s) => s.settings);
   const saveSettings = useStore((s) => s.saveSettings);
-  const [jobId, setJobId] = useState("");
   const [names, setNames] = useState("");
   const [namesDirty, setNamesDirty] = useState(false);
-  const [status, setStatus] = useState("");
   const [kind, setKind] = useState<ImportKind>("numbers");
   const [rows, setRows] = useState<BrowseCard[]>([]);
   const [picked, setPicked] = useState<Map<string, string>>(() => new Map());
@@ -58,6 +53,12 @@ function ImportPage() {
   const [browsing, setBrowsing] = useState(false);
   const [browseNote, setBrowseNote] = useState("");
   const busy = phase === "fetch" || phase === "save";
+  useEffect(() => {
+    if (phase === "done" && run.selective && jobId && cleared.current !== jobId) {
+      cleared.current = jobId;
+      setPicked(new Map());
+    }
+  }, [phase, run.selective, jobId]);
   useEffect(() => {
     if (namesDirty) return;
     setNames((settings.wantedServices || []).join("\n"));
@@ -89,82 +90,24 @@ function ImportPage() {
     }
   }, [kind, names, text]);
 
-  const runJob = async (payload: unknown | undefined, url: string, forced?: ImportKind, selective = false) => {
+  const runJob = (payload: unknown | undefined, url: string, forced?: ImportKind, selective = false) => {
     if (busy) return;
     const existing = providerId ? providers.find((p) => p.id === providerId) : undefined;
     const label = (existing?.name || name).trim() || (url ? "New API" : "Pasted API");
-    setPhase(url && !selective ? "fetch" : "save");
-    setStatus(selective ? "Saving the products you ticked. Other products stay." : url ? "Downloading the catalogue." : "Splitting the catalogue into batches of 2,000.");
-    setReport(null);
-    setSaved(0);
-    setDoneBatches(0);
-    setBatches(0);
-    setTotal(0);
-    setJobId("");
-    try {
-      const started = await beginCatalogImport({
-        data: {
-          url,
-          payload,
-          apiKey,
-          providerId,
-          name: label,
-          baseUrl: url || baseUrl || existing?.baseUrl || "",
-          currency,
-          usdRate,
-          markup,
-          publish,
-          kind: forced || kind,
-          selective,
-        },
-      });
-      if (started.error || !started.jobId) {
-        setPhase("fail");
-        setStatus(started.error || "Import failed");
-        toast.error(started.error || "Import failed");
-        return;
-      }
-      setJobId(started.jobId);
-      setTotal(started.total);
-      setBatches(started.batches);
-      setBatchSize(started.batchSize);
-      setPhase("save");
-      setStatus(`Saving batch 1 of ${started.batches}.`);
-      let guard = 0;
-      let latest = started;
-      while (!latest.done && guard < started.batches + 2) {
-        guard += 1;
-        const step = await stepCatalogImport({ data: { jobId: started.jobId } });
-        if (step.error) {
-          setPhase("fail");
-          setSaved(step.saved);
-          setDoneBatches(step.batch);
-          setStatus(step.error);
-          toast.error(step.error);
-          return;
-        }
-        latest = step;
-        setSaved(step.saved);
-        setDoneBatches(step.batch);
-        if (step.state) adopt(step.state);
-        if (!step.done) setStatus(`Saving batch ${step.batch + 1} of ${step.batches}.`);
-      }
-      if (!latest.done || !latest.report) {
-        setPhase("fail");
-        setStatus("The import stopped before the last batch.");
-        return;
-      }
-      setReport(latest.report);
-      setPhase("done");
-      if (selective) setPicked(new Map());
-      const message = `${latest.report.imported.toLocaleString("en-NG")} services filed under ${latest.report.serverLabel || label}`;
-      setStatus(message);
-      toast.success(message);
-    } catch {
-      setPhase("fail");
-      setStatus("Could not keep saving. The batches already saved are still in the catalogue.");
-      toast.error("Import stopped.");
-    }
+    startCatalogRun({
+      url,
+      payload,
+      apiKey,
+      providerId,
+      name: label,
+      baseUrl: url || baseUrl || existing?.baseUrl || "",
+      currency,
+      usdRate,
+      markup,
+      publish,
+      kind: forced || kind,
+      selective,
+    });
   };
 
   const loadBrowse = async (cursor: string, q: string) => {
@@ -219,43 +162,9 @@ function ImportPage() {
     return naira(price);
   };
 
-  const resume = async () => {
+  const resume = () => {
     if (!jobId || busy) return;
-    setPhase("save");
-    setStatus(`Saving batch ${doneBatches + 1} of ${batches}.`);
-    try {
-      let latest = { done: false, report: null as SyncReport | null, batch: doneBatches, batches, saved };
-      let guard = 0;
-      while (!latest.done && guard < batches + 2) {
-        guard += 1;
-        const step = await stepCatalogImport({ data: { jobId } });
-        if (step.error) {
-          setPhase("fail");
-          setSaved(step.saved);
-          setDoneBatches(step.batch);
-          setStatus(step.error);
-          toast.error(step.error);
-          return;
-        }
-        latest = step;
-        setSaved(step.saved);
-        setDoneBatches(step.batch);
-        if (step.state) adopt(step.state);
-        if (!step.done) setStatus(`Saving batch ${step.batch + 1} of ${step.batches}.`);
-      }
-      if (!latest.done || !latest.report) {
-        setPhase("fail");
-        setStatus("The import stopped before the last batch.");
-        return;
-      }
-      setReport(latest.report);
-      setPhase("done");
-      setStatus(`${latest.report.imported.toLocaleString("en-NG")} services filed.`);
-      toast.success("Import finished.");
-    } catch {
-      setPhase("fail");
-      setStatus("Could not continue. Try again. Saved batches stay in the catalogue.");
-    }
+    resumeCatalogRun();
   };
 
   return (
@@ -305,16 +214,29 @@ function ImportPage() {
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-extrabold">{phase === "fetch" ? "Downloading" : phase === "save" ? "Saving in batches" : phase === "done" ? "Import finished" : "Import stopped"}</h2>
             <span className={`text-xs font-bold ${phase === "done" ? "text-primary" : phase === "fail" ? "text-danger" : "text-muted"}`}>
-              {total ? `${saved.toLocaleString("en-NG")} / ${total.toLocaleString("en-NG")}` : phase === "fetch" ? "Working" : phase === "done" ? "Done" : "Failed"}
+              {total > 0 ? `${Math.min(100, Math.round((saved / total) * 100))}%` : phase === "fetch" || phase === "save" ? "Waiting for a count" : phase === "done" ? "Done" : "Stopped"}
             </span>
           </div>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-paper">
-            <div
-              className={`h-full rounded-full transition-all duration-700 ${phase === "fail" ? "bg-danger" : "bg-primary"} ${phase === "save" || phase === "fetch" ? "animate-pulse" : ""}`}
-              style={{ width: `${total ? Math.min(100, Math.round((saved / total) * 100)) : phase === "fetch" ? 8 : phase === "done" ? 100 : 0}%` }}
-            />
+          <div className={`import-meter mt-3 ${total > 0 ? "" : phase === "fetch" || phase === "save" ? "is-wait" : ""}`}>
+            <span style={total > 0 ? { width: `${Math.min(100, Math.round((saved / total) * 100))}%` } : undefined} />
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-xl bg-paper px-2 py-2">
+              <p className="text-[11px] font-bold text-muted">Processed</p>
+              <p className="text-sm font-extrabold">{phase === "fetch" ? "—" : saved.toLocaleString("en-NG")}</p>
+            </div>
+            <div className="rounded-xl bg-paper px-2 py-2">
+              <p className="text-[11px] font-bold text-muted">Successful</p>
+              <p className="text-sm font-extrabold">{report ? (report.created + report.updated).toLocaleString("en-NG") : phase === "fetch" ? "—" : saved.toLocaleString("en-NG")}</p>
+            </div>
+            <div className="rounded-xl bg-paper px-2 py-2">
+              <p className="text-[11px] font-bold text-muted">Failed</p>
+              <p className="text-sm font-extrabold">{phase === "fetch" ? "—" : failedSteps.toLocaleString("en-NG")}</p>
+            </div>
           </div>
           <p className="mt-3 text-sm">{status}</p>
+          {report ? <p className="mt-1 text-sm text-muted">{report.skipped.toLocaleString("en-NG")} rows skipped as wrappers. {report.created.toLocaleString("en-NG")} new, {report.updated.toLocaleString("en-NG")} updated.</p> : null}
+          {busy ? <p className="mt-2 text-xs font-semibold text-muted">You can leave this page. Saving continues in the background.</p> : null}
           {batches > 0 ? (
             <ol className="mt-3 space-y-1 text-sm">
               {Array.from({ length: batches }, (_, i) => {
@@ -329,7 +251,7 @@ function ImportPage() {
             </ol>
           ) : null}
           {phase === "fail" && jobId && doneBatches < batches ? (
-            <Button className="mt-3" tone="soft" onClick={() => void resume()}>Continue from batch {doneBatches + 1}</Button>
+            <Button className="mt-3" tone="soft" onClick={() => resume()}>Continue from batch {doneBatches + 1}</Button>
           ) : null}
         </section>
       ) : null}
@@ -372,8 +294,8 @@ function ImportPage() {
             <input className={inputClass} value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="https://provider.example/api/services" />
           </Field>
           <div className="flex flex-wrap gap-2">
-            <Button tone="soft" disabled={busy || !apiUrl.trim()} onClick={() => void runJob(undefined, apiUrl)}>{busy ? "Importing…" : "Pull and import this API"}</Button>
-            <Button tone="soft" disabled={busy} onClick={() => void runJob(undefined, "https://5sim.net/v1/guest/prices", "numbers")}>{busy ? "Importing…" : "Import saved services for every country"}</Button>
+            <Button tone="soft" busy={busy} disabled={!apiUrl.trim()} onClick={() => void runJob(undefined, apiUrl)}>{busy ? "Importing…" : "Pull and import this API"}</Button>
+            <Button tone="soft" busy={busy} onClick={() => void runJob(undefined, "https://5sim.net/v1/guest/prices", "numbers")}>{busy ? "Importing…" : "Import saved services for every country"}</Button>
           </div>
           <Field label="Price currency">
             <select className={inputClass} value={currency} onChange={(e) => setCurrency(e.target.value as "NGN" | "USD")}>
@@ -395,7 +317,7 @@ function ImportPage() {
           <Field label="Or paste the provider JSON">
             <textarea className={`${inputClass} font-mono text-xs`} rows={8} value={text} onChange={(e) => setText(e.target.value)} placeholder='{"sms":{...},"dataplans":{...}}' />
           </Field>
-          <Button disabled={busy || !preview || !preview.ok} onClick={() => preview && preview.ok && runJob(JSON.parse(text), "")}>{busy ? "Importing…" : "Import pasted catalogue"}</Button>
+          <Button busy={busy} disabled={!preview || !preview.ok} onClick={() => preview && preview.ok && runJob(JSON.parse(text), "")}>{busy ? "Importing…" : "Import pasted catalogue"}</Button>
         </section>
         <section className="rounded-card border border-line bg-card p-4 shadow-card">
           <h2 className="font-bold">Before it lands</h2>
@@ -419,7 +341,7 @@ function ImportPage() {
         </p>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
           <input className={inputClass} value={browseQ} onChange={(e) => setBrowseQ(e.target.value)} placeholder='Search, e.g. "WhatsApp" or "Gmail"' />
-          <Button tone="soft" disabled={busy || browsing || !apiUrl.trim()} onClick={() => void loadBrowse("", browseQ.trim())}>{browsing ? "Reading…" : "Browse this API"}</Button>
+          <Button tone="soft" busy={browsing} disabled={busy || !apiUrl.trim()} onClick={() => void loadBrowse("", browseQ.trim())}>{browsing ? "Reading…" : "Browse this API"}</Button>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
           <span className="rounded-full bg-paper px-3 py-1">Available {remoteTotal == null ? "—" : remoteTotal.toLocaleString("en-NG")}</span>
@@ -431,7 +353,7 @@ function ImportPage() {
           <div className="mt-3 flex flex-wrap gap-2">
             {rows.length ? <Button tone="soft" disabled={busy || browsing} onClick={selectPage}>{rows.every((row) => picked.has(row.stamp)) ? "Clear this page" : "Tick this page"}</Button> : null}
             <Button tone="soft" disabled={busy || browsing || !nextCursor} onClick={() => void loadBrowse(nextCursor, browseQ.trim())}>Next page</Button>
-            <Button disabled={busy || browsing || picked.size === 0} onClick={() => {
+            <Button busy={busy} disabled={browsing || picked.size === 0} onClick={() => {
               const items = [...picked.values()].flatMap((raw) => {
                 try {
                   return [JSON.parse(raw) as unknown];

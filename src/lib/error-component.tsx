@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { ErrorComponentProps } from "@tanstack/react-router";
-import { TriangleAlert } from "lucide-react";
+import { Glyph, glyph } from "@/components/icons";
 
 const FALLBACK_MESSAGE = "An unexpected error occurred. Try reloading the page.";
 const STALE_MODULE = /Importing a module script failed|Failed to fetch dynamically imported module|error loading dynamically imported module/i;
@@ -28,7 +28,7 @@ export function AppErrorComponent({ error }: ErrorComponentProps) {
       }
     >
       <span className="text-red-500" aria-hidden="true">
-        <TriangleAlert className="size-10" strokeWidth={2} />
+        <Glyph icon={glyph.alert} className="size-10" />
       </span>
       <h1 className="text-lg font-semibold">Something went wrong</h1>
       <p className="max-w-md text-sm break-words text-zinc-500 dark:text-zinc-400">

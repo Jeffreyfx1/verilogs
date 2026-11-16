@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Eye, EyeOff } from "lucide-react";
+import { Glyph, glyph } from "@/components/icons";
 import { toast } from "sonner";
 import { GooglePicker } from "@/components/google-picker";
 import { PromoBanners } from "@/components/promos";
@@ -85,7 +85,7 @@ function LoginPage() {
               <span className="relative block">
                 <input className={inputClass} type={show ? "text" : "password"} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" />
                 <button type="button" className="absolute right-3 top-2.5 text-muted" onClick={() => setShow((v) => !v)} aria-label="Show password">
-                  {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  {show ? <Glyph icon={glyph.eyeOff} className="size-4" /> : <Glyph icon={glyph.eye} className="size-4" />}
                 </button>
               </span>
             </Field>
@@ -93,7 +93,7 @@ function LoginPage() {
               <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
               Remember me on this device
             </label>
-            <Button type="submit" className="w-full" disabled={busy}>{busy ? "Checking…" : "Log in"}</Button>
+            <Button type="submit" className="w-full" busy={busy}>{busy ? "Checking…" : "Log in"}</Button>
           </form>
           <div className="my-4 text-center text-xs text-muted">or</div>
           <GooglePicker />

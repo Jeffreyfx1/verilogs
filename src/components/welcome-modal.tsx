@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Send, X } from "lucide-react";
+import { Glyph, glyph } from "@/components/icons";
 import { Logo } from "@/components/ui";
 import { useStore, useUser } from "@/lib/store";
 
@@ -37,7 +37,7 @@ export function WelcomeModal() {
       <div className="w-full max-w-md overflow-hidden rounded-[1.6rem] bg-card shadow-card">
         <div className="promo-card relative rounded-none">
           <button type="button" onClick={close} className="absolute right-3 top-3 grid size-9 place-items-center rounded-full bg-white/15 text-white" aria-label="Close">
-            <X className="size-4" />
+            <Glyph icon={glyph.close} className="size-4" />
           </button>
           <div className="inline-flex rounded-2xl bg-white/15 px-3 py-2">
             <Logo compact />
@@ -63,7 +63,7 @@ export function WelcomeModal() {
           {telegram ? (
             <a href={telegram} target="_blank" rel="noreferrer" className="flex gap-3 rounded-2xl bg-paper p-3">
               <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-primary text-on-primary">
-                <Send className="size-5" />
+                <Glyph icon={glyph.send} className="size-5" />
               </span>
               <span>
                 <span className="block font-extrabold">{popup.telegramTitle}</span>

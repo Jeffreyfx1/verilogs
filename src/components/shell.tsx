@@ -1,46 +1,26 @@
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import {
-  LayoutDashboard,
-  Wallet,
-  Hash,
-  Smartphone,
-  Radio,
-  Receipt,
-  Megaphone,
-  History,
-  ScrollText,
-  UserRound,
-  LifeBuoy,
-  LogOut,
-  Menu,
-  X,
-  Download,
-  Package,
-  Users,
-  Settings,
-  Store,
-  Flag,
-  Crown,
-  Shield,
-  LayoutGrid,
-  Globe,
-} from "lucide-react";
 import { Logo } from "@/components/ui";
 import { NoticeBell } from "@/components/bell";
 import { AnnounceBar } from "@/components/announce-bar";
+import { Glyph, glyph, type GlyphIcon } from "@/components/icons";
+import { useImportRun } from "@/lib/import-run";
 import { naira } from "@/lib/money";
 import { useStore, useUser } from "@/lib/store";
 
 type Item = {
   to: string;
   label: string;
-  icon: typeof LayoutDashboard;
+  icon: GlyphIcon;
   end?: boolean;
   search?: { server: string; country: string; kind: string; service: string };
   hash?: string;
   match?: string;
 };
+
+function exactHome(to: string) {
+  return to === "/dashboard" || to === "/admin";
+}
 
 export function AppShell({ admin, children }: { admin?: boolean; children: ReactNode }) {
   const user = useUser();
@@ -49,42 +29,44 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
   const path = useRouterState({ select: (s) => s.location.pathname });
   const hash = useRouterState({ select: (s) => String(s.location.hash || "").replace(/^#/, "") });
   const search = useRouterState({ select: (s) => s.location.search as { country?: string; kind?: string } });
+  const job = useImportRun();
   const [open, setOpen] = useState(false);
   if (!user) return null;
 
   const userNav: Item[] = [
-    { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, end: true, match: "dash" },
-    { to: "/dashboard/wallet", label: "Fund wallet", icon: Wallet },
-    { to: "/dashboard/numbers", label: "All countries", icon: Globe, search: { server: "", country: "", kind: "", service: "" }, match: "all" },
-    { to: "/dashboard/numbers", label: "USA numbers", icon: Flag, search: { server: "", country: "United States", kind: "", service: "" }, match: "usa" },
-    { to: "/dashboard/numbers", label: "Rent numbers", icon: Crown, search: { server: "", country: "", kind: "rent", service: "" }, match: "rent" },
-    { to: "/dashboard/numbers", label: "Rent USA numbers", icon: Shield, search: { server: "", country: "United States", kind: "rent", service: "" }, match: "rent-usa" },
-    { to: "/dashboard/data", label: "Data", icon: Radio },
-    { to: "/dashboard/airtime", label: "Airtime", icon: Smartphone },
-    { to: "/dashboard/bills", label: "Bills", icon: Receipt },
-    { to: "/dashboard/extra", label: "SMM", icon: Megaphone, hash: "smm", match: "smm" },
-    { to: "/dashboard/extra", label: "Random", icon: LayoutGrid, hash: "random", match: "random" },
-    { to: "/dashboard/vpn", label: "VPN", icon: Shield },
-    { to: "/dashboard/announcements", label: "Announcements", icon: Megaphone },
+    { to: "/dashboard", label: "Dashboard", icon: glyph.dashboard, end: true, match: "dash" },
+    { to: "/dashboard/wallet", label: "Fund wallet", icon: glyph.wallet },
+    { to: "/dashboard/numbers", label: "All countries", icon: glyph.globe, search: { server: "", country: "", kind: "", service: "" }, match: "all" },
+    { to: "/dashboard/numbers", label: "USA numbers", icon: glyph.flag, search: { server: "", country: "United States", kind: "", service: "" }, match: "usa" },
+    { to: "/dashboard/numbers", label: "Rent numbers", icon: glyph.crown, search: { server: "", country: "", kind: "rent", service: "" }, match: "rent" },
+    { to: "/dashboard/numbers", label: "Rent USA numbers", icon: glyph.shield, search: { server: "", country: "United States", kind: "rent", service: "" }, match: "rent-usa" },
+    { to: "/dashboard/data", label: "Data", icon: glyph.data },
+    { to: "/dashboard/airtime", label: "Airtime", icon: glyph.phone },
+    { to: "/dashboard/bills", label: "Bills", icon: glyph.receipt },
+    { to: "/dashboard/extra", label: "SMM", icon: glyph.megaphone, hash: "smm", match: "smm" },
+    { to: "/dashboard/extra", label: "Random", icon: glyph.grid, hash: "random", match: "random" },
+    { to: "/dashboard/vpn", label: "VPN", icon: glyph.shield },
+    { to: "/dashboard/announcements", label: "Announcements", icon: glyph.megaphone },
   ];
   const historyNav: Item[] = [
-    { to: "/dashboard/history", label: "Numbers history", icon: History, hash: "numbers", match: "hist-numbers" },
-    { to: "/dashboard/history", label: "Bills history", icon: ScrollText, hash: "bills", match: "hist-bills" },
-    { to: "/dashboard/history", label: "Transactions", icon: Receipt, hash: "deposits", match: "hist-tx" },
-    { to: "/dashboard/profile", label: "Profile", icon: UserRound },
+    { to: "/dashboard/history", label: "Numbers history", icon: glyph.history, hash: "numbers", match: "hist-numbers" },
+    { to: "/dashboard/history", label: "Bills history", icon: glyph.scroll, hash: "bills", match: "hist-bills" },
+    { to: "/dashboard/history", label: "Transactions", icon: glyph.receipt, hash: "deposits", match: "hist-tx" },
+    { to: "/dashboard/profile", label: "Profile", icon: glyph.user },
   ];
   const adminNav: Item[] = [
-    { to: "/admin", label: "Overview", icon: LayoutDashboard, end: true },
-    { to: "/admin/import", label: "Import services", icon: Download },
-    { to: "/admin/catalog", label: "Catalogue", icon: Package },
-    { to: "/admin/orders", label: "Orders", icon: ScrollText },
-    { to: "/admin/customers", label: "Customers", icon: Users },
-    { to: "/admin/content", label: "Content & settings", icon: Settings },
-    { to: "/admin/brand", label: "Homepage & logo", icon: Store },
-    { to: "/admin/hosting", label: "Hosting & payments", icon: Settings },
-    { to: "/dashboard", label: "Open shop", icon: Store },
+    { to: "/admin", label: "Overview", icon: glyph.dashboard, end: true },
+    { to: "/admin/import", label: "Import services", icon: glyph.download },
+    { to: "/admin/catalog", label: "Catalogue", icon: glyph.package },
+    { to: "/admin/orders", label: "Orders", icon: glyph.scroll },
+    { to: "/admin/customers", label: "Customers", icon: glyph.users },
+    { to: "/admin/content", label: "Content & settings", icon: glyph.settings },
+    { to: "/admin/brand", label: "Homepage & logo", icon: glyph.store },
+    { to: "/admin/hosting", label: "Hosting & payments", icon: glyph.settings },
+    { to: "/dashboard", label: "Open shop", icon: glyph.store },
   ];
   const main = admin ? adminNav : userNav;
+  const importing = job.phase === "fetch" || job.phase === "save";
 
   const signOut = () => {
     logout();
@@ -116,7 +98,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
         onClick={() => setOpen(false)}
         className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-semibold ${active ? "nav-active text-white" : "text-ink hover:bg-[#E5F2F8]"}`}
       >
-        <item.icon className={`size-4 shrink-0 ${active ? "text-white" : "text-[#5b4cdb]"}`} />
+        <Glyph icon={item.icon} className={`nav-glyph shrink-0 ${active ? "text-white" : "text-[#5b4cdb]"}`} />
         <span className="min-w-0 whitespace-normal leading-snug">{item.label}</span>
       </Link>
     );
@@ -130,8 +112,8 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
           <Link to={admin ? "/admin" : "/dashboard"} onClick={() => setOpen(false)}>
             <Logo />
           </Link>
-          <button className="rounded-lg p-1 lg:hidden" onClick={() => setOpen(false)} aria-label="Close">
-            <X className="size-5" />
+          <button className="rounded-lg p-1 text-[#5b4cdb] lg:hidden" onClick={() => setOpen(false)} aria-label="Close">
+            <Glyph icon={glyph.close} className="size-5" />
           </button>
         </div>
         <div className="px-4 pb-3">
@@ -157,54 +139,63 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
             <p className="text-sm font-semibold">Need help?</p>
             <p className="text-xs text-muted">24/7 support</p>
             <Link to="/dashboard/support" onClick={() => setOpen(false)} className="mt-2 flex items-center justify-center gap-2 rounded-xl bg-deep py-2 text-sm font-semibold text-on-deep">
-              <LifeBuoy className="size-4" /> Contact
+              <Glyph icon={glyph.support} className="size-4 text-white" /> Contact
             </Link>
           </div>
           <button onClick={signOut} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-danger hover:bg-paper">
-            <LogOut className="size-4" /> Log out
+            <Glyph icon={glyph.logout} className="size-4" /> Log out
           </button>
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="shell-mobilebar flex min-w-0 items-center gap-2 border-b border-line bg-card px-3 py-3 lg:hidden">
-          <button onClick={() => setOpen(true)} className="shrink-0 rounded-xl border border-line p-2" aria-label="Open menu">
-            <Menu className="size-5" />
+          <button onClick={() => setOpen(true)} className="shrink-0 rounded-xl border border-line p-2 text-[#5b4cdb]" aria-label="Open menu">
+            <Glyph icon={glyph.menu} className="size-5" />
           </button>
           <Link to={admin ? "/admin" : "/dashboard"} className="mr-auto min-w-0">
             <Logo compact />
           </Link>
           <NoticeBell />
-          <Link to="/dashboard/profile" className="grid size-9 shrink-0 place-items-center rounded-full border border-line" aria-label="Profile">
-            <UserRound className="size-4" />
+          <Link to="/dashboard/profile" className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-[#5b4cdb]" aria-label="Profile">
+            <Glyph icon={glyph.user} className="size-4" />
           </Link>
           <span className="max-w-[7.5rem] truncate rounded-full bg-paper px-3 py-1 text-sm font-extrabold">{naira(user.balance)}</span>
         </div>
         <div className="app-pad flex-1 overflow-y-auto">
+          {importing ? (
+            <Link to="/admin/import" className="mb-3 flex items-center justify-between gap-3 rounded-2xl bg-[#174C70] px-4 py-3 text-sm font-bold text-white">
+              <span>Import still running</span>
+              <span>{job.total ? `${job.saved.toLocaleString("en-NG")} / ${job.total.toLocaleString("en-NG")}` : "Downloading"}</span>
+            </Link>
+          ) : null}
           <AnnounceBar />
           <div className="mx-auto w-full max-w-6xl px-3 py-4 sm:px-4 sm:py-6">{children}</div>
         </div>
         <nav className="bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-line bg-card px-2 py-2">
           {(admin
             ? [
-                { to: "/admin", label: "Home", icon: LayoutDashboard },
-                { to: "/admin/import", label: "Import", icon: Download },
-                { to: "/admin/catalog", label: "Catalogue", icon: Package },
-                { to: "/admin/hosting", label: "Host", icon: Settings },
+                { to: "/admin", label: "Home", icon: glyph.dashboard },
+                { to: "/admin/import", label: "Import", icon: glyph.download },
+                { to: "/admin/catalog", label: "Catalogue", icon: glyph.package },
+                { to: "/admin/hosting", label: "Host", icon: glyph.settings },
               ]
             : [
-                { to: "/dashboard", label: "Home", icon: LayoutDashboard },
-                { to: "/dashboard/history", label: "Orders", icon: History },
-                { to: "/dashboard/support", label: "Support", icon: LifeBuoy },
-                { to: "/dashboard/profile", label: "Settings", icon: Settings },
+                { to: "/dashboard", label: "Home", icon: glyph.dashboard },
+                { to: "/dashboard/history", label: "Orders", icon: glyph.history },
+                { to: "/dashboard/support", label: "Support", icon: glyph.support },
+                { to: "/dashboard/profile", label: "Settings", icon: glyph.settings },
               ]
-          ).map((item) => (
-            <Link key={item.label} to={item.to} className="flex flex-1 flex-col items-center gap-1 py-1 text-xs font-semibold text-ink">
-              <item.icon className="size-4" />
-              {item.label}
-            </Link>
-          ))}
-          <button type="button" className="flex flex-1 flex-col items-center gap-1 py-1 text-xs font-semibold" onClick={() => setOpen(true)}>
-            <Menu className="size-4" />
+          ).map((item) => {
+            const on = exactHome(item.to) ? path === item.to : path === item.to || path.startsWith(item.to + "/");
+            return (
+              <Link key={item.label} to={item.to} className={`flex flex-1 flex-col items-center gap-1 rounded-2xl py-1.5 text-[11px] font-bold ${on ? "nav-active text-white" : "text-ink"}`}>
+                <Glyph icon={item.icon} className={`size-5 ${on ? "text-white" : "text-[#5b4cdb]"}`} />
+                {item.label}
+              </Link>
+            );
+          })}
+          <button type="button" className="flex flex-1 flex-col items-center gap-1 py-1 text-[11px] font-bold text-[#5b4cdb]" onClick={() => setOpen(true)}>
+            <Glyph icon={glyph.menu} className="size-5" />
             Menu
           </button>
         </nav>

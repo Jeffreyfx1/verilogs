@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { createFileRoute } from "@tanstack/react-router";
-import { BadgeCheck, Globe, Headphones, Lock, Shield, Zap } from "lucide-react";
+import { Glyph, glyph, type GlyphIcon } from "@/components/icons";
 import { PublicFrame } from "@/components/chrome";
 import { Reveal } from "@/components/reveal";
 import { bills, hero, sim } from "@/components/site-art";
@@ -10,13 +10,13 @@ export const Route = createFileRoute("/")({ component: Home });
 
 const fallbackArt = [hero, sim, bills];
 
-const why = [
-  { icon: Shield, title: "Wallet stays in naira", body: "Fund once. Spend on numbers, data, airtime and bills." },
-  { icon: Zap, title: "Instant delivery", body: "A number shows on the order. The SMS code lands on that same card." },
-  { icon: Lock, title: "Servers stay apart", body: "Server 1 is the first number API. Server 2 is the next. Prices are never merged." },
-  { icon: Headphones, title: "Support on the page", body: "FAQ, tickets and the Telegram channel sit with the shop, not in a separate app." },
-  { icon: BadgeCheck, title: "You publish what you sell", body: "Imports arrive switched off until you turn a service on." },
-  { icon: Globe, title: "One catalogue, filed properly", body: "Numbers, data, airtime and bills from one provider land on the right shelf." },
+const why: { icon: GlyphIcon; title: string; body: string }[] = [
+  { icon: glyph.shield, title: "Wallet stays in naira", body: "Fund once. Spend on numbers, data, airtime and bills." },
+  { icon: glyph.bolt, title: "Instant delivery", body: "A number shows on the order. The SMS code lands on that same card." },
+  { icon: glyph.lock, title: "Servers stay apart", body: "Server 1 is the first number API. Server 2 is the next. Prices are never merged." },
+  { icon: glyph.headset, title: "Support on the page", body: "FAQ, tickets and the Telegram channel sit with the shop, not in a separate app." },
+  { icon: glyph.check, title: "You publish what you sell", body: "Imports arrive switched off until you turn a service on." },
+  { icon: glyph.globe, title: "One catalogue, filed properly", body: "Numbers, data, airtime and bills from one provider land on the right shelf." },
 ];
 
 function Home() {
@@ -29,7 +29,7 @@ function Home() {
         <div className="relative mx-auto grid max-w-6xl items-center gap-8 px-4 py-12 lg:grid-cols-2">
           <div className="text-left">
             <p className="rise inline-flex items-center gap-2 rounded-full border border-line bg-card px-3 py-1 text-xs font-bold text-primary">
-              <BadgeCheck className="size-3.5" /> {home.eyebrow}
+              <Glyph icon={glyph.check} className="size-3.5" /> {home.eyebrow}
             </p>
             <h1 className="hero-title rise mt-5 max-w-xl text-4xl font-extrabold text-ink sm:text-5xl">{home.title}</h1>
             <p className="rise mt-4 max-w-xl text-base font-medium leading-relaxed text-muted">{home.body}</p>
@@ -129,7 +129,7 @@ function Home() {
           {why.map((w, i) => (
             <Reveal key={w.title} delay={i * 70}>
               <article className="rounded-card border border-line bg-card p-5 shadow-card">
-                <span className="grid size-11 place-items-center rounded-2xl bg-primary text-on-primary"><w.icon className="size-5" /></span>
+                <span className="grid size-11 place-items-center rounded-2xl bg-primary text-on-primary"><Glyph icon={w.icon} className="size-5" /></span>
                 <h3 className="mt-3 text-lg font-extrabold">{w.title}</h3>
                 <p className="mt-1 text-sm font-medium leading-relaxed text-muted">{w.body}</p>
               </article>

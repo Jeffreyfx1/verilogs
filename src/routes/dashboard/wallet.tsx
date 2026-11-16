@@ -105,7 +105,7 @@ function WalletPage() {
                 <Button className="mt-4 w-full" onClick={() => { setProductId(""); setPreview(null); setItem(""); window.history.replaceState({}, "", "/dashboard/wallet"); }}>Top up balance</Button>
               </>
             ) : (
-              <Button className="mt-4 w-full" disabled={busy} onClick={() => void payFromWallet()}>{busy ? "Reserving…" : `Pay ${naira(order.price)} from wallet`}</Button>
+              <Button className="mt-4 w-full" busy={busy} onClick={() => void payFromWallet()}>{busy ? "Reserving…" : `Pay ${naira(order.price)} from wallet`}</Button>
             )}
             {paystack === false ? <p className="mt-3 text-sm text-muted">Paystack is not connected on this host yet. Add PAYSTACK_SECRET_KEY in the host environment.</p> : null}
           </>
@@ -130,7 +130,7 @@ function WalletPage() {
             <input className={inputClass} inputMode="numeric" value={custom} onChange={(e) => setCustom(e.target.value.replace(/[^\d]/g, ""))} placeholder="Other amount" />
           </Field>
         </div>
-        <Button className="mt-4 w-full" disabled={busy || paystack === false} onClick={() => void pay()}>
+        <Button className="mt-4 w-full" busy={busy} disabled={paystack === false} onClick={() => void pay()}>
           {busy ? "Opening Paystack…" : item ? `Pay ${naira(quote.pay)} for this number` : `Pay ${naira(quote.pay)} with Paystack`}
         </Button>
         {quote.fee > 0 ? <p className="mt-2 text-sm text-muted">Wallet receives {naira(quote.credit)}. Site charge {naira(quote.fee)}.</p> : null}

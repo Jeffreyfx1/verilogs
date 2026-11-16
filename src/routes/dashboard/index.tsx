@@ -1,28 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 
-import {
-  ArrowRight,
-  ChevronRight,
-  Crown,
-  Eye,
-  EyeOff,
-  FileDigit,
-  FileText,
-  Flag,
-  History,
-  LayoutGrid,
-  MessageCircle,
-  MessageSquareMore,
-  MonitorPlay,
-  Plus,
-  Send,
-  Shield,
-  Signal,
-  Smartphone,
-  SquarePlay,
-  Zap,
-} from "lucide-react";
+import { Glyph, glyph } from "@/components/icons";
 
 import { TIER_IMAGE, UK_IMAGE } from "@/lib/dashboard-images";
 import { useUser, useStore } from "@/lib/store";
@@ -50,7 +29,7 @@ const slides = [
     tone: "blue",
     title: "Cheap UK Line",
     text: "Fast UK numbers for verification at the best rates.",
-    icon: Zap,
+    icon: glyph.bolt,
     image: UK_IMAGE,
     search: ukSearch,
   },
@@ -59,7 +38,7 @@ const slides = [
     tone: "blue",
     title: "Cheap USA Line",
     text: "Reliable US numbers for every app you verify.",
-    icon: Flag,
+    icon: glyph.flag,
     image: null,
     search: usSearch,
   },
@@ -68,7 +47,7 @@ const slides = [
     tone: "green",
     title: "WhatsApp Numbers",
     text: "Instant OTP for WhatsApp, from any country.",
-    icon: MessageCircle,
+    icon: glyph.chat,
     image: null,
     search: waSearch,
   },
@@ -77,7 +56,7 @@ const slides = [
     tone: "sky",
     title: "Telegram Numbers",
     text: "Verify Telegram accounts in seconds.",
-    icon: Send,
+    icon: glyph.send,
     image: null,
     search: tgSearch,
   },
@@ -86,7 +65,7 @@ const slides = [
     tone: "sky",
     title: "Rent a Number",
     text: "Keep a number longer for repeat logins.",
-    icon: Crown,
+    icon: glyph.crown,
     image: null,
     search: rentSearch,
   },
@@ -97,18 +76,18 @@ const slides = [
 ====================================== */
 
 const quick = [
-  { to: "/dashboard/airtime", label: "Airtime", icon: Smartphone },
-  { to: "/dashboard/data", label: "Data", icon: Signal },
-  { to: "/dashboard/bills", label: "TV Sub", icon: MonitorPlay, hash: "cable" },
-  { to: "/dashboard/bills", label: "Electricity", icon: Zap, hash: "electricity" },
-  { to: "/dashboard/numbers", label: "Buy Number", icon: FileDigit, search: buySearch },
-  { to: "/dashboard/extra", label: "SMM", icon: FileText, hash: "smm" },
-  { to: "/dashboard/vpn", label: "VPN", icon: Shield },
-  { to: "/dashboard/extra", label: "Random", icon: LayoutGrid, hash: "random" },
-  { to: "/dashboard/numbers", label: "Rent Number", icon: Crown, search: rentSearch },
-  { to: "/dashboard/announcements", label: "Posts", icon: MessageSquareMore },
-  { to: "/faq", label: "Tutorials", icon: SquarePlay },
-  { to: "/community", label: "Channel", icon: Send },
+  { to: "/dashboard/airtime", label: "Airtime", icon: glyph.phone },
+  { to: "/dashboard/data", label: "Data", icon: glyph.data },
+  { to: "/dashboard/bills", label: "TV Sub", icon: glyph.tv, hash: "cable" },
+  { to: "/dashboard/bills", label: "Electricity", icon: glyph.bolt, hash: "electricity" },
+  { to: "/dashboard/numbers", label: "Buy Number", icon: glyph.hash, search: buySearch },
+  { to: "/dashboard/extra", label: "SMM", icon: glyph.file, hash: "smm" },
+  { to: "/dashboard/vpn", label: "VPN", icon: glyph.shield },
+  { to: "/dashboard/extra", label: "Random", icon: glyph.grid, hash: "random" },
+  { to: "/dashboard/numbers", label: "Rent Number", icon: glyph.crown, search: rentSearch },
+  { to: "/dashboard/announcements", label: "Posts", icon: glyph.posts },
+  { to: "/faq", label: "Tutorials", icon: glyph.play },
+  { to: "/community", label: "Channel", icon: glyph.send },
 ] as const;
 
 /* ======================================
@@ -182,7 +161,7 @@ function PromoCarousel() {
             <span className="promo-fade pointer-events-none absolute inset-0" />
 
             <span className="promo-icon relative z-10 grid size-14 shrink-0 place-items-center rounded-2xl text-white">
-              <s.icon className="size-8" strokeWidth={2.2} />
+              <Glyph icon={s.icon} className="size-7" />
             </span>
 
             <span className="relative z-10 min-w-0 flex-1 ">
@@ -242,7 +221,7 @@ function DashHome() {
         <div className="mt-3 flex items-center gap-2">
           <p className="text-4xl font-extrabold tracking-tight">{hide ? "₦••••" : naira(user.balance)}</p>
           <button type="button" aria-label={hide ? "Show balance" : "Hide balance"} className="grid size-9 place-items-center rounded-full bg-white/15" onClick={() => setHide((v) => !v)}>
-            {hide ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            {hide ? <Glyph icon={glyph.eyeOff} className="size-4" /> : <Glyph icon={glyph.eye} className="size-4" />}
           </button>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-2">
@@ -272,8 +251,8 @@ function DashHome() {
           {quick.map((q) => {
             const body = (
               <>
-                <span className="grid size-10 place-items-center rounded-2xl bg-[#286D86] text-white">
-                  <q.icon className="size-5" strokeWidth={2.2} />
+                <span className="grid size-11 place-items-center rounded-2xl bg-[#286D86] text-white">
+                  <Glyph icon={q.icon} className="size-5" />
                 </span>
                 <span className="text-[11px] font-bold leading-tight text-ink">{q.label}</span>
               </>
@@ -292,13 +271,13 @@ function DashHome() {
         <h2 className="px-1 text-lg font-extrabold text-ink">History</h2>
         <div className="mt-2 space-y-2">
           {[
-            { hash: "deposits", title: "Deposit History", body: "Wallet deposits", icon: History },
-            { hash: "numbers", title: "Number History", body: "Numbers, codes and active orders", icon: FileDigit },
-            { hash: "bills", title: "Bills History", body: "Airtime, data and TV", icon: Smartphone },
+            { hash: "deposits", title: "Deposit History", body: "Wallet deposits", icon: glyph.history },
+            { hash: "numbers", title: "Number History", body: "Numbers, codes and active orders", icon: glyph.hash },
+            { hash: "bills", title: "Bills History", body: "Airtime, data and TV", icon: glyph.phone },
           ].map((row) => (
             <Link key={row.title} to="/dashboard/history" hash={row.hash} className="flex items-center gap-3 rounded-2xl bg-[#E5F2F8] px-3 py-3">
               <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#286D86] text-white">
-                <row.icon className="size-5" />
+                <Glyph icon={row.icon} className="size-5" />
               </span>
               <span className="min-w-0">
                 <span className="block text-sm font-extrabold text-ink">{row.title}</span>

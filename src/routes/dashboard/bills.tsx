@@ -30,13 +30,17 @@ function BillsPage() {
   const [detail, setDetail] = useState("");
   const [amount, setAmount] = useState("2000");
   const [q, setQ] = useState("");
+  const [buying, setBuying] = useState("");
   useEffect(() => {
     if (TABS.some((t) => t.id === hash)) setTab(hash as (typeof TABS)[number]["id"]);
   }, [hash]);
   const list = products.filter((p) => p.category === tab && (!q || (p.name || "").toLowerCase().includes(q.toLowerCase())));
   const purchase = async (p: Product) => {
+    if (buying) return;
     if (phone.trim().length < 8 && tab !== "exam" && tab !== "giftcard") return toast.error("Enter a phone number.");
+    setBuying(p.id);
     const err = await buy(p.id, { phone, detail, amount: p.variable ? Number(amount) : undefined });
+    setBuying("");
     if (err) toast.error(err);
     else toast.success("Order placed");
   };
@@ -58,7 +62,7 @@ function BillsPage() {
                   <p className="text-sm font-semibold">{p.name}</p>
                   <p className="text-xs text-muted">{p.description}</p>
                 </div>
-                <Button onClick={() => purchase(p)}>{p.variable ? "Pay" : naira(p.price)}</Button>
+                <Button busy={buying === p.id} disabled={!!buying} onClick={() => void purchase(p)}>{p.variable ? "Pay" : naira(p.price)}</Button>
               </div>
             ))}
             {!list.length ? <p className="py-6 text-sm text-muted">Nothing live in this category.</p> : null}

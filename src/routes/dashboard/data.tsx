@@ -31,11 +31,15 @@ function DataPage() {
   const [net, setNet] = useState(present[0] || "MTN");
   const [phone, setPhone] = useState("");
   const [q, setQ] = useState("");
+  const [buying, setBuying] = useState("");
   const shown = plans.filter((p) => (net === "Other" ? !ORDER.includes(p.network) : p.network === net) && (!q || (p.name || "").toLowerCase().includes(q.toLowerCase())));
 
   const purchase = async (id: string) => {
+    if (buying) return;
     if (phone.trim().length < 8) return toast.error("Enter the phone number that should receive the data.");
+    setBuying(id);
     const err = await buy(id, { phone });
+    setBuying("");
     if (err) toast.error(err);
     else toast.success("Data order placed");
   };
@@ -64,7 +68,7 @@ function DataPage() {
                 <p className="text-sm font-semibold">{p.name}</p>
                 <p className="text-xs text-muted">{[p.network || "Untagged", p.validity, p.description].filter(Boolean).join(" · ")}</p>
               </div>
-              <Button onClick={() => purchase(p.id)}>{naira(p.price)}</Button>
+              <Button busy={buying === p.id} disabled={!!buying} onClick={() => void purchase(p.id)}>{naira(p.price)}</Button>
             </div>
           ))}
           {!shown.length ? <p className="py-6 text-sm text-muted">No live plans for this network. An admin can enable them from the catalogue.</p> : null}

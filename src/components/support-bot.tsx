@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MessageCircle, X } from "lucide-react";
+import { Glyph, glyph } from "@/components/icons";
 import { supportAsk } from "@/lib/shop-fns";
 import { useStore } from "@/lib/store";
 
@@ -43,7 +43,7 @@ export function SupportBot() {
               <p className="text-xs text-on-deep/70">Quick help · Telegram if you need a person</p>
             </div>
             <button type="button" className="rounded-lg p-1" aria-label="Close chat" onClick={() => setOpen(false)}>
-              <X className="size-4" />
+              <Glyph icon={glyph.close} className="size-4" />
             </button>
           </div>
           <div className="flex-1 space-y-2 overflow-y-auto bg-paper p-3 text-sm">
@@ -80,7 +80,7 @@ export function SupportBot() {
         </div>
       ) : null}
       <button type="button" className="ml-auto grid size-14 place-items-center rounded-full bg-deep text-on-deep shadow-card" aria-label="Open support chat" onClick={() => setOpen((v) => !v)}>
-        {open ? <X className="size-5" /> : <MessageCircle className="size-5" />}
+        {open ? <Glyph icon={glyph.close} className="size-5" /> : <Glyph icon={glyph.chat} className="size-5" />}
       </button>
     </div>
   );

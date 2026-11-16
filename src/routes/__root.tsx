@@ -1,4 +1,4 @@
-import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
+import { createRootRoute, HeadContent, Outlet, Scripts, useRouterState } from "@tanstack/react-router";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
@@ -6,6 +6,7 @@ import { AppBoot } from "@/components/app-boot";
 import { DeviceFrame } from "@/components/device-picker";
 import { SupportBot } from "@/components/support-bot";
 import { PwaRegister } from "@/components/pwa-register";
+import { RouteProgress } from "@/components/route-progress";
 import appCss from "../styles.css?url";
 
 export const Route = createRootRoute({
@@ -31,6 +32,15 @@ export const Route = createRootRoute({
   component: RootComponent,
 });
 
+function RoutedOutlet() {
+  const path = useRouterState({ select: (s) => s.location.pathname });
+  return (
+    <div key={path} className="page-in">
+      <Outlet />
+    </div>
+  );
+}
+
 function RootComponent() {
   return (
     <html lang="en" suppressHydrationWarning>
@@ -38,12 +48,13 @@ function RootComponent() {
         <HeadContent />
       </head>
       <body>
+        <RouteProgress />
         <PreviewHostBridge />
         <PwaRegister />
         <AuthProvider>
           <DeviceFrame>
             <AppBoot>
-              <Outlet />
+              <RoutedOutlet />
               <SupportBot />
             </AppBoot>
           </DeviceFrame>

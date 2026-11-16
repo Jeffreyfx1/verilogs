@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { LogOut, Send } from "lucide-react";
+import { Glyph, glyph } from "@/components/icons";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
 import { useStore, useUser } from "@/lib/store";
@@ -19,6 +19,8 @@ function ProfilePage() {
   const [oldPw, setOldPw] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [savingPw, setSavingPw] = useState(false);
   if (!user) return null;
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -37,18 +39,21 @@ function ProfilePage() {
           <div className="grid size-24 place-items-center rounded-card bg-primary text-3xl font-extrabold text-on-primary">{(user.name || "V").slice(0, 1).toUpperCase()}</div>
           <p className="mt-2 text-center text-sm font-semibold">{user.name}</p>
         </div>
-        <form className="space-y-3" onSubmit={async (e) => { e.preventDefault(); const err = await update({ name, phone }); if (err) toast.error(err); else toast.success("Profile saved"); }}>
+        <form className="space-y-3" onSubmit={async (e) => { e.preventDefault(); if (saving) return; setSaving(true); const err = await update({ name, phone }); setSaving(false); if (err) toast.error(err); else toast.success("Profile saved"); }}>
           <h2 className="font-bold">User information</h2>
           <Field label="Name"><input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <Field label="Email"><input className={inputClass} value={user.email} disabled /></Field>
           <Field label="Phone number" hint="Include the country code. Don't add 0 after +234."><input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
-        <Button type="submit" className="btn-accent w-full rounded-2xl border-0 text-white">Save changes</Button>
+        <Button type="submit" className="btn-accent w-full rounded-2xl border-0 text-white" busy={saving}>{saving ? "Saving…" : "Save changes"}</Button>
         </form>
       </section>
       <form className="space-y-3 rounded-card border border-line bg-card p-5 shadow-card" onSubmit={async (e) => {
         e.preventDefault();
+        if (savingPw) return;
         if (next !== confirm) return toast.error("New passwords do not match.");
+        setSavingPw(true);
         const err = await change(oldPw, next);
+        setSavingPw(false);
         if (err) toast.error(err);
         else { toast.success("Password updated"); setOldPw(""); setNext(""); setConfirm(""); }
       }}>
@@ -58,11 +63,11 @@ function ProfilePage() {
           <Field label="New password"><input className={inputClass} type="password" value={next} onChange={(e) => setNext(e.target.value)} /></Field>
           <Field label="Confirm"><input className={inputClass} type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></Field>
         </div>
-        <Button type="submit" className="btn-accent w-full rounded-2xl border-0 text-white">Save password</Button>
+        <Button type="submit" className="btn-accent w-full rounded-2xl border-0 text-white" busy={savingPw}>{savingPw ? "Saving…" : "Save password"}</Button>
       </form>
       {telegram.startsWith("http") ? (
         <a href={telegram} target="_blank" rel="noreferrer" className="flex w-full items-center justify-center gap-2 rounded-card border border-line bg-card px-4 py-3 text-sm font-bold text-ink">
-          <Send className="size-4 text-[#5b4cdb]" />
+          <Glyph icon={glyph.send} className="size-4 text-[#5b4cdb]" />
           Telegram channel
         </a>
       ) : null}
@@ -74,7 +79,7 @@ function ProfilePage() {
         }}
         className="flex w-full items-center justify-center gap-2 rounded-card border border-line bg-card px-4 py-3 text-sm font-bold text-danger"
       >
-        <LogOut className="size-4" />
+        <Glyph icon={glyph.logout} className="size-4" />
         Log out
       </button>
     </div>

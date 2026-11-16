@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { Copy, ShoppingCart } from "lucide-react";
+import { Glyph, glyph } from "@/components/icons";
 import { toast } from "sonner";
-import { inputClass } from "@/components/ui";
+import { BtnSpinner, inputClass } from "@/components/ui";
 import type { Product } from "@/lib/catalog";
 import { naira, when } from "@/lib/money";
 import { browseNumbers } from "@/lib/shop-fns";
+import { withTimeout } from "@/lib/with-timeout";
 import { useServers, useStore, useUser } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/numbers")({
@@ -67,6 +68,7 @@ function NumbersPage() {
   const [operators, setOperators] = useState<Product[]>([]);
   const [picked, setPicked] = useState(false);
   const [loadingOps, setLoadingOps] = useState(false);
+  const [opsError, setOpsError] = useState("");
   const want = kind === "rent" ? "rent" : "numbers";
 
   useEffect(() => {
@@ -84,7 +86,7 @@ function NumbersPage() {
     }
     let stop = false;
     const timer = setTimeout(() => {
-      browseNumbers({ data: { providerId: activeId, category: want, country: countryName, list: "services", q: serviceQ } })
+      withTimeout(browseNumbers({ data: { providerId: activeId, category: want, country: countryName, list: "services", q: serviceQ } }))
         .then((res) => { if (!stop) setServices(res.services); })
         .catch(() => { if (!stop) setServices([]); });
     }, 200);
@@ -98,11 +100,15 @@ function NumbersPage() {
     }
     setPicked(true);
     setLoadingOps(true);
+    setOpsError("");
     setCountryOpen(false);
     setServiceOpen(false);
-    browseNumbers({ data: { providerId: activeId, category: want, country: nextCountry, service: nextService, detail: true } })
+    withTimeout(browseNumbers({ data: { providerId: activeId, category: want, country: nextCountry, service: nextService, detail: true } }))
       .then((res) => setOperators(res.operators))
-      .catch(() => setOperators([]))
+      .catch((err: unknown) => {
+        setOperators([]);
+        setOpsError(err instanceof Error && err.message === "timeout" ? "The server list took too long." : "Could not load servers.");
+      })
       .finally(() => setLoadingOps(false));
   };
 
@@ -112,10 +118,15 @@ function NumbersPage() {
     setService(preset);
     setPicked(true);
     setLoadingOps(true);
+    setOpsError("");
     let stop = false;
-    browseNumbers({ data: { providerId: activeId, category: want, country: lockedCountry, service: preset, detail: true } })
+    withTimeout(browseNumbers({ data: { providerId: activeId, category: want, country: lockedCountry, service: preset, detail: true } }))
       .then((res) => { if (!stop) setOperators(res.operators); })
-      .catch(() => { if (!stop) setOperators([]); })
+      .catch((err: unknown) => {
+        if (stop) return;
+        setOperators([]);
+        setOpsError(err instanceof Error && err.message === "timeout" ? "The server list took too long." : "Could not load servers.");
+      })
       .finally(() => { if (!stop) setLoadingOps(false); });
     return () => { stop = true; };
   }, [preset, lockedCountry, activeId, want]);
@@ -208,7 +219,18 @@ function NumbersPage() {
 
         <button type="button" className="btn-gradient mt-4 w-full rounded-xl py-3 text-sm font-extrabold tracking-wide" onClick={() => runSelect(countryName, service)}>SELECT</button>
 
-        {loadingOps ? <p className="mt-3 text-center text-sm text-muted">Loading operators…</p> : null}
+        {loadingOps ? (
+          <div className="mt-3 space-y-3" aria-hidden="true">
+            {[0, 1, 2].map((n) => (
+              <div key={n} className="skeleton-card">
+                <div className="sk w-40" />
+                <div className="sk mt-2 w-24" />
+                <div className="sk sk-btn mt-3" />
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {opsError && !loadingOps ? <p className="mt-3 text-center text-sm font-semibold text-danger">{opsError} Tap select to try again.</p> : null}
         {picked && !loadingOps ? (
           <div className="mt-3 space-y-3">
             {operators.map((op) => (
@@ -216,7 +238,8 @@ function NumbersPage() {
                 <p className="font-extrabold">{op.operator || "any"} <span className="text-sm font-bold text-ok">Stock: {op.stock.toLocaleString("en-US")}</span></p>
                 {op.rate > 0 ? <p className="text-xs font-bold text-muted">Success {op.rate}%</p> : op.rates ? <p className="text-xs font-bold text-muted">{op.rates}</p> : null}
                 <p className="text-lg font-extrabold text-ok">{naira(op.price)}</p>
-                <button type="button" disabled={buying === op.id} className="mt-2 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-extrabold text-on-primary disabled:opacity-60" onClick={() => {
+                <button type="button" disabled={!!buying} className="btn-accent mt-2 inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-extrabold text-white disabled:opacity-60" onClick={() => {
+                  if (buying) return;
                   if ((user?.balance || 0) < op.price) {
                     toast.error("Insufficient balance. Top up your balance to make this purchase.");
                     return;
@@ -228,7 +251,7 @@ function NumbersPage() {
                     else toast.success("Number reserved. Waiting for the SMS.");
                   });
                 }}>
-                  <ShoppingCart className="size-4" /> BUY
+                  {buying === op.id ? <BtnSpinner /> : <Glyph icon={glyph.cart} className="size-4" />} {buying === op.id ? "Buying" : "BUY"}
                 </button>
               </article>
             ))}
@@ -248,7 +271,7 @@ function NumbersPage() {
               </div>
               <p className="mt-1 font-mono">{o.phone}</p>
               <div className="mt-2 flex flex-wrap gap-2">
-                <button type="button" className="inline-flex items-center gap-1 text-xs font-extrabold text-primary" onClick={() => copy(o.phone)}><Copy className="size-3" /> Copy number</button>
+                <button type="button" className="inline-flex items-center gap-1 text-xs font-extrabold text-primary" onClick={() => copy(o.phone)}><Glyph icon={glyph.copy} className="size-3" /> Copy number</button>
                 {o.code ? <button type="button" className="text-xs font-extrabold text-primary" onClick={() => copy(o.code)}>Code {o.code}</button> : <span className="text-xs text-muted">Waiting for SMS…</span>}
               </div>
               <p className="mt-1 text-xs text-muted">{when(o.createdAt)} · {naira(o.amount)}</p>

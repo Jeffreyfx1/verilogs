@@ -11,7 +11,8 @@ async function act(op: string, payload?: Record<string, unknown>): Promise<ShopS
 
 type Actions = {
   ready: boolean;
-  boot: () => void;
+  bootError: string | null;
+  boot: (force?: boolean) => void;
   register: (input: { name: string; email: string; phone: string; password: string; remember?: boolean }) => Promise<string | null>;
   login: (email: string, password: string, remember?: boolean) => Promise<string | null>;
   logout: () => void;
@@ -55,20 +56,29 @@ export const useStore = create<Store>((set) => {
     ...normalizeData({ settings: defaultSettings(), faqs: [], announcements: [] }),
     sessionUserId: null,
     ready: false,
+    bootError: null,
     adopt: (state) => {
       rev += 1;
       adopt(state);
     },
-    boot: () => {
-      if (booted || typeof window === "undefined") return;
+    boot: (force = false) => {
+      if ((booted && !force) || typeof window === "undefined") return;
       booted = true;
+      set({ bootError: null });
       const mine = ++rev;
+      const timer = window.setTimeout(() => {
+        set((state) => (state.ready ? state : { bootError: "VeriLogs did not answer in time." }));
+      }, 18000);
       void pullShop()
         .then((res) => {
+          window.clearTimeout(timer);
           if (mine === rev) adopt(res.state);
-          else set({ ready: true });
+          else set({ ready: true, bootError: null });
         })
-        .catch(() => set({ ready: true }));
+        .catch(() => {
+          window.clearTimeout(timer);
+          set({ ready: true, bootError: null });
+        });
     },
     register: async (input) => (await run("register", input)).error,
     login: async (email, password, remember = true) => (await run("login", { email, password, remember })).error,

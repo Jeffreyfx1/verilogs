@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Eye, EyeOff } from "lucide-react";
+import { Glyph, glyph } from "@/components/icons";
 import { toast } from "sonner";
 import { GooglePicker } from "@/components/google-picker";
 import { PromoBanners } from "@/components/promos";
@@ -55,7 +55,7 @@ function RegisterPage() {
           <Field label="Password">
             <span className="relative block">
               <input className={inputClass} type={show ? "text" : "password"} required minLength={8} value={form.password} onChange={set("password")} placeholder="At least 8 characters" />
-              <button type="button" className="absolute right-3 top-2.5 text-muted" onClick={() => setShow((v) => !v)} aria-label="Show password">{show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
+              <button type="button" className="absolute right-3 top-2.5 text-muted" onClick={() => setShow((v) => !v)} aria-label="Show password">{show ? <Glyph icon={glyph.eyeOff} className="size-4" /> : <Glyph icon={glyph.eye} className="size-4" />}</button>
             </span>
           </Field>
           <Field label="Confirm password"><input className={inputClass} type={show ? "text" : "password"} required value={form.confirm} onChange={set("confirm")} placeholder="Repeat password" /></Field>
@@ -67,7 +67,7 @@ function RegisterPage() {
             <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} className="mt-1" />
             <span>I agree to the <Link to="/terms" className="font-semibold text-primary">terms</Link> and want to create my account.</span>
           </label>
-          <Button type="submit" className="w-full" disabled={busy}>{busy ? "Creating…" : "Sign up"}</Button>
+          <Button type="submit" className="w-full" busy={busy}>{busy ? "Creating…" : "Sign up"}</Button>
           <GooglePicker />
           <p className="text-center text-sm">Already have an account? <Link to="/login" className="font-semibold text-primary">Log in</Link></p>
         </form>

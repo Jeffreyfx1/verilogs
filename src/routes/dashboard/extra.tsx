@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute, useRouterState } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
+import { Glyph, glyph } from "@/components/icons";
+import { ProductSkeletons } from "@/components/product-skeletons";
+import { BtnSpinner } from "@/components/ui";
 import { toast } from "sonner";
 import { isLive, type Product } from "@/lib/catalog";
 import { naira } from "@/lib/money";
 import { beginPaystack, browseExtras } from "@/lib/shop-fns";
 import { onShelf, type Shelf } from "@/lib/shelves";
+import { withTimeout } from "@/lib/with-timeout";
 import { useStore, useUser } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/extra")({ component: ExtraPage });
@@ -83,6 +86,8 @@ export function Marketplace({ kind }: { kind: Shelf }) {
   const [failed, setFailed] = useState(false);
   const [more, setMore] = useState(false);
   const [page, setPage] = useState(0);
+  const [attempt, setAttempt] = useState(0);
+  const [waiting, setWaiting] = useState(false);
 
   useEffect(() => {
     setPage(0);
@@ -90,12 +95,13 @@ export function Marketplace({ kind }: { kind: Shelf }) {
     setFailed(false);
     setMore(false);
     setOpen(null);
-  }, [q, kind]);
+  }, [q, kind, attempt]);
 
   useEffect(() => {
     let stop = false;
+    setWaiting(true);
     const timer = setTimeout(() => {
-      browseExtras({ data: { q, kind, page } })
+      withTimeout(browseExtras({ data: { q, kind, page } }))
         .then((res) => {
           if (stop) return;
           const rows = (res?.rows || []).filter((row) => onShelf(row.category, kind));
@@ -109,13 +115,16 @@ export function Marketplace({ kind }: { kind: Shelf }) {
             setFailed(true);
             setRemote([]);
           }
+        })
+        .finally(() => {
+          if (!stop) setWaiting(false);
         });
     }, 200);
     return () => {
       stop = true;
       clearTimeout(timer);
     };
-  }, [q, kind, page]);
+  }, [q, kind, page, attempt]);
 
   const items = useMemo(() => {
     if (failed) {
@@ -143,6 +152,7 @@ export function Marketplace({ kind }: { kind: Shelf }) {
   }, [picked, sort, stockOnly]);
 
   const purchase = async (row: Product) => {
+    if (buying || paying) return;
     const price = Math.round(row.price) * qty;
     if ((user?.balance || 0) < price) return;
     setBuying(row.id);
@@ -157,6 +167,7 @@ export function Marketplace({ kind }: { kind: Shelf }) {
   };
 
   const topUp = async (row: Product) => {
+    if (paying || buying) return;
     const price = Math.round(row.price) * qty;
     if (price < 100) return toast.error("This product price is not ready for Paystack yet.");
     setPaying(true);
@@ -212,7 +223,7 @@ export function Marketplace({ kind }: { kind: Shelf }) {
       {open ? (
         <article className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <button type="button" className="mb-3 inline-flex items-center gap-1 text-sm font-bold text-slate-700" onClick={() => { setOpen(null); setQty(1); }}>
-            <ArrowLeft className="size-4" /> Back to products
+            <Glyph icon={glyph.back} className="size-4" /> Back to products
           </button>
           <p className="text-xs font-bold uppercase tracking-wide text-[#0c6e8a]">{open.category || "Product"}</p>
           <h2 className="mt-1 text-xl font-extrabold leading-snug break-words">{open.name}</h2>
@@ -222,7 +233,13 @@ export function Marketplace({ kind }: { kind: Shelf }) {
         </article>
       ) : (
         <>
-          {loading ? <p className="mt-6 text-sm text-slate-500">Loading this shelf…</p> : null}
+          {failed ? (
+            <p className="mt-4 text-sm text-slate-600">
+              The live shelf did not answer. Showing saved products.
+              <button type="button" className="ml-2 font-extrabold text-[#174C70]" onClick={() => setAttempt((n) => n + 1)}>Try again</button>
+            </p>
+          ) : null}
+          {loading ? <ProductSkeletons /> : null}
           {!loading && !shown.length ? <p className="mt-6 text-sm text-slate-500">{copy.empty}</p> : null}
           <div className="mt-3 grid grid-cols-1 gap-3">
             {shown.map((row) => (
@@ -241,8 +258,8 @@ export function Marketplace({ kind }: { kind: Shelf }) {
             ))}
           </div>
           {more && !failed ? (
-            <button type="button" className="btn-accent mt-4 w-full rounded-xl py-2.5 text-sm font-extrabold text-white" onClick={() => setPage((n) => n + 1)}>
-              Load more
+            <button type="button" disabled={waiting} className="btn-accent mt-4 w-full rounded-xl py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={() => setPage((n) => n + 1)}>
+              {waiting ? <span className="inline-flex items-center justify-center gap-2"><BtnSpinner /> Loading more</span> : "Load more"}
             </button>
           ) : null}
         </>
@@ -275,12 +292,14 @@ function Checkout({ row, qty, setQty, balance, buying, paying, onBuy, onTopUp }:
       {unit <= 0 ? <p className="mt-2 text-sm font-bold text-red-700">This product has no price yet.</p> : short > 0 ? (
         <>
           <p className="mt-2 rounded-xl bg-[#eef4ff] px-3 py-2 text-sm font-bold text-[#1e3a8a]">Your balance is {naira(short)} short. Fund your wallet to continue.</p>
-          <button type="button" disabled={paying} className="btn-accent mt-3 w-full rounded-xl py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={onTopUp}>
+          <button type="button" disabled={paying} className="btn-accent mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={onTopUp}>
+            {paying ? <BtnSpinner /> : null}
             {paying ? "Opening Paystack…" : `Top up ${naira(price)}`}
           </button>
         </>
       ) : (
-        <button type="button" disabled={buying} className="btn-accent mt-3 w-full rounded-xl py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={onBuy}>
+        <button type="button" disabled={buying} className="btn-accent mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={onBuy}>
+          {buying ? <BtnSpinner /> : null}
           {buying ? "Buying…" : `Pay ${naira(price)} and get ${qty}`}
         </button>
       )}

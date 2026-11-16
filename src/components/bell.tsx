@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bell } from "lucide-react";
+import { Glyph, glyph } from "@/components/icons";
 import { when } from "@/lib/money";
 import { useStore } from "@/lib/store";
 
@@ -39,7 +39,7 @@ export function NoticeBell() {
           if (unread) mark();
         }}
       >
-        <Bell className="size-4" />
+        <Glyph icon={glyph.bell} className="size-4 text-[#5b4cdb]" />
         {unread ? <span className="absolute right-1 top-1 size-2 rounded-full bg-danger" /> : null}
       </button>
       {open ? (

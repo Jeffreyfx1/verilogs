@@ -26,11 +26,16 @@ const tones = {
   danger: "border border-line bg-card text-danger",
 };
 
+export function BtnSpinner() {
+  return <span className="btn-spin" aria-hidden="true" />;
+}
+
 export function Button({
   children,
   onClick,
   type = "button",
   disabled,
+  busy = false,
   tone = "solid",
   className = "",
 }: {
@@ -38,16 +43,20 @@ export function Button({
   onClick?: () => void;
   type?: "button" | "submit";
   disabled?: boolean;
+  busy?: boolean;
   tone?: keyof typeof tones;
   className?: string;
 }) {
+  const off = disabled || busy;
   return (
     <button
       type={type}
-      disabled={disabled}
+      disabled={off}
+      aria-busy={busy || undefined}
       onClick={onClick}
-      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold disabled:opacity-50 ${tones[tone]} ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold disabled:opacity-60 ${tones[tone]} ${className}`}
     >
+      {busy ? <BtnSpinner /> : null}
       {children}
     </button>
   );

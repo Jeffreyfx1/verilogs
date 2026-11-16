@@ -24,12 +24,15 @@ function AirtimePage() {
   const [phone, setPhone] = useState("");
   const [amount, setAmount] = useState("500");
   const [net, setNet] = useState(products[0]?.network || "MTN");
+  const [busy, setBusy] = useState(false);
   const current = products.find((p) => p.network === net) || products[0];
   const face = Number(amount) || 0;
   const purchase = async () => {
-    if (!current) return;
+    if (!current || busy) return;
     if (phone.trim().length < 8) return toast.error("Enter the phone number.");
+    setBusy(true);
     const err = await buy(current.id, { phone, amount: face });
+    setBusy(false);
     if (err) toast.error(err);
     else toast.success("Airtime sent");
   };
@@ -47,7 +50,7 @@ function AirtimePage() {
       </div>
       <Field label="Phone number"><input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="080…" /></Field>
       <Field label="Amount" hint="₦50 to ₦50,000"><input className={inputClass} inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))} /></Field>
-      <Button className="w-full" disabled={!current} onClick={purchase}>Recharge {current ? naira(face) : ""}</Button>
+      <Button className="w-full" busy={busy} disabled={!current} onClick={() => void purchase()}>{busy ? "Sending…" : `Recharge ${current ? naira(face) : ""}`}</Button>
     </div>
   );
 }
