@@ -24,6 +24,7 @@ type Actions = {
   tickWaiting: () => void;
   importPayload: (input: { providerId?: string; name: string; baseUrl: string; currency: "NGN" | "USD"; usdRate?: number; markup?: number; payload: unknown; hasKey?: boolean; publish?: boolean; apiKey?: string }) => Promise<SyncReport>;
   setEnabled: (ids: string[], enabled: boolean) => void;
+  editListing: (id: string, description: string, price: number) => Promise<string | null>;
   setProvider: (id: string, patch: Partial<Pick<Provider, "enabled" | "name" | "usdRate" | "markup" | "currency" | "operatorMarkups" | "operatorPrices">>) => void;
   adjustBalance: (userId: string, amount: number, note: string) => Promise<string | null>;
   addTicket: (input: { email: string; subject: string; body: string }) => Promise<string | null>;
@@ -84,6 +85,7 @@ export const useStore = create<Store>((set) => {
       return res.report;
     },
     setEnabled: (ids, enabled) => void run("setEnabled", { ids, enabled }),
+    editListing: async (id, description, price) => (await run("editListing", { id, description, price })).error,
     setProvider: (id, patch) => void run("setProvider", { id, ...patch }),
     adjustBalance: async (userId, amount, note) => (await run("adjustBalance", { userId, amount, note })).error,
     addTicket: async (input) => (await run("addTicket", input)).error,

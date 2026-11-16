@@ -62,9 +62,12 @@ export async function upsertProductRows(products: Product[], sync: string) {
        values ${groups.join(",")}
        on conflict (provider_id, external_id) do update set
          name = excluded.name, service = excluded.service, country = excluded.country, network = excluded.network,
-         price = excluded.price, cost = excluded.cost, stock = excluded.stock, operator = excluded.operator,
+         cost = excluded.cost, stock = excluded.stock, operator = excluded.operator,
          rate = excluded.rate, rates = excluded.rates, category = excluded.category, validity = excluded.validity,
-         variable = excluded.variable, description = excluded.description, sync = excluded.sync`,
+         variable = case when shop_products.price_locked then shop_products.variable else excluded.variable end,
+         description = case when shop_products.description_locked then shop_products.description else excluded.description end,
+         price = case when shop_products.price_locked then shop_products.price else excluded.price end,
+         sync = excluded.sync`,
       values,
     );
   }
@@ -164,6 +167,21 @@ export async function setRowsEnabled(ids: string[], enabled: boolean) {
   await sql.query("update shop_products set enabled = $1 where id = any($2::text[])", [enabled, ids]);
 }
 
+export async function lockListing(id: string, patch: { description: string; price: number }) {
+  const sql = await getSql();
+  const price = Math.round(Number(patch.price) || 0);
+  await sql.query(
+    `update shop_products
+     set description = $2,
+         description_locked = true,
+         price = case when $3 > 0 then $3 else price end,
+         price_locked = true,
+         variable = case when $3 > 0 then false else variable end
+     where id = $1`,
+    [id, patch.description, price],
+  );
+}
+
 export async function providerIdsWithNumbers() {
   const sql = await getSql();
   const rows = await sql<{ provider_id: string }>`select distinct provider_id from shop_products where category in ('numbers','rent')`;
@@ -261,7 +279,7 @@ export async function queryCatalogPage(input: { q?: string; category?: string; p
   if (input.only === "off") parts.push("enabled = false");
   if (input.q) {
     values.push(`%${input.q.replace(/[%_]/g, "")}%`);
-    parts.push(`(name ilike $${values.length} or service ilike $${values.length} or country ilike $${values.length} or network ilike $${values.length})`);
+    parts.push(`(name ilike $${values.length} or service ilike $${values.length} or country ilike $${values.length} or network ilike $${values.length} or description ilike $${values.length})`);
   }
   const where = parts.length ? `where ${parts.join(" and ")}` : "";
   const page = Math.max(0, Number(input.page) || 0);

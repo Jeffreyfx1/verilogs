@@ -14,6 +14,7 @@ function CatalogPage() {
   const providers = useStore((s) => s.providers);
   const servers = useServers();
   const setEnabled = useStore((s) => s.setEnabled);
+  const editListing = useStore((s) => s.editListing);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
   const [provider, setProvider] = useState("");
@@ -24,6 +25,11 @@ function CatalogPage() {
   const [total, setTotal] = useState(0);
   const [live, setLive] = useState(0);
   const [tick, setTick] = useState(0);
+  const [editId, setEditId] = useState("");
+  const [draft, setDraft] = useState("");
+  const [price, setPrice] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [note, setNote] = useState("");
 
   useEffect(() => {
     let stop = false;
@@ -57,12 +63,31 @@ function CatalogPage() {
     setPicked([]);
     setTimeout(() => setTick((n) => n + 1), 700);
   };
+  const openEdit = (product: Product) => {
+    setEditId(product.id);
+    setDraft(product.description || "");
+    setPrice(product.variable ? "" : String(product.price));
+    setNote("");
+  };
+  const saveEdit = async () => {
+    if (!editId || saving) return;
+    setSaving(true);
+    setNote("");
+    const error = await editListing(editId, draft, Number(price) || 0);
+    setSaving(false);
+    if (error) {
+      setNote(error);
+      return;
+    }
+    setEditId("");
+    setTick((n) => n + 1);
+  };
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-extrabold">Catalogue</h1>
-        <p className="text-sm text-muted">{total} matching · {live} live. Numbers are loaded one page at a time so login stays fast. Enable a row to show it on the shop.</p>
+        <p className="text-sm text-muted">{total} matching · {live} live. Search and edit one page at a time. A saved price or description stays locked on the next import.</p>
       </div>
       <div className="grid gap-2 md:grid-cols-3 lg:grid-cols-6">
         <input className={inputClass} placeholder="Search" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} />
@@ -89,16 +114,30 @@ function CatalogPage() {
       <div className="overflow-hidden rounded-card border border-line bg-card">
         <div className="scroll-tall">
           {rows.map((p) => (
-            <div key={p.id} className="flex items-start gap-3 border-b border-line px-3 py-3 text-sm">
-              <input type="checkbox" checked={picked.includes(p.id)} onChange={() => toggle(p.id)} className="mt-1" aria-label={`Select ${p.name}`} />
-              <span className="min-w-0 flex-1">
-                <span className="font-semibold">{p.name}</span>
-                <span className="mt-0.5 block text-xs text-muted">{CATEGORY_LABEL[p.category]} · {labelFor(p.providerId)} · {[p.country, p.network, p.service].filter(Boolean).join(" · ")}</span>
-              </span>
-              <span className="shrink-0 text-right">
-                <span className="block font-semibold">{p.variable ? "Variable" : naira(p.price)}</span>
-                <button type="button" className={`text-xs font-semibold ${p.enabled ? "text-ok" : "text-muted"}`} onClick={() => setEnabled([p.id], !p.enabled)}>{p.enabled ? "Live" : "Off"}</button>
-              </span>
+            <div key={p.id} className="border-b border-line px-3 py-3 text-sm">
+              <div className="flex items-start gap-3">
+                <input type="checkbox" checked={picked.includes(p.id)} onChange={() => toggle(p.id)} className="mt-1" aria-label={`Select ${p.name}`} />
+                <span className="min-w-0 flex-1">
+                  <span className="font-semibold">{p.name}</span>
+                  <span className="mt-0.5 block text-xs text-muted">{CATEGORY_LABEL[p.category]} · {labelFor(p.providerId)} · {[p.country, p.network, p.service].filter(Boolean).join(" · ")}</span>
+                  {p.description ? <span className="mt-1 block line-clamp-2 text-xs text-muted">{p.description.replace(/\s+/g, " ").trim()}</span> : null}
+                </span>
+                <span className="shrink-0 text-right">
+                  <span className="block font-semibold">{p.variable ? "Variable" : naira(p.price)}</span>
+                  <button type="button" className={`text-xs font-semibold ${p.enabled ? "text-ok" : "text-muted"}`} onClick={() => setEnabled([p.id], !p.enabled)}>{p.enabled ? "Live" : "Off"}</button>
+                  <button type="button" className="mt-1 block text-xs font-semibold text-primary" onClick={() => editId === p.id ? setEditId("") : openEdit(p)}>{editId === p.id ? "Close" : "Edit"}</button>
+                </span>
+              </div>
+              {editId === p.id ? (
+                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_8rem]">
+                  <textarea className={inputClass} rows={6} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Full description. Line breaks are kept." />
+                  <div className="flex flex-col gap-2">
+                    <input className={inputClass} inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d]/g, ""))} placeholder="Price" aria-label="Selling price" />
+                    <Button onClick={() => void saveEdit()} disabled={saving}>{saving ? "Saving" : "Save"}</Button>
+                  </div>
+                  {note ? <p className="text-xs text-danger sm:col-span-2">{note}</p> : <p className="text-xs text-muted sm:col-span-2">Saving locks this description and price so a later import will not overwrite them.</p>}
+                </div>
+              ) : null}
             </div>
           ))}
           {!rows.length ? <p className="p-6 text-sm text-muted">No rows match.</p> : null}

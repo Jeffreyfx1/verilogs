@@ -160,9 +160,37 @@ function pick(obj: Record<string, unknown>, keys: string[]): unknown {
 }
 
 function text(v: unknown): string {
-  if (typeof v === "string") return v.trim();
+  if (typeof v === "string") return v.replace(/\r\n/g, "\n").trim();
   if (typeof v === "number" && Number.isFinite(v)) return String(v);
   return "";
+}
+
+const DESC_KEYS = [
+  "description", "desc", "details", "detail", "info", "about",
+  "long_description", "longdescription", "full_description", "fulldescription",
+  "product_description", "productdescription", "content", "body", "text",
+  "note", "notes", "instruction", "instructions",
+];
+
+function describe(obj: Record<string, unknown>) {
+  const lines: string[] = [];
+  const push = (value: unknown, depth = 0) => {
+    if (depth > 3 || lines.join("\n").length > 20000) return;
+    if (typeof value === "string") {
+      const clean = value.replace(/\r\n/g, "\n").trim();
+      if (clean) lines.push(clean);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const part of value) push(part, depth + 1);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    const nested = pick(value as Record<string, unknown>, DESC_KEYS);
+    if (nested != null && nested !== value) push(nested, depth + 1);
+  };
+  push(pick(obj, DESC_KEYS));
+  return lines.join("\n\n").slice(0, 20000);
 }
 
 export function networkOf(blob: string): string {
@@ -312,6 +340,7 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
     : [service || "Number", country].filter(Boolean).join(" · ");
   const externalId = id ? slug([...path, id]) : slug([...path, hint, display, country, network, operator, String(price ?? "")]);
   const qty = minQ != null || maxQ != null ? `Min ${minQ ?? 0}${maxQ != null ? ` · Max ${maxQ}` : ""}` : "";
+  const body = describe(obj);
   return {
     externalId,
     name: display || ownName || id,
@@ -325,7 +354,7 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
     rates: text(obj.rates),
     validity,
     variable: price == null || price === 0,
-    description: [text(pick(obj, ["description", "desc", "plan_type", "type"])), qty, operator && operator !== display ? operator : ""].filter(Boolean).join(" · "),
+    description: [body, qty].filter(Boolean).join("\n"),
     hint,
   };
 }

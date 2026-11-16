@@ -248,6 +248,23 @@ export function setEnabled(data: Data, userId: string | null, ids: string[], ena
   return { error: null, data: { ...data, products: data.products.map((p) => (setIds.has(p.id) ? { ...p, enabled } : p)) } };
 }
 
+export function editListing(data: Data, userId: string | null, id: string, patch: { description: string; price: number }) {
+  const denied = adminGuard(data, userId);
+  if (denied) return { error: denied, data };
+  if (!id) return { error: "Choose a product.", data };
+  const price = Math.round(Number(patch.price) || 0);
+  if (price < 0) return { error: "Price cannot be negative.", data };
+  return {
+    error: null,
+    data: {
+      ...data,
+      products: data.products.map((product) => product.id === id
+        ? { ...product, description: patch.description, price: price > 0 ? price : product.price, variable: price > 0 ? false : product.variable }
+        : product),
+    },
+  };
+}
+
 export function setProvider(data: Data, userId: string | null, id: string, patch: { enabled?: boolean; name?: string; usdRate?: number; markup?: number; currency?: "NGN" | "USD"; operatorMarkups?: Record<string, number>; operatorPrices?: Record<string, number> }) {
   const denied = adminGuard(data, userId);
   if (denied) return { error: denied, data };
