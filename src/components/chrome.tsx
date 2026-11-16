@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Menu, X } from "lucide-react";
 import { NoticeBell } from "@/components/bell";
+import { AnnounceBar } from "@/components/announce-bar";
 import { Logo } from "@/components/ui";
 import { useStore, useUser } from "@/lib/store";
 
@@ -112,6 +113,7 @@ export function PublicFrame({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-paper">
       <PublicHeader />
+      <AnnounceBar />
       <main className="flex-1">{children}</main>
       <PublicFooter />
     </div>

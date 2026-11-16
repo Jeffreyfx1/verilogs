@@ -355,6 +355,21 @@ export function addAnnouncement(data: Data, userId: string | null, title: string
   return { error: null, data: next, mails };
 }
 
+export function setAnnouncements(data: Data, userId: string | null, items: Announcement[]) {
+  const denied = adminGuard(data, userId);
+  if (denied) return { error: denied, data };
+  const announcements = (Array.isArray(items) ? items : []).slice(0, 40).map((item) => ({
+    id: String(item?.id || uid("ann")).slice(0, 40),
+    title: String(item?.title || "").trim().slice(0, 160),
+    body: String(item?.body || "").trim().slice(0, 4000),
+    createdAt: item?.createdAt || new Date().toISOString(),
+    active: item?.active !== false,
+    startsAt: item?.startsAt ? String(item.startsAt).slice(0, 40) : undefined,
+    endsAt: item?.endsAt ? String(item.endsAt).slice(0, 40) : undefined,
+  })).filter((item) => item.title);
+  return { error: null, data: { ...data, announcements } };
+}
+
 export function markNotes(data: Data, userId: string | null) {
   if (!userId) return data;
   return { ...data, notifications: data.notifications.map((n) => (n.userId === userId ? { ...n, read: true } : n)) };

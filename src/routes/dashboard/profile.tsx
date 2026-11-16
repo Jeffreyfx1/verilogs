@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { LogOut } from "lucide-react";
+import { LogOut, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
 import { useStore, useUser } from "@/lib/store";
@@ -12,6 +12,7 @@ function ProfilePage() {
   const update = useStore((s) => s.updateProfile);
   const change = useStore((s) => s.changePassword);
   const logout = useStore((s) => s.logout);
+  const telegram = useStore((s) => s.settings.telegram);
   const nav = useNavigate();
   const [name, setName] = useState(user?.name || "");
   const [phone, setPhone] = useState(user?.phone || "");
@@ -41,7 +42,7 @@ function ProfilePage() {
           <Field label="Name"><input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <Field label="Email"><input className={inputClass} value={user.email} disabled /></Field>
           <Field label="Phone number" hint="Include the country code. Don't add 0 after +234."><input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
-          <Button type="submit" className="w-full">Save changes</Button>
+        <Button type="submit" className="btn-accent w-full rounded-2xl border-0 text-white">Save changes</Button>
         </form>
       </section>
       <form className="space-y-3 rounded-card border border-line bg-card p-5 shadow-card" onSubmit={async (e) => {
@@ -57,8 +58,14 @@ function ProfilePage() {
           <Field label="New password"><input className={inputClass} type="password" value={next} onChange={(e) => setNext(e.target.value)} /></Field>
           <Field label="Confirm"><input className={inputClass} type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></Field>
         </div>
-        <Button type="submit" className="w-full">Save password</Button>
+        <Button type="submit" className="btn-accent w-full rounded-2xl border-0 text-white">Save password</Button>
       </form>
+      {telegram.startsWith("http") ? (
+        <a href={telegram} target="_blank" rel="noreferrer" className="flex w-full items-center justify-center gap-2 rounded-card border border-line bg-card px-4 py-3 text-sm font-bold text-ink">
+          <Send className="size-4 text-[#5b4cdb]" />
+          Telegram channel
+        </a>
+      ) : null}
       <button
         type="button"
         onClick={() => {

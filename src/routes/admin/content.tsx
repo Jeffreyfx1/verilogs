@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
 import { useStore } from "@/lib/store";
+import type { Announcement } from "@/lib/catalog";
 
 export const Route = createFileRoute("/admin/content")({ component: ContentPage });
 
@@ -10,6 +11,7 @@ function ContentPage() {
   const faqs = useStore((s) => s.faqs);
   const saveFaqs = useStore((s) => s.saveFaqs);
   const addAnnouncement = useStore((s) => s.addAnnouncement);
+  const setAnnouncements = useStore((s) => s.setAnnouncements);
   const announcements = useStore((s) => s.announcements);
   const settings = useStore((s) => s.settings);
   const saveSettings = useStore((s) => s.saveSettings);
@@ -52,7 +54,7 @@ function ContentPage() {
               setBody("");
             });
           }}>Post and email customers</Button>
-          <ul className="text-sm text-muted">{announcements.slice(0, 4).map((a) => <li key={a.id}>{a.title}</li>)}</ul>
+          <AnnouncementEditor items={announcements} onSave={setAnnouncements} />
         </section>
         <section className="space-y-3 rounded-card border border-line bg-card p-4 shadow-card">
           <h2 className="text-xl font-extrabold">Rates and community</h2>
@@ -69,4 +71,51 @@ function ContentPage() {
       </div>
     </div>
   );
+}
+
+function AnnouncementEditor({ items, onSave }: { items: Announcement[]; onSave: (items: Announcement[]) => void }) {
+  const [rows, setRows] = useState(items);
+  const stamp = items.map((item) => `${item.id}:${item.title}:${item.active}:${item.startsAt || ""}:${item.endsAt || ""}`).join("|");
+  useEffect(() => {
+    setRows(items);
+  }, [stamp]);
+  const patch = (id: string, next: Partial<Announcement>) => {
+    setRows((current) => current.map((row) => (row.id === id ? { ...row, ...next } : row)));
+  };
+  return (
+    <div className="space-y-3">
+      {rows.map((item) => (
+        <div key={item.id} className="rounded-xl bg-paper p-3 text-sm">
+          <p className="font-semibold">{item.title}</p>
+          <label className="mt-2 flex items-center gap-2 text-xs font-semibold">
+            <input type="checkbox" checked={item.active !== false} onChange={(e) => patch(item.id, { active: e.target.checked })} />
+            Show on the banner
+          </label>
+          <label className="mt-2 block text-xs font-semibold text-muted">
+            Starts
+            <input className={`${inputClass} mt-1`} type="datetime-local" value={toLocal(item.startsAt)} onChange={(e) => patch(item.id, { startsAt: fromLocal(e.target.value) })} />
+          </label>
+          <label className="mt-2 block text-xs font-semibold text-muted">
+            Ends
+            <input className={`${inputClass} mt-1`} type="datetime-local" value={toLocal(item.endsAt)} onChange={(e) => patch(item.id, { endsAt: fromLocal(e.target.value) })} />
+          </label>
+        </div>
+      ))}
+      <Button onClick={() => onSave(rows)}>Save banner settings</Button>
+    </div>
+  );
+}
+
+function toLocal(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function fromLocal(value: string) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }

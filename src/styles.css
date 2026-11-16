@@ -725,3 +725,40 @@ html[data-form="phone"] .scroll-pane {
   from { transform: translateX(100%); }
   to { transform: translateX(-100%); }
 }
+
+.btn-accent {
+  background-image: linear-gradient(100deg, #2563eb, #7c3aed);
+  color: #fff;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(109, 40, 217, 0.18);
+}
+.btn-accent:hover {
+  filter: brightness(1.06);
+}
+.nav-active {
+  background-image: linear-gradient(100deg, #2563eb, #6d28d9);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(109, 40, 217, 0.22);
+}
+
+/* Hidden until observed, and only when scripting is on so no-JS stays readable. */
+@media (scripting: enabled) {
+  .reveal:not(.is-in) {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+.reveal {
+  transition: opacity 0.55s ease, transform 0.55s ease;
+}
+.reveal.is-in {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal:not(.is-in) {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

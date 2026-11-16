@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
 import { isLive, quoteProduct, type Product } from "@/lib/catalog";
@@ -22,11 +22,17 @@ function BillsPage() {
   const settings = useStore((s) => s.settings);
   const products = useMemo(() => all.filter((p) => isLive(p, providers)).map((p) => quoteProduct(p, { providers, settings })), [all, providers, settings]);
   const buy = useStore((s) => s.buy);
-  const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("cable");
+  const rawHash = useRouterState({ select: (s) => s.location.hash });
+  const hash = String(rawHash || "").replace(/^#/, "");
+  const fromHash = TABS.some((t) => t.id === hash) ? (hash as (typeof TABS)[number]["id"]) : "cable";
+  const [tab, setTab] = useState<(typeof TABS)[number]["id"]>(fromHash);
   const [phone, setPhone] = useState("");
   const [detail, setDetail] = useState("");
   const [amount, setAmount] = useState("2000");
   const [q, setQ] = useState("");
+  useEffect(() => {
+    if (TABS.some((t) => t.id === hash)) setTab(hash as (typeof TABS)[number]["id"]);
+  }, [hash]);
   const list = products.filter((p) => p.category === tab && (!q || (p.name || "").toLowerCase().includes(q.toLowerCase())));
   const purchase = async (p: Product) => {
     if (phone.trim().length < 8 && tab !== "exam" && tab !== "giftcard") return toast.error("Enter a phone number.");
@@ -39,7 +45,7 @@ function BillsPage() {
       <h1 className="text-2xl font-extrabold">Bills</h1>
       <div className="flex gap-2 overflow-x-auto pb-1">
         {TABS.map((t) => (
-          <button key={t.id} type="button" onClick={() => setTab(t.id)} className={`rounded-full px-4 py-2 text-sm font-semibold ${tab === t.id ? "bg-primary text-on-primary" : "border border-line bg-card"}`}>{t.label}</button>
+          <button key={t.id} type="button" onClick={() => setTab(t.id)} className={`rounded-full px-4 py-2 text-sm font-semibold ${tab === t.id ? "nav-active text-white" : "border border-line bg-card"}`}>{t.label}</button>
         ))}
       </div>
       <div className="grid gap-4 lg:grid-cols-3">

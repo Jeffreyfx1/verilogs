@@ -17,13 +17,10 @@ import {
   MonitorPlay,
   Plus,
   Send,
-  ShieldCheck,
   Shield,
   Signal,
   Smartphone,
   SquarePlay,
-  UserRound,
-  Users,
   Zap,
 } from "lucide-react";
 
@@ -100,17 +97,17 @@ const slides = [
 ====================================== */
 
 const quick = [
-  { to: "/dashboard/airtime", label: "Airtime", icon: Smartphone, popular: true },
-  { to: "/dashboard/data", label: "Data", icon: Signal, popular: true },
-  { to: "/dashboard/bills", label: "TV Sub", icon: MonitorPlay, soon: true },
-  { to: "/dashboard/bills", label: "Electricity", icon: Zap, soon: true },
+  { to: "/dashboard/airtime", label: "Airtime", icon: Smartphone },
+  { to: "/dashboard/data", label: "Data", icon: Signal },
+  { to: "/dashboard/bills", label: "TV Sub", icon: MonitorPlay, hash: "cable" },
+  { to: "/dashboard/bills", label: "Electricity", icon: Zap, hash: "electricity" },
   { to: "/dashboard/numbers", label: "Buy Number", icon: FileDigit, search: buySearch },
-  { to: "/dashboard/extra", label: "Marketplace", icon: FileText },
+  { to: "/dashboard/extra", label: "SMM", icon: FileText, hash: "smm" },
   { to: "/dashboard/vpn", label: "VPN", icon: Shield },
+  { to: "/dashboard/extra", label: "Random", icon: LayoutGrid, hash: "random" },
   { to: "/dashboard/numbers", label: "Rent Number", icon: Crown, search: rentSearch },
   { to: "/dashboard/announcements", label: "Posts", icon: MessageSquareMore },
   { to: "/faq", label: "Tutorials", icon: SquarePlay },
-  { to: "/dashboard/profile", label: "Refer", icon: Users },
   { to: "/community", label: "Channel", icon: Send },
 ] as const;
 
@@ -273,10 +270,8 @@ function DashHome() {
         </div>
         <div className="grid grid-cols-4 gap-2">
           {quick.map((q) => {
-            const soon = "soon" in q && q.soon;
             const body = (
               <>
-                {soon ? <span className="absolute -top-1 right-1 rounded-full bg-amber-400 px-1.5 py-0.5 text-[8px] font-extrabold text-slate-900">Soon</span> : null}
                 <span className="grid size-10 place-items-center rounded-2xl bg-[#286D86] text-white">
                   <q.icon className="size-5" strokeWidth={2.2} />
                 </span>
@@ -284,9 +279,8 @@ function DashHome() {
               </>
             );
             const cls = "relative flex min-h-[5.4rem] flex-col items-center justify-center gap-2 rounded-2xl bg-[#E5F2F8] px-1 py-3 text-center";
-            if (soon) return <div key={q.label} className={`${cls} opacity-70`}>{body}</div>;
             return (
-              <Link key={q.label} to={q.to} search={"search" in q ? q.search : undefined} className={cls}>
+              <Link key={q.label} to={q.to} search={"search" in q ? q.search : undefined} hash={"hash" in q ? q.hash : undefined} className={cls}>
                 {body}
               </Link>
             );
@@ -344,7 +338,7 @@ function InstallApp() {
       <h2 className="text-base font-extrabold text-[#12313c]">Install app</h2>
       <p className="mt-1 text-sm text-[#5c7380]">Add VeriLogs to your home screen. It opens full screen and keeps you signed in.</p>
       {prompt ? (
-        <button type="button" className="mt-3 w-full rounded-xl bg-[#0c6e8a] py-2.5 text-sm font-bold text-white" onClick={() => void prompt.prompt()}>
+        <button type="button" className="btn-accent mt-3 w-full rounded-xl py-2.5 text-sm font-bold text-white" onClick={() => void prompt.prompt()}>
           Install app
         </button>
       ) : (

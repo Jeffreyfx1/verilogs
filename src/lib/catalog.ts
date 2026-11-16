@@ -99,7 +99,26 @@ export type Ticket = {
 };
 
 export type Faq = { id: string; question: string; answer: string };
-export type Announcement = { id: string; title: string; body: string; createdAt: string };
+export type Announcement = {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  active?: boolean;
+  startsAt?: string;
+  endsAt?: string;
+};
+
+/** Live banner copy. Missing `active` stays on so older posts keep showing. */
+export function liveAnnouncements(items: Announcement[] | undefined, now = Date.now()) {
+  return (items || []).filter((item) => {
+    if (!item?.title) return false;
+    if (item.active === false) return false;
+    if (item.startsAt && Number.isFinite(Date.parse(item.startsAt)) && Date.parse(item.startsAt) > now) return false;
+    if (item.endsAt && Number.isFinite(Date.parse(item.endsAt)) && Date.parse(item.endsAt) < now) return false;
+    return true;
+  });
+}
 export type Banner = { id: string; title: string; body: string; href: string };
 export type HomeCard = { id: string; title: string; body: string; image: string };
 export type HomeCopy = { eyebrow: string; title: string; body: string; image: string; cards: HomeCard[] };
