@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
-import { isLive, quoteProduct, type Product } from "@/lib/catalog";
+import type { Product } from "@/lib/catalog";
 import { naira } from "@/lib/money";
+import { listShelf } from "@/lib/shop-fns";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/bills")({ component: BillsPage });
@@ -16,10 +17,6 @@ const TABS = [
 ] as const;
 
 function BillsPage() {
-  const all = useStore((s) => s.products);
-  const providers = useStore((s) => s.providers);
-  const settings = useStore((s) => s.settings);
-  const products = useMemo(() => all.filter((p) => isLive(p, providers)).map((p) => quoteProduct(p, { providers, settings })), [all, providers, settings]);
   const buy = useStore((s) => s.buy);
   const rawHash = useRouterState({ select: (s) => s.location.hash });
   const hash = String(rawHash || "").replace(/^#/, "");
@@ -30,10 +27,20 @@ function BillsPage() {
   const [amount, setAmount] = useState("2000");
   const [q, setQ] = useState("");
   const [buying, setBuying] = useState("");
+  const [products, setProducts] = useState<Product[]>([]);
   useEffect(() => {
     if (TABS.some((t) => t.id === hash)) setTab(hash as (typeof TABS)[number]["id"]);
   }, [hash]);
-  const list = products.filter((p) => p.category === tab && (!q || (p.name || "").toLowerCase().includes(q.toLowerCase())));
+  useEffect(() => {
+    let stop = false;
+    const timer = setTimeout(() => {
+      listShelf({ data: { category: tab, q } })
+        .then((rows) => { if (!stop) setProducts(rows || []); })
+        .catch(() => { if (!stop) setProducts([]); });
+    }, 200);
+    return () => { stop = true; clearTimeout(timer); };
+  }, [tab, q]);
+  const list = products;
   const purchase = async (p: Product) => {
     if (buying) return;
     if (phone.trim().length < 8 && tab !== "exam" && tab !== "giftcard") return toast.error("Enter a phone number.");

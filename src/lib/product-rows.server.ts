@@ -4,6 +4,15 @@ import { SHELF_CATEGORIES, shelfOf } from "@/lib/shelves";
 
 const COLS = 26;
 
+export function encodeCursor(row: { service: string; name: string; id: string }) {
+  return `${row.service}\u001f${row.name}\u001f${row.id}`;
+}
+
+export function decodeCursor(cursor: string) {
+  const [service = "", name = "", id = ""] = String(cursor || "").split("\u001f");
+  return { service, name, id };
+}
+
 function rowOf(row: Record<string, unknown>): Product {
   return {
     id: String(row.id || ""),
@@ -140,11 +149,63 @@ export async function readShopRows(categories: string[], limit = 2000) {
   return rows.map(rowOf);
 }
 
-export async function queryExtras(input: { q?: string; providerIds: string[]; kind?: "vpn" | "smm" | "random" | "shop"; page?: number; subcategory?: string }) {
-  if (!input.providerIds.length) return { rows: [], more: false };
+export async function queryShelf(category: string, providerIds: string[], q = "", limit = 400) {
+  if (!providerIds.length || !category) return [];
+  const sql = await getSql();
+  const values: unknown[] = [category, providerIds];
+  const parts = ["enabled = true", "category = $1", "provider_id = any($2::text[])"];
+  if (q) {
+    values.push(`%${q.replace(/[%_]/g, "")}%`);
+    parts.push(`(name ilike $${values.length} or service ilike $${values.length} or network ilike $${values.length})`);
+  }
+  values.push(Math.max(1, Math.min(400, limit)));
+  const rows = await sql.query<Record<string, unknown>>(
+    `select * from shop_products where ${parts.join(" and ")} order by network, name limit $${values.length}`,
+    values,
+  );
+  return rows.map(rowOf);
+}
+
+export async function catalogCounts() {
+  const sql = await getSql();
+  const rows = await sql.query<{ category: string; provider_id: string; n: number; live: number }>(
+    `select category, provider_id, count(*) as n, count(*) filter (where enabled) as live
+     from shop_products group by category, provider_id`,
+  );
+  const byCategory: Record<string, number> = {};
+  const byProvider: Record<string, { count: number; live: number }> = {};
+  let total = 0;
+  let live = 0;
+  for (const row of rows) {
+    const n = Number(row.n) || 0;
+    const on = Number(row.live) || 0;
+    total += n;
+    live += on;
+    byCategory[row.category] = (byCategory[row.category] || 0) + n;
+    const prev = byProvider[row.provider_id] || { count: 0, live: 0 };
+    byProvider[row.provider_id] = { count: prev.count + n, live: prev.live + on };
+  }
+  return { total, live, byCategory, byProvider };
+}
+
+export async function sampleProducts(limit = 12) {
+  const sql = await getSql();
+  const rows = await sql.query<Record<string, unknown>>("select * from shop_products order by category, name limit $1", [Math.max(1, Math.min(40, limit))]);
+  return rows.map(rowOf);
+}
+
+export async function decrementStock(id: string) {
+  if (!id) return;
+  const sql = await getSql();
+  await sql.query("update shop_products set stock = case when stock > 0 then stock - 1 else stock end where id = $1", [id]);
+}
+
+export async function queryExtras(input: { q?: string; providerIds: string[]; kind?: "vpn" | "smm" | "random" | "shop"; page?: number; subcategory?: string; after?: string }) {
+  if (!input.providerIds.length) return { rows: [] as Product[], more: false, next: "" };
   const sql = await getSql();
   const shelf = shelfOf(input.kind === "shop" ? "random" : input.kind);
-  const values: unknown[] = [input.providerIds, [...SHELF_CATEGORIES[shelf]]];
+  const categories = [...SHELF_CATEGORIES[shelf]];
+  const values: unknown[] = [input.providerIds, categories];
   const parts = ["enabled = true", "provider_id = any($1::text[])", "category = any($2::text[])"];
   if (input.q) {
     values.push(`%${input.q.replace(/[%_]/g, "")}%`);
@@ -154,15 +215,22 @@ export async function queryExtras(input: { q?: string; providerIds: string[]; ki
     values.push(input.subcategory);
     parts.push(`marketplace_subcategory = $${values.length}`);
   }
-  const page = Math.max(0, Math.min(5000, Math.floor(Number(input.page) || 0)));
+  const cursor = input.after ? decodeCursor(input.after) : null;
+  if (cursor?.id) {
+    values.push(cursor.service, cursor.name, cursor.id);
+    parts.push(`(service, name, id) > ($${values.length - 2}, $${values.length - 1}, $${values.length})`);
+  }
   const limit = 40;
-  values.push(limit + 1, page * limit);
+  values.push(limit + 1);
+  const offset = cursor?.id ? 0 : Math.max(0, Math.min(5000, Math.floor(Number(input.page) || 0))) * limit;
   const rows = await sql.query<Record<string, unknown>>(
-    `select * from shop_products where ${parts.join(" and ")} order by service, name limit $${values.length - 1} offset $${values.length}`,
+    `select * from shop_products where ${parts.join(" and ")} order by service, name, id limit $${values.length}${offset ? ` offset ${offset}` : ""}`,
     values,
   );
   const more = rows.length > limit;
-  return { rows: rows.slice(0, limit).map(rowOf), more };
+  const page = rows.slice(0, limit).map(rowOf);
+  const last = page[page.length - 1];
+  return { rows: page, more, next: more && last ? encodeCursor(last) : "" };
 }
 
 export async function readProduct(id: string) {
@@ -265,7 +333,7 @@ export async function queryCountries(input: BrowseInput) {
   const values: unknown[] = [];
   const where = filters(input, values);
   const rows = await sql.query<Record<string, unknown>>(
-    `select distinct on (country) * from shop_products where ${where} order by country, price asc`,
+    `select distinct on (country) * from shop_products where ${where} order by country, price asc limit 300`,
     values,
   );
   return rows.map(rowOf).sort((a, b) => a.price - b.price || a.country.localeCompare(b.country));
@@ -276,7 +344,7 @@ export async function queryOperators(input: BrowseInput) {
   const values: unknown[] = [];
   const where = filters(input, values);
   const rows = await sql.query<Record<string, unknown>>(
-    `select * from shop_products where ${where} order by rate desc, price asc, operator asc`,
+    `select * from shop_products where ${where} order by rate desc, price asc, operator asc limit 200`,
     values,
   );
   return rows.map(rowOf);
@@ -291,7 +359,7 @@ export async function queryHidden(providerId: string, category: string) {
   return Number(rows[0]?.n) || 0;
 }
 
-export async function queryCatalogPage(input: { q?: string; category?: string; providerId?: string; only?: string; page?: number; subcategory?: string }) {
+export async function queryCatalogPage(input: { q?: string; category?: string; providerId?: string; only?: string; page?: number; subcategory?: string; after?: string }) {
   const sql = await getSql();
   const values: unknown[] = [];
   const parts: string[] = [];
@@ -314,10 +382,29 @@ export async function queryCatalogPage(input: { q?: string; category?: string; p
     values.push(`%${input.q.replace(/[%_]/g, "")}%`);
     parts.push(`(name ilike $${values.length} or service ilike $${values.length} or country ilike $${values.length} or network ilike $${values.length} or description ilike $${values.length})`);
   }
+  const filterValues = [...values];
+  const filterWhere = parts.length ? `where ${parts.join(" and ")}` : "";
+  const cursor = input.after ? decodeCursor(input.after) : null;
+  if (cursor?.id) {
+    values.push(cursor.service, cursor.name, cursor.id);
+    parts.push(`(service, name, id) > ($${values.length - 2}, $${values.length - 1}, $${values.length})`);
+  }
   const where = parts.length ? `where ${parts.join(" and ")}` : "";
   const page = Math.max(0, Number(input.page) || 0);
-  const rows = await sql.query<Record<string, unknown>>(`select * from shop_products ${where} order by service, country, price limit 40 offset ${page * 40}`, values);
-  const totalRows = await sql.query<{ n: number }>(`select count(*) as n from shop_products ${where}`, values);
+  const offset = cursor?.id ? 0 : page * 40;
+  const rows = await sql.query<Record<string, unknown>>(
+    `select * from shop_products ${where} order by service, name, id limit 41${offset ? ` offset ${offset}` : ""}`,
+    values,
+  );
+  const more = rows.length > 40;
+  const sliced = rows.slice(0, 40).map(rowOf);
+  const last = sliced[sliced.length - 1];
+  const totalRows = await sql.query<{ n: number }>(`select count(*) as n from shop_products ${filterWhere}`, filterValues);
   const liveRows = await sql.query<{ n: number }>("select count(*) as n from shop_products where enabled = true");
-  return { rows: rows.map(rowOf), total: Number(totalRows[0]?.n) || 0, live: Number(liveRows[0]?.n) || 0 };
+  return {
+    rows: sliced,
+    total: Number(totalRows[0]?.n) || 0,
+    live: Number(liveRows[0]?.n) || 0,
+    next: more && last ? encodeCursor(last) : "",
+  };
 }

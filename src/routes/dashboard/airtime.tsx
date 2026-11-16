@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
-import { isLive } from "@/lib/catalog";
+import type { Product } from "@/lib/catalog";
 import { naira } from "@/lib/money";
+import { listShelf } from "@/lib/shop-fns";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/airtime")({ component: AirtimePage });
@@ -17,14 +18,19 @@ const TONE: Record<string, string> = {
 };
 
 function AirtimePage() {
-  const all = useStore((s) => s.products);
-  const providers = useStore((s) => s.providers);
-  const products = useMemo(() => all.filter((p) => p.category === "airtime" && isLive(p, providers)), [all, providers]);
   const buy = useStore((s) => s.buy);
+  const [products, setProducts] = useState<Product[]>([]);
   const [phone, setPhone] = useState("");
   const [amount, setAmount] = useState("500");
-  const [net, setNet] = useState(products[0]?.network || "MTN");
+  const [net, setNet] = useState("MTN");
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let stop = false;
+    listShelf({ data: { category: "airtime" } })
+      .then((rows) => { if (!stop) setProducts(rows || []); })
+      .catch(() => { if (!stop) setProducts([]); });
+    return () => { stop = true; };
+  }, []);
   const current = products.find((p) => p.network === net) || products[0];
   const face = Number(amount) || 0;
   const purchase = async () => {

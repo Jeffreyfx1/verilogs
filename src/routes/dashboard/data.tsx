@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
-import { isLive, quoteProduct } from "@/lib/catalog";
+import type { Product } from "@/lib/catalog";
 import { naira } from "@/lib/money";
+import { listShelf } from "@/lib/shop-fns";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/data")({ component: DataPage });
@@ -19,19 +20,22 @@ const TONE: Record<string, string> = {
 };
 
 function DataPage() {
-  const products = useStore((s) => s.products);
-  const providers = useStore((s) => s.providers);
-  const settings = useStore((s) => s.settings);
   const buy = useStore((s) => s.buy);
-  const plans = useMemo(
-    () => products.filter((p) => p.category === "data" && isLive(p, providers)).map((p) => quoteProduct(p, { providers, settings })),
-    [products, providers, settings],
-  );
-  const present = [...ORDER.filter((n) => plans.some((p) => p.network === n)), ...(plans.some((p) => !p.network || !ORDER.includes(p.network)) ? ["Other"] : [])];
-  const [net, setNet] = useState(present[0] || "MTN");
+  const [plans, setPlans] = useState<Product[]>([]);
   const [phone, setPhone] = useState("");
   const [q, setQ] = useState("");
   const [buying, setBuying] = useState("");
+  useEffect(() => {
+    let stop = false;
+    const timer = setTimeout(() => {
+      listShelf({ data: { category: "data", q } })
+        .then((rows) => { if (!stop) setPlans(rows || []); })
+        .catch(() => { if (!stop) setPlans([]); });
+    }, 200);
+    return () => { stop = true; clearTimeout(timer); };
+  }, [q]);
+  const present = [...ORDER.filter((n) => plans.some((p) => p.network === n)), ...(plans.some((p) => !p.network || !ORDER.includes(p.network)) ? ["Other"] : [])];
+  const [net, setNet] = useState(present[0] || "MTN");
   const shown = plans.filter((p) => (net === "Other" ? !ORDER.includes(p.network) : p.network === net) && (!q || (p.name || "").toLowerCase().includes(q.toLowerCase())));
 
   const purchase = async (id: string) => {

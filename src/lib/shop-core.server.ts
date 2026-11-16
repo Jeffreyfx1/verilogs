@@ -1,13 +1,13 @@
 import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/react-start/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
-import { freshData, isLive, normalizeData, quoteProduct, repairCatalog, serverLabel, topupQuote, withAdminLogin, applyImportSlice, type Data, type Product, type SyncReport } from "@/lib/catalog";
+import { freshData, normalizeData, quoteProduct, serverLabel, topupQuote, withAdminLogin, type Data, type Product, type SyncReport } from "@/lib/catalog";
 import { customerPrice, pricingOf, successRateOf } from "@/lib/pricing";
 import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, shapeImport, airtimeProductsFromPayload, MAJOR_SERVICES, type ImportKind, type ParsedItem } from "@/lib/categorize";
 import { destinationOf, flattenGetaText, sourceKindOf } from "@/lib/import-source";
 import { instakingCurrency, instakingPost, isInstakingHost, parseInstakingServices, readSmmDetail } from "@/lib/instaking";
 import { catalogStamp, followCatalogPages, walkBrowse } from "@/lib/catalog-pages";
-import { IMPORT_BATCH, importBatchCount } from "@/lib/import-batch";
+import { IMPORT_BATCH, importBatchCount, sliceImport } from "@/lib/import-batch";
 import { uid } from "@/lib/money";
 import { placeOnProvider } from "@/lib/fulfill.server";
 import {
@@ -21,13 +21,18 @@ import {
   queryHidden,
   queryOperators,
   queryServices,
+  queryShelf,
+  catalogCounts,
+  sampleProducts,
+  decrementStock,
   readProduct,
-  readShopRows,
   setProductSubcategory,
   setRowsEnabled,
   lockListing,
   upsertProductRows,
 } from "@/lib/product-rows.server";
+import { catalogSplitVerified, ensureCatalogSplit } from "@/lib/catalog-split.server";
+import { beginPurchaseKey, creditBalance, debitBalance, markPurchaseKey, overlayBalances, reconcilePurchases } from "@/lib/shop-wallet.server";
 import {
   addAnnouncement,
   addTicket,
@@ -132,34 +137,8 @@ function withoutSampleCatalog(doc: Data): Data {
   };
 }
 
-async function loadDoc(withCatalog = false): Promise<Data> {
-  const sql = await getSql();
-  const rows = await sql<{ doc: string }>`select doc from shop_state where id = 'main'`;
-  if (!rows[0]) {
-    const doc = freshData();
-    await sql`insert into shop_state (id, doc) values ('main', ${JSON.stringify(doc)})`;
-    return doc;
-  }
-  const parsed = normalizeData(JSON.parse(rows[0].doc) as Data);
-  let doc = withAdminLogin(withoutSampleCatalog(parsed));
-  const stuck = doc.products.filter(isHeavy);
-  if (stuck.length) {
-    const prev = await readCatalog();
-    const ids = new Set(stuck.map((p) => p.id));
-    const catalog = [...prev.filter((p) => !ids.has(p.id)), ...stuck];
-    await writeCatalog(catalog);
-    doc = { ...doc, products: doc.products.filter((p) => !isHeavy(p)) };
-    await writeState(doc);
-    if (withCatalog) doc = { ...doc, products: [...doc.products, ...catalog] };
-  } else if (withCatalog) {
-    doc = { ...doc, products: [...doc.products, ...(await readCatalog())] };
-  }
-  const cleaned = repairCatalog(doc);
-  if (cleaned !== doc) {
-    await writeState(cleaned);
-    if (withCatalog) await writeCatalog(cleaned.products.filter(isHeavy));
-  }
-  return cleaned;
+async function loadDoc(_withCatalog = false): Promise<Data> {
+  return loadLight();
 }
 
 async function loadLight(): Promise<Data> {
@@ -167,31 +146,22 @@ async function loadLight(): Promise<Data> {
   const rows = await sql<{ doc: string }>`select doc from shop_state where id = 'main'`;
   if (!rows[0]) {
     const doc = freshData();
-    await sql`insert into shop_state (id, doc) values ('main', ${JSON.stringify(doc)})`;
+    await sql`insert into shop_state (id, doc) values ('main', ${JSON.stringify({ ...doc, products: [] })})`;
     return doc;
   }
   const parsed = normalizeData(JSON.parse(rows[0].doc) as Data);
   const doc = withAdminLogin(withoutSampleCatalog(parsed));
-  return { ...doc, products: doc.products.filter((p) => !isHeavy(p)) };
-}
-
-function isHeavy(product: Product) {
-  return product.category === "numbers" || product.category === "rent" || product.category === "number" || product.category === "usa";
-}
-
-let catalogCache: Product[] | null = null;
-
-async function readCatalog(): Promise<Product[]> {
-  if (catalogCache) return catalogCache;
-  const sql = await getSql();
-  const rows = await sql<{ doc: string }>`select doc from shop_catalog where id = 'main'`;
-  if (!rows[0]?.doc) return [];
+  let clear = false;
   try {
-    catalogCache = JSON.parse(rows[0].doc) as Product[];
-  } catch {
-    catalogCache = [];
+    const split = await ensureCatalogSplit(doc);
+    clear = split.clear;
+    if (!split.ok && split.error) console.error(split.error);
+  } catch (err) {
+    console.error("catalogue split skipped", err instanceof Error ? err.message : err);
   }
-  return catalogCache;
+  const light = { ...doc, products: [] as Data["products"] };
+  if (clear) await writeState(light);
+  return overlayBalances(light);
 }
 
 async function clearNumberImports() {
@@ -201,7 +171,6 @@ async function clearNumberImports() {
   } catch {
     // The products table is created by the next migration.
   }
-  catalogCache = [];
   try {
     await sql`update shop_catalog set doc = '[]' where id = 'main'`;
   } catch {
@@ -223,31 +192,28 @@ export async function clearNumberCatalog() {
   return { error: null as string | null, state: projectShop(fresh, session.userId, session.draft) };
 }
 
-async function writeCatalog(products: Product[]) {
-  const sql = await getSql();
-  const text = JSON.stringify(products);
-  const existing = await sql`select id from shop_catalog where id = 'main'`;
-  if (existing[0]) await sql`update shop_catalog set doc = ${text}, updated_at = now() where id = 'main'`;
-  else await sql`insert into shop_catalog (id, doc) values ('main', ${text})`;
-  catalogCache = products;
-}
-
 async function writeState(doc: Data) {
   const sql = await getSql();
-  const text = JSON.stringify({ ...doc, products: doc.products.filter((p) => !isHeavy(p)) });
+  let products: Data["products"] = [];
+  if (!catalogSplitVerified()) {
+    const rows = await sql<{ doc: string }>`select doc from shop_state where id = 'main'`;
+    if (rows[0]?.doc) {
+      try {
+        const prev = JSON.parse(rows[0].doc) as { products?: Data["products"] };
+        if (Array.isArray(prev.products)) products = prev.products;
+      } catch {
+        products = [];
+      }
+    }
+  }
+  const text = JSON.stringify({ ...doc, products });
   const existing = await sql`select id from shop_state where id = 'main'`;
   if (existing[0]) await sql`update shop_state set doc = ${text}, updated_at = now() where id = 'main'`;
   else await sql`insert into shop_state (id, doc) values ('main', ${text})`;
 }
 
-async function saveDoc(doc: Data, catalog = false) {
-  if (!catalog) {
-    await writeState(doc);
-    return;
-  }
-  await writeCatalog(doc.products.filter(isHeavy));
-  const live = await loadLight();
-  await writeState({ ...live, providers: doc.providers, products: doc.products, settings: doc.settings });
+async function saveDoc(doc: Data, _catalog = false) {
+  await writeState({ ...doc, products: [] });
 }
 
 export async function sendMail(mail: Mail | Mail[] | undefined) {
@@ -293,8 +259,6 @@ function result(doc: Data, userId: string | null, draft: Draft | null, error: st
 const LIGHT = new Set(["login", "register", "logout", "resetPassword", "completeGoogle"]);
 
 let lightSyncedAt = 0;
-const LIGHT_CATS = ["airtime", "data", "logs", "smm", "cable", "exam", "giftcard", "betting"];
-
 export async function currentShop(): Promise<ApplyResult> {
   let doc = await loadLight();
   if (Date.now() - lightSyncedAt > 120000) {
@@ -316,17 +280,15 @@ export async function currentShop(): Promise<ApplyResult> {
     } catch {
       // Table appears after the next deploy migration.
     }
-    try {
-      const rows = await readShopRows(LIGHT_CATS, 2000);
-      const have = new Set(doc.products.map((product) => `${product.providerId}|${product.externalId}`));
-      const missing = rows.filter((product) => product.externalId && !have.has(`${product.providerId}|${product.externalId}`));
-      if (missing.length) {
-        doc = { ...doc, products: [...doc.products, ...missing] };
-        await writeState(doc);
-      }
-    } catch {
-      // Catalogue table is created by the next migration.
+  }
+  try {
+    const reconciled = await reconcilePurchases(doc);
+    if (reconciled.changed) {
+      doc = reconciled.doc;
+      await writeState(doc);
     }
+  } catch (err) {
+    console.error("purchase reconcile skipped", err instanceof Error ? err.message : err);
   }
   const session = await readSession();
   return result(doc, session.userId, session.draft, null);
@@ -404,13 +366,19 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
       doc = out.data;
       error = out.error;
     } else if (op === "buy") {
-      const out = await completePurchase(doc, userId, str("productId"), { phone: str("phone"), amount: num("amount"), detail: str("detail") });
+      const out = await completePurchase(doc, userId, str("productId"), { phone: str("phone"), amount: num("amount"), detail: str("detail"), idempotencyKey: str("idempotencyKey") });
       doc = out.data;
       error = out.error;
     } else if (op === "refund") {
-      const out = refundOrder(doc, userId, str("orderId"));
+      const orderId = str("orderId");
+      const before = doc.orders.find((order) => order.id === orderId);
+      const out = refundOrder(doc, userId, orderId);
       doc = out.data;
       error = out.error;
+      if (!error && before) {
+        const moved = await creditBalance(before.userId, before.amount, "refund:" + before.id, "Refund · " + before.title, "refund");
+        doc = { ...doc, users: doc.users.map((user) => (user.id === before.userId ? { ...user, balance: moved.balance } : user)) };
+      }
     } else if (op === "tick") {
       doc = await syncInstakingOrders(doc);
       doc = tickWaiting(doc);
@@ -440,9 +408,14 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
         hasKey: !!payload.hasKey || !!str("apiKey"),
         publish: !!payload.publish,
       });
-      doc = out.data;
+      doc = { ...out.data, products: [] };
       error = out.error;
       report = out.report ?? null;
+      if (!error && out.data.products.length) {
+        const providerId = out.report?.providerId || "";
+        const rows = providerId ? out.data.products.filter((product) => product.providerId === providerId) : out.data.products;
+        await upsertProductRows(rows, "manual-" + Date.now());
+      }
       if (!error && out.report && str("apiKey")) await rememberKey(out.report.providerId, str("apiKey"));
     } else if (op === "setEnabled") {
       const ids = Array.isArray(payload.ids) ? payload.ids.filter((id) => typeof id === "string") : [];
@@ -487,10 +460,22 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
       doc = out.data;
       error = out.error;
     } else if (op === "adjustBalance") {
-      const out = adjustBalance(doc, userId, str("userId"), num("amount"), str("note") || "Admin adjustment");
+      const target = str("userId");
+      const note = str("note") || "Admin adjustment";
+      const current = doc.users.find((user) => user.id === target);
+      const out = adjustBalance(doc, userId, target, num("amount"), note);
       doc = out.data;
       error = out.error;
       mail = "mail" in out ? out.mail : undefined;
+      if (!error && current) {
+        const after = doc.users.find((user) => user.id === target);
+        const applied = Math.round((after?.balance || 0) - current.balance);
+        if (applied !== 0) {
+          const ref = "adjust:" + (doc.txns[0]?.id || uid("txn"));
+          const moved = applied > 0 ? await creditBalance(target, applied, ref, note, "topup") : await debitBalance(target, Math.abs(applied), ref, note);
+          if (moved.ok !== false) doc = { ...doc, users: doc.users.map((user) => (user.id === target ? { ...user, balance: moved.balance } : user)) };
+        }
+      }
     } else if (op === "addTicket") {
       const out = addTicket(doc, userId, { email: str("email"), subject: str("subject"), body: str("body") });
       doc = out.data;
@@ -550,15 +535,14 @@ export async function connectGoogle(profile: { email: string; name: string }) {
   return { needsPhone: out.needsPhone, role: out.userId ? doc.users.find((u) => u.id === out.userId)?.role : "customer", token };
 }
 
-async function completePurchase(doc: Data, userId: string | null, productId: string, extra: { phone?: string; amount?: number; detail?: string }) {
+async function completePurchase(doc: Data, userId: string | null, productId: string, extra: { phone?: string; amount?: number; detail?: string; idempotencyKey?: string }) {
   const found = productId ? await readProduct(productId) : null;
   const quoted = found ? quoteProduct(found, doc) : null;
   const provider = quoted && doc.providers.find((item) => item.id === quoted.providerId && item.enabled);
   if (!quoted?.enabled || !provider) return { error: "That service is not available.", data: doc };
   if (quoted.category === "vpn") return { error: "VPN is coming soon.", data: doc };
   const sticker = quoted.price;
-  const ready = { ...doc, products: [quoted, ...doc.products.filter((item) => item.id !== quoted.id)] };
-  const user = userId ? ready.users.find((item) => item.id === userId) : null;
+  const user = userId ? doc.users.find((item) => item.id === userId) : null;
   const face = quoted.variable ? Math.round(extra.amount || 0) : sticker;
   let charge = face;
   if (quoted.category === "smm") {
@@ -583,11 +567,44 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
   if (!user) return { error: "Sign in first.", data: doc };
   if (quoted.category === "airtime" && (face < 50 || face > 50000)) return { error: "Airtime must be between ₦50 and ₦50,000.", data: doc };
   if (!quoted.variable && charge <= 0) return { error: "This item has no price yet.", data: doc };
-  if (user.balance < charge) return { error: "Insufficient balance. Top up your balance to make this purchase.", data: doc };
+  const key = (extra.idempotencyKey || "").slice(0, 80);
+  if (key) {
+    const gate = await beginPurchaseKey({ key, userId: user.id, productId: quoted.id });
+    if (gate === "completed") return { error: null, data: doc };
+    if (gate === "busy") return { error: "This purchase is already processing.", data: doc };
+  }
+  if (user.balance < charge) {
+    if (key) await markPurchaseKey(key, "failed");
+    return { error: "Insufficient balance. Top up your balance to make this purchase.", data: doc };
+  }
   const placed = await placeOnProvider({ product: quoted, provider, apiKey: await readProviderKey(provider.id), phone: extra.phone || "", amount: quoted.variable ? face : charge, detail: extra.detail || "" });
-  if (!placed.ok) return { error: placed.error, data: doc };
+  if (!placed.ok) {
+    if (key) await markPurchaseKey(key, "failed");
+    return { error: placed.error, data: doc };
+  }
   const cost = placed.cost;
-  return buyProduct(ready, userId, quoted.id, {
+  const ledgerRef = "purchase:" + (key || uid("ord"));
+  const debited = await debitBalance(user.id, charge, ledgerRef, quoted.name);
+  const reconcileDetail = JSON.stringify({
+    title: quoted.name,
+    category: quoted.category,
+    server: serverLabel(doc.providers, provider.id) || provider.name,
+    network: quoted.network,
+    phone: placed.phone || extra.phone || "",
+    cost,
+    gain: charge - cost,
+    code: quoted.category === "smm" ? "" : placed.ref,
+    status: placed.waiting ? "waiting" : "completed",
+    providerStatus: quoted.category === "smm" ? "Pending" : "",
+    refillAvailable: !!quoted.smmRefill,
+    detail: extra.detail || quoted.description,
+  });
+  if (!debited.ok) {
+    if (key) await markPurchaseKey(key, "needs_reconcile", { providerOrderId: placed.ref, amount: charge, detail: reconcileDetail });
+    return { error: "The provider accepted the order, but the wallet update did not finish. It is flagged for reconciliation and will not be charged twice.", data: doc };
+  }
+  const ready = { ...doc, products: [quoted], users: doc.users.map((item) => (item.id === user.id ? { ...item, balance: debited.balance + charge } : item)) };
+  const bought = buyProduct(ready, userId, quoted.id, {
     phone: placed.phone || extra.phone,
     amount: quoted.variable ? face : charge,
     charge,
@@ -600,6 +617,18 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
     refillAvailable: !!quoted.smmRefill,
     status: placed.waiting ? "waiting" : "completed",
   });
+  if (bought.error) {
+    if (key) await markPurchaseKey(key, "needs_reconcile", { providerOrderId: placed.ref, amount: charge, detail: reconcileDetail });
+    return { error: "The provider accepted the order. The wallet debit is recorded and the order will be reconciled.", data: doc };
+  }
+  const data = {
+    ...bought.data,
+    products: [] as Data["products"],
+    users: bought.data.users.map((item) => (item.id === user.id ? { ...item, balance: debited.balance } : item)),
+  };
+  if (key) await markPurchaseKey(key, "completed", { orderId: data.orders[0]?.id || "", providerOrderId: placed.ref, amount: charge, detail: reconcileDetail });
+  await decrementStock(quoted.id);
+  return { error: null, data };
 }
 
 async function finishPaidNumber(doc: Data, userId: string, productId: string) {
@@ -660,7 +689,12 @@ export async function creditPaystack(reference: string, expectedUserId?: string 
     const doc = await loadLight();
     const out = creditVerified(doc, userId, amount, reference);
     if (out.error) return { error: out.error };
-    const finished = await finishPaidNumber(out.data, userId, body.data?.metadata?.productId || "");
+    let funded = out.data;
+    if (!("already" in out) || !out.already) {
+      const moved = await creditBalance(userId, amount, "paystack:" + reference, "Paystack · " + reference, "topup");
+      funded = { ...out.data, users: out.data.users.map((user) => (user.id === userId ? { ...user, balance: moved.balance } : user)) };
+    }
+    const finished = await finishPaidNumber(funded, userId, body.data?.metadata?.productId || "");
     await saveDoc(finished.data);
     await sendMail(out.mail);
     const session = await readSession();
@@ -682,9 +716,15 @@ export async function creditFromWebhook(raw: string, signature: string | null) {
   const amount = credit > 0 && credit <= charged ? credit : charged;
   await locked(async () => {
     const doc = await loadLight();
-    const out = creditVerified(doc, event.data!.metadata!.userId!, amount, event.data!.reference!);
+    const paidUser = event.data!.metadata!.userId!;
+    const out = creditVerified(doc, paidUser, amount, event.data!.reference!);
     if (!out.error) {
-      const finished = await finishPaidNumber(out.data, event.data!.metadata!.userId!, event.data!.metadata!.productId || "");
+      let funded = out.data;
+      if (!("already" in out) || !out.already) {
+        const moved = await creditBalance(paidUser, amount, "paystack:" + event.data!.reference!, "Paystack · " + event.data!.reference!, "topup");
+        funded = { ...out.data, users: out.data.users.map((user) => (user.id === paidUser ? { ...user, balance: moved.balance } : user)) };
+      }
+      const finished = await finishPaidNumber(funded, paidUser, event.data!.metadata!.productId || "");
       await saveDoc(finished.data);
       await sendMail(out.mail);
     }
@@ -1047,21 +1087,8 @@ export async function browseRemoteCatalog(input: { url: string; apiKey?: string;
   }
 }
 
-type ImportMeta = { name: string; baseUrl: string; currency: "NGN" | "USD"; usdRate: number; markup: number; publish: boolean; hasKey: boolean; apiKey: string; kind: ImportKind };
+type ImportMeta = { name: string; baseUrl: string; currency: "NGN" | "USD"; usdRate: number; markup: number; publish: boolean; hasKey: boolean; apiKey: string; kind: ImportKind; keepOthers?: boolean; categories?: string[] };
 
-type PendingImport = {
-  items: ParsedItem[];
-  cursor: number;
-  meta: ImportMeta;
-  providerId: string;
-  skipped: number;
-  touched: string[];
-  light: Product[];
-  keepOthers: boolean;
-  tally: { created: number; updated: number; byCategory: Record<string, number>; byNetwork: Record<string, number> };
-};
-
-const pendingImports = new Map<string, PendingImport>();
 
 function emptyImport(error: string | null) {
   return { error, jobId: "", total: 0, saved: 0, batch: 0, batches: 0, batchSize: IMPORT_BATCH, done: false, report: null as SyncReport | null, state: null as Data | null };
@@ -1122,9 +1149,11 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
   const shaped = kind === "vtu-airtime"
     ? airtimeProductsFromPayload(payload).map((item) => ({ ...item, category: "airtime" as const, importType: "VTU_IMPORT", serverId: "" }))
     : shapeImport(extracted.items, instakingBundle ? "smm" : kind, !selective && numberLike ? wantedForPull : []);
-  const items = selective ? shaped.slice(0, 200) : shaped;
+  const items = (selective ? shaped.slice(0, 200) : shaped) as ParsedItem[];
   if (!items.length) return emptyImport(selective ? "None of the ticked products could be read." : KIND_EMPTY[kind]);
   const jobId = crypto.randomUUID();
+  const touched = [...new Set(items.map((item) => `${item.country}|${item.service}`))];
+  const categories = [...new Set(items.map((item) => item.category))];
   const meta: ImportMeta = {
     name: input.name || "New API",
     baseUrl: input.baseUrl || input.url || "https://provider.example/api",
@@ -1135,21 +1164,17 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
     hasKey: !!input.apiKey || !!input.url,
     apiKey: input.apiKey || "",
     kind,
-  };
-  const touched = [...new Set(items.map((item) => `${item.country}|${item.service}`))];
-  pendingImports.clear();
-  pendingImports.set(jobId, {
-    items,
-    cursor: 0,
-    meta,
-    providerId: input.providerId || "",
-    skipped: extracted.skipped + (extracted.items.length - items.length),
-    touched,
-    light: [],
     keepOthers: selective,
-    tally: { created: 0, updated: 0, byCategory: {}, byNetwork: {} },
-  });
-  return { error: null, jobId, total: items.length, saved: 0, batch: 0, batches: importBatchCount(items.length), batchSize: IMPORT_BATCH, done: false, report: null, state: null };
+    categories,
+  };
+  const sql = await getSql();
+  const skipped = extracted.skipped + (extracted.items.length - items.length);
+  await sql`insert into shop_import_jobs (id, status, total, cursor, batch_size, created_count, updated_count, skipped, by_category, by_network, provider_id, keep_ids, touched, meta, error) values (${jobId}, 'running', ${items.length}, 0, ${IMPORT_BATCH}, 0, 0, ${skipped}, '{}', '{}', ${input.providerId || ""}, ${selective ? JSON.stringify(items.map((item) => item.externalId)) : "[]"}, ${JSON.stringify(touched)}, ${JSON.stringify(meta)}, '')`;
+  const batches = sliceImport(items);
+  for (let seq = 0; seq < batches.length; seq += 1) {
+    await sql`insert into shop_import_batches (job_id, seq, items) values (${jobId}, ${seq}, ${JSON.stringify(batches[seq])})`;
+  }
+  return { error: null, jobId, total: items.length, saved: 0, batch: 0, batches: batches.length, batchSize: IMPORT_BATCH, done: false, report: null, state: null };
 }
 
 function withProvider(doc: Data, meta: ImportMeta, providerId: string) {
@@ -1196,181 +1221,16 @@ function withProvider(doc: Data, meta: ImportMeta, providerId: string) {
   return { doc: { ...doc, providers }, provider };
 }
 
-function mergeLight(doc: Data, providerId: string, rows: Product[]): Data {
-  if (!rows.length) return doc;
-  const cats = new Set(rows.map((row) => row.category));
-  const incoming = new Set(rows.map((row) => row.externalId));
-  const kept = doc.products.filter((product) => product.providerId !== providerId || !cats.has(product.category) || incoming.has(product.externalId));
-  const byExternal = new Map(kept.filter((product) => product.providerId === providerId).map((product) => [product.externalId, product]));
-  const products = [...kept];
-  for (const row of rows) {
-    const prev = byExternal.get(row.externalId);
-    if (!prev) {
-      products.push(row);
-      continue;
-    }
-    const at = products.indexOf(prev);
-    if (at >= 0) products[at] = { ...row, id: prev.id, enabled: prev.enabled || row.enabled };
-  }
-  return { ...doc, products };
-}
-
-function mergeLightAdd(doc: Data, providerId: string, rows: Product[]): Data {
-  if (!rows.length) return doc;
-  const products = [...doc.products];
-  const byExternal = new Map(products.filter((product) => product.providerId === providerId).map((product) => [product.externalId, product]));
-  for (const row of rows) {
-    const prev = byExternal.get(row.externalId);
-    if (!prev) {
-      products.push(row);
-      byExternal.set(row.externalId, row);
-      continue;
-    }
-    const at = products.indexOf(prev);
-    if (at >= 0) {
-      const next = { ...row, id: prev.id, enabled: prev.enabled || row.enabled };
-      products[at] = next;
-      byExternal.set(row.externalId, next);
-    }
-  }
-  return { ...doc, products };
-}
-
-async function stepFromMemory(jobId: string) {
-  const job = pendingImports.get(jobId);
-  if (!job) return emptyImport("That import is no longer running. Start it again.");
+export async function stepCatalogImport(jobId: string) {
+  if (!jobId) return emptyImport("Missing import.");
   const session = await readSession();
   const light = await loadLight();
   const me = light.users.find((user) => user.id === session.userId);
   if (me?.role !== "admin") return emptyImport("Only an admin can pull an API.");
-  const total = job.items.length;
-  const batches = importBatchCount(total);
-  if (job.cursor >= total) {
-    pendingImports.delete(jobId);
-    return { error: null, jobId, total, saved: total, batch: batches, batches, batchSize: IMPORT_BATCH, done: true, report: null, state: projectShop(light, session.userId, session.draft) };
-  }
-  const slice = job.items.slice(job.cursor, job.cursor + IMPORT_BATCH);
-  const finalize = job.cursor + slice.length >= total;
-  try {
-    return await locked(async () => {
-      const loaded = await loadLight();
-      const held = withProvider(loaded, job.meta, job.providerId);
-      job.providerId = held.provider.id;
-      const existing = await countExistingProducts(held.provider.id, slice.map((item) => item.externalId));
-      const products: Product[] = slice.map((item) => ({
-        id: uid("prd"),
-        providerId: held.provider.id,
-        externalId: item.externalId,
-        category: item.category,
-        name: item.name,
-        service: item.service,
-        country: item.country,
-        network: item.network,
-        price: customerPrice({
-          cost: item.price,
-          currency: held.provider.currency,
-          usdRate: held.provider.usdRate || loaded.settings.usdNgn,
-          successRate: successRateOf(item.rate < 0 ? null : item.rate),
-          pricing: pricingOf(loaded.settings.pricing),
-          providerId: held.provider.id,
-          service: item.service,
-          providerPercent: held.provider.markupPercent && held.provider.markupPercent > 0 ? held.provider.markupPercent : null,
-          defaultPercent: loaded.settings.margin,
-        }).price,
-        cost: item.price,
-        stock: item.stock,
-        operator: item.operator || "",
-        rate: item.rate || 0,
-        rates: item.rates || "",
-        enabled: job.meta.publish,
-        validity: item.validity,
-        variable: item.variable,
-        description: item.description,
-        importType: item.importType || "",
-        serverId: item.serverId || "",
-        subcategory: item.subcategory || "",
-        smmMin: item.smmMin || 0,
-        smmMax: item.smmMax || 0,
-        smmType: item.smmType || "",
-        smmRefill: !!item.smmRefill,
-      }));
-      await upsertProductRows(products, jobId);
-      job.light.push(...products.filter((product) => product.category === "airtime" || product.category === "data" || product.category === "logs" || product.category === "smm"));
-      job.tally.created += Math.max(0, slice.length - existing);
-      job.tally.updated += existing;
-      for (const item of slice) {
-        job.tally.byCategory[item.category] = (job.tally.byCategory[item.category] || 0) + 1;
-        if (item.network) job.tally.byNetwork[item.network] = (job.tally.byNetwork[item.network] || 0) + 1;
-      }
-      job.cursor += slice.length;
-      if (job.meta.apiKey) {
-        await rememberKey(held.provider.id, job.meta.apiKey);
-        job.meta.apiKey = "";
-      }
-      if (finalize) {
-        if (job.keepOthers) {
-          held.doc = mergeLightAdd(held.doc, held.provider.id, job.light);
-        } else {
-          const categories = [...new Set(job.items.map((item) => item.category))];
-          await pruneSyncedProducts(held.provider.id, jobId, job.touched, categories);
-          held.doc = mergeLight(held.doc, held.provider.id, job.light);
-        }
-      }
-      if (job.items.some((item) => item.category === "number")) held.provider.servesNumbers = true;
-      held.provider.enabled = true;
-      held.provider.lastSync = {
-        at: new Date().toISOString(),
-        imported: finalize ? total : job.cursor,
-        created: job.tally.created,
-        updated: job.tally.updated,
-        skipped: job.skipped,
-        byCategory: job.tally.byCategory,
-        byNetwork: job.tally.byNetwork,
-      };
-      await writeState(held.doc);
-      const saved = job.cursor;
-      const batch = Math.ceil(saved / IMPORT_BATCH);
-      const report: SyncReport = {
-        imported: finalize ? total : slice.length,
-        created: job.tally.created,
-        updated: job.tally.updated,
-        skipped: job.skipped,
-        byCategory: job.tally.byCategory,
-        byNetwork: job.tally.byNetwork,
-        providerId: held.provider.id,
-        serverLabel: serverLabel(held.doc.providers, held.provider.id),
-      };
-      if (finalize) pendingImports.delete(jobId);
-      const fresh = await readSession();
-      return {
-        error: null,
-        jobId,
-        total,
-        saved,
-        batch,
-        batches,
-        batchSize: IMPORT_BATCH,
-        done: finalize,
-        report,
-        state: projectShop(held.doc, fresh.userId, fresh.draft),
-      };
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "This batch could not be saved.";
-    return { error: message, jobId, total, saved: job.cursor, batch: Math.floor(job.cursor / IMPORT_BATCH), batches, batchSize: IMPORT_BATCH, done: false, report: null, state: null };
-  }
-}
-
-export async function stepCatalogImport(jobId: string) {
-  if (pendingImports.has(jobId)) return stepFromMemory(jobId);
-  if (!jobId) return emptyImport("Missing import.");
-  const session = await readSession();
-  const light = await loadLight();
-  const me = light.users.find((u) => u.id === session.userId);
-  if (me?.role !== "admin") return emptyImport("Only an admin can pull an API.");
   const sql = await getSql();
   const rows = await sql<{
     id: string;
+    status: string;
     total: number;
     cursor: number;
     batch_size: number;
@@ -1380,17 +1240,16 @@ export async function stepCatalogImport(jobId: string) {
     by_category: string;
     by_network: string;
     provider_id: string;
-    keep_ids: string;
     touched: string;
     meta: string;
-  }>`select id, total, cursor, batch_size, created_count, updated_count, skipped, by_category, by_network, provider_id, keep_ids, touched, meta from shop_import_jobs where id = ${jobId}`;
+  }>`select id, status, total, cursor, batch_size, created_count, updated_count, skipped, by_category, by_network, provider_id, touched, meta from shop_import_jobs where id = ${jobId}`;
   const job = rows[0];
   if (!job) return emptyImport("That import is no longer on the server. Start it again.");
   const total = Number(job.total) || 0;
   const cursor = Number(job.cursor) || 0;
   const batchSize = Number(job.batch_size) || IMPORT_BATCH;
   const batches = importBatchCount(total, batchSize);
-  if (cursor >= batches) {
+  if (job.status === "done" || cursor >= batches) {
     return { error: null, jobId, total, saved: total, batch: batches, batches, batchSize, done: true, report: null, state: projectShop(light, session.userId, session.draft) };
   }
   const batchRows = await sql<{ items: string }>`select items from shop_import_batches where job_id = ${jobId} and seq = ${cursor}`;
@@ -1410,47 +1269,103 @@ export async function stepCatalogImport(jobId: string) {
   };
   const finalize = cursor + 1 >= batches;
   try {
-    return await locked(async () => {
-      const doc = await loadDoc(true);
-      const applied = applyImportSlice(doc, {
-        providerId: job.provider_id || undefined,
-        name: meta.name,
-        baseUrl: meta.baseUrl,
-        hasKey: meta.hasKey,
-        currency: meta.currency,
-        usdRate: meta.usdRate,
-        markup: meta.markup,
-        items,
-        skipped: Number(job.skipped) || 0,
-        enable: () => meta.publish,
-        finalize,
-        keepIds: finalize ? (JSON.parse(job.keep_ids || "[]") as string[]) : [],
-        touchedKeys: finalize ? (JSON.parse(job.touched || "[]") as string[]) : [],
-        tally,
-      });
-      await saveDoc(applied.data, true);
-      if (meta.apiKey) {
-        await rememberKey(applied.providerId, meta.apiKey);
-        meta.apiKey = "";
-      }
-      const saved = finalize ? total : Math.min(total, (cursor + 1) * batchSize);
-      await sql`update shop_import_jobs set status = ${finalize ? "done" : "running"}, cursor = ${cursor + 1}, created_count = ${applied.tally.created}, updated_count = ${applied.tally.updated}, by_category = ${JSON.stringify(applied.tally.byCategory)}, by_network = ${JSON.stringify(applied.tally.byNetwork)}, provider_id = ${applied.providerId}, meta = ${JSON.stringify(meta)}, error = '' where id = ${jobId}`;
-      await sql`delete from shop_import_batches where job_id = ${jobId} and seq = ${cursor}`;
-      if (finalize) await sql`update shop_import_jobs set keep_ids = '[]', touched = '[]' where id = ${jobId}`;
-      const fresh = await readSession();
-      return {
-        error: null,
-        jobId,
-        total,
-        saved,
-        batch: cursor + 1,
-        batches,
-        batchSize,
-        done: finalize,
-        report: applied.report,
-        state: projectShop(applied.data, fresh.userId, fresh.draft),
-      };
+    const held = await locked(async () => {
+      const loaded = await loadLight();
+      const next = withProvider(loaded, meta, job.provider_id || "");
+      await writeState({ ...next.doc, products: [] });
+      return next;
     });
+    const providerId = held.provider.id;
+    const existing = await countExistingProducts(providerId, items.map((item) => item.externalId));
+    const products: Product[] = items.map((item) => ({
+      id: uid("prd"),
+      providerId,
+      externalId: item.externalId,
+      category: item.category,
+      name: item.name,
+      service: item.service,
+      country: item.country,
+      network: item.network,
+      price: customerPrice({
+        cost: item.price,
+        currency: held.provider.currency,
+        usdRate: held.provider.usdRate || held.doc.settings.usdNgn,
+        successRate: successRateOf(item.rate < 0 ? null : item.rate),
+        pricing: pricingOf(held.doc.settings.pricing),
+        providerId,
+        service: item.service,
+        providerPercent: held.provider.markupPercent && held.provider.markupPercent > 0 ? held.provider.markupPercent : null,
+        defaultPercent: held.doc.settings.margin,
+      }).price,
+      cost: item.price,
+      stock: item.stock,
+      operator: item.operator || "",
+      rate: item.rate || 0,
+      rates: item.rates || "",
+      enabled: meta.publish,
+      validity: item.validity,
+      variable: item.variable,
+      description: item.description,
+      importType: item.importType || "",
+      serverId: item.serverId || "",
+      subcategory: item.subcategory || "",
+      smmMin: item.smmMin || 0,
+      smmMax: item.smmMax || 0,
+      smmType: item.smmType || "",
+      smmRefill: !!item.smmRefill,
+    }));
+    await upsertProductRows(products, jobId);
+    tally.created += Math.max(0, items.length - existing);
+    tally.updated += existing;
+    for (const item of items) {
+      tally.byCategory[item.category] = (tally.byCategory[item.category] || 0) + 1;
+      if (item.network) tally.byNetwork[item.network] = (tally.byNetwork[item.network] || 0) + 1;
+    }
+    if (meta.apiKey) {
+      await rememberKey(providerId, meta.apiKey);
+      meta.apiKey = "";
+    }
+    if (finalize && !meta.keepOthers) {
+      const touched = JSON.parse(job.touched || "[]") as string[];
+      await pruneSyncedProducts(providerId, jobId, touched, meta.categories || [...new Set(items.map((item) => item.category))]);
+    }
+    await locked(async () => {
+      const loaded = await loadLight();
+      const providers = loaded.providers.map((provider) => {
+        if (provider.id !== providerId) return provider;
+        return {
+          ...provider,
+          servesNumbers: provider.servesNumbers || items.some((item) => item.category === "number" || item.category === "numbers" || item.category === "rent"),
+          enabled: true,
+          lastSync: {
+            at: new Date().toISOString(),
+            imported: finalize ? total : Math.min(total, (cursor + 1) * batchSize),
+            created: tally.created,
+            updated: tally.updated,
+            skipped: Number(job.skipped) || 0,
+            byCategory: tally.byCategory,
+            byNetwork: tally.byNetwork,
+          },
+        };
+      });
+      await writeState({ ...loaded, providers, products: [] });
+    });
+    const saved = finalize ? total : Math.min(total, (cursor + 1) * batchSize);
+    await sql`update shop_import_jobs set status = ${finalize ? "done" : "running"}, cursor = ${cursor + 1}, created_count = ${tally.created}, updated_count = ${tally.updated}, by_category = ${JSON.stringify(tally.byCategory)}, by_network = ${JSON.stringify(tally.byNetwork)}, provider_id = ${providerId}, meta = ${JSON.stringify(meta)}, error = '' where id = ${jobId}`;
+    await sql`delete from shop_import_batches where job_id = ${jobId} and seq = ${cursor}`;
+    const fresh = await readSession();
+    const view = await loadLight();
+    const report: SyncReport = {
+      imported: finalize ? total : items.length,
+      created: tally.created,
+      updated: tally.updated,
+      skipped: Number(job.skipped) || 0,
+      byCategory: tally.byCategory,
+      byNetwork: tally.byNetwork,
+      providerId,
+      serverLabel: serverLabel(view.providers, providerId),
+    };
+    return { error: null, jobId, total, saved, batch: cursor + 1, batches, batchSize, done: finalize, report, state: projectShop(view, fresh.userId, fresh.draft) };
   } catch (err) {
     const message = err instanceof Error ? err.message : "This batch could not be saved.";
     await sql`update shop_import_jobs set status = 'failed', error = ${message.slice(0, 300)} where id = ${jobId}`;
@@ -1530,21 +1445,21 @@ export async function browseNumbers(input: { providerId?: string; category?: str
   return { ...empty, countries };
 }
 
-export async function browseExtras(input: { q?: string; kind?: string; page?: number; subcategory?: string }) {
+export async function browseExtras(input: { q?: string; kind?: string; page?: number; subcategory?: string; after?: string }) {
   const doc = await loadLight();
   const session = await readSession();
-  if (!session.userId) return { rows: [] as Product[], more: false };
+  if (!session.userId) return { rows: [] as Product[], more: false, next: "" };
   const providerIds = doc.providers.filter((provider) => provider.enabled).map((provider) => provider.id);
   const kind = input.kind === "vpn" || input.kind === "smm" ? input.kind : "random";
-  const page = await queryExtras({ q: (input.q || "").trim(), providerIds, kind, page: input.page, subcategory: (input.subcategory || "").trim() });
-  return { rows: page.rows.map((row) => quoteProduct(row, doc)), more: page.more };
+  const page = await queryExtras({ q: (input.q || "").trim(), providerIds, kind, page: input.page, subcategory: (input.subcategory || "").trim(), after: input.after || "" });
+  return { rows: page.rows.map((row) => quoteProduct(row, doc)), more: page.more, next: page.next };
 }
 
-export async function browseCatalog(input: { q?: string; category?: string; providerId?: string; only?: string; page?: number; subcategory?: string }) {
+export async function browseCatalog(input: { q?: string; category?: string; providerId?: string; only?: string; page?: number; subcategory?: string; after?: string }) {
   const doc = await loadLight();
   const session = await readSession();
   const me = doc.users.find((u) => u.id === session.userId);
-  if (me?.role !== "admin") return { rows: [] as Product[], total: 0, live: 0 };
+  if (me?.role !== "admin") return { rows: [] as Product[], total: 0, live: 0, next: "" };
   return queryCatalogPage({
     q: (input.q || "").trim(),
     category: input.category || "",
@@ -1552,7 +1467,53 @@ export async function browseCatalog(input: { q?: string; category?: string; prov
     only: input.only || "",
     page: Number(input.page) || 0,
     subcategory: input.subcategory || "",
+    after: input.after || "",
   });
+}
+
+const SHELF_OK = new Set(["airtime", "data", "cable", "exam", "giftcard", "betting"]);
+
+export async function listShelf(category: string, q = "") {
+  const doc = await loadLight();
+  const session = await readSession();
+  if (!session.userId || !SHELF_OK.has(category)) return [];
+  const providerIds = doc.providers.filter((provider) => provider.enabled).map((provider) => provider.id);
+  const rows = await queryShelf(category, providerIds, q, 400);
+  return rows.map((row) => quoteProduct(row, doc));
+}
+
+export async function adminCatalogStats() {
+  const doc = await loadLight();
+  const session = await readSession();
+  const me = doc.users.find((user) => user.id === session.userId);
+  if (me?.role !== "admin") return { total: 0, live: 0, byCategory: {} as Record<string, number>, byProvider: {} as Record<string, { count: number; live: number }> };
+  return catalogCounts();
+}
+
+export async function pricingSample() {
+  const doc = await loadLight();
+  const session = await readSession();
+  const me = doc.users.find((user) => user.id === session.userId);
+  if (me?.role !== "admin") return [];
+  return sampleProducts(12);
+}
+
+export async function openImportJobs() {
+  const doc = await loadLight();
+  const session = await readSession();
+  const me = doc.users.find((user) => user.id === session.userId);
+  if (me?.role !== "admin") return [];
+  const sql = await getSql();
+  const rows = await sql<{ id: string; status: string; total: number; cursor: number; batch_size: number; error: string; provider_id: string }>`select id, status, total, cursor, batch_size, error, provider_id from shop_import_jobs where status in ('running', 'failed') order by created_at desc limit 5`;
+  return rows.map((row) => ({
+    id: row.id,
+    status: row.status,
+    total: Number(row.total) || 0,
+    cursor: Number(row.cursor) || 0,
+    batchSize: Number(row.batch_size) || 2000,
+    error: row.error || "",
+    providerId: row.provider_id || "",
+  }));
 }
 
 function providerHost(url: string) {

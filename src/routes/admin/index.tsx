@@ -1,26 +1,26 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { CATEGORY_LABEL, quoteProduct, type Provider } from "@/lib/catalog";
 import { Button, Field, inputClass } from "@/components/ui";
 import { naira, when } from "@/lib/money";
+import { catalogStats } from "@/lib/shop-fns";
 import { useServers, useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/")({ component: AdminHome });
 
 function AdminHome() {
-  const products = useStore((s) => s.products);
   const providers = useStore((s) => s.providers);
   const orders = useStore((s) => s.orders);
   const users = useStore((s) => s.users);
   const tickets = useStore((s) => s.tickets);
   const setProvider = useStore((s) => s.setProvider);
   const servers = useServers();
-  const live = products.filter((p) => p.enabled).length;
-  const byCat = products.reduce<Record<string, number>>((acc, p) => {
-    acc[p.category] = (acc[p.category] || 0) + 1;
-    return acc;
-  }, {});
+  const [stats, setStats] = useState({ total: 0, live: 0, byCategory: {} as Record<string, number>, byProvider: {} as Record<string, { count: number; live: number }> });
+  useEffect(() => {
+    catalogStats().then((res) => { if (res) setStats(res); }).catch(() => undefined);
+  }, [providers.length]);
+  const byCat = stats.byCategory;
   return (
     <div className="space-y-5">
       <div>
@@ -29,9 +29,9 @@ function AdminHome() {
       </div>
       <div className="grid gap-3 sm:grid-cols-4">
         {[
-          ["Imported", String(products.length)],
-          ["Live on shop", String(live)],
-          ["Waiting", String(products.length - live)],
+          ["Imported", String(stats.total)],
+          ["Live on shop", String(stats.live)],
+          ["Waiting", String(Math.max(0, stats.total - stats.live))],
           ["Open tickets", String(tickets.length)],
         ].map(([k, v]) => (
           <div key={k} className="rounded-card border border-line bg-card p-4 shadow-card">
@@ -58,8 +58,8 @@ function AdminHome() {
         </div>
         {providers.map((p) => {
           const label = servers.find((s) => s.id === p.id)?.label;
-          const count = products.filter((x) => x.providerId === p.id).length;
-          const on = products.filter((x) => x.providerId === p.id && x.enabled).length;
+          const count = stats.byProvider[p.id]?.count || 0;
+          const on = stats.byProvider[p.id]?.live || 0;
           return (
             <article key={p.id} className="rounded-card border border-line bg-card p-4 shadow-card">
               <div className="flex flex-wrap items-center justify-between gap-2">

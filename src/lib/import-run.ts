@@ -73,6 +73,7 @@ type StartInput = {
 
 async function drain(jobId: string, batches: number) {
   let guard = 0;
+  let tries = 0;
   let latest: ImportStep = {
     error: null,
     jobId,
@@ -89,6 +90,12 @@ async function drain(jobId: string, batches: number) {
     guard += 1;
     const step = await stepCatalogImport({ data: { jobId } });
     if (step.error) {
+      tries += 1;
+      if (tries < 3) {
+        emit({ status: `Batch failed. Retrying (${tries} of 2). ${step.error}`, saved: step.saved, doneBatches: step.batch });
+        guard -= 1;
+        continue;
+      }
       emit({
         phase: "fail",
         saved: step.saved,
@@ -99,6 +106,7 @@ async function drain(jobId: string, batches: number) {
       toast.error(step.error);
       return;
     }
+    tries = 0;
     latest = step;
     if (step.state) useStore.getState().adopt(step.state);
     emit({
@@ -172,10 +180,22 @@ export function startCatalogRun(input: StartInput) {
   })();
 }
 
-export function resumeCatalogRun() {
-  if (running || !snap.jobId || snap.phase === "save" || snap.phase === "fetch") return;
+export function resumeCatalogRun(job?: { jobId: string; total: number; batches: number; batch: number; batchSize: number }) {
+  if (running || snap.phase === "save" || snap.phase === "fetch") return;
+  if (job?.jobId) {
+    emit({
+      ...idle,
+      phase: "save",
+      jobId: job.jobId,
+      total: job.total,
+      batches: job.batches,
+      doneBatches: job.batch,
+      batchSize: job.batchSize,
+      status: `Resuming batch ${job.batch + 1} of ${job.batches}.`,
+    });
+  } else if (!snap.jobId) return;
+  else emit({ phase: "save", status: `Saving batch ${snap.doneBatches + 1} of ${snap.batches}.` });
   running = true;
-  emit({ phase: "save", status: `Saving batch ${snap.doneBatches + 1} of ${snap.batches}.` });
   void drain(snap.jobId, snap.batches).finally(() => {
     running = false;
   });

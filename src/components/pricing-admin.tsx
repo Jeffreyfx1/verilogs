@@ -1,22 +1,26 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
-import { quoteProduct } from "@/lib/catalog";
+import { quoteProduct, type Product } from "@/lib/catalog";
 import { naira } from "@/lib/money";
 import { customerPrice, pricingOf, successRateOf, type MarginTier, type PricingSettings } from "@/lib/pricing";
+import { pricingSample } from "@/lib/shop-fns";
 import { useStore } from "@/lib/store";
 
 export function PricingAdmin() {
   const settings = useStore((s) => s.settings);
   const saveSettings = useStore((s) => s.saveSettings);
-  const products = useStore((s) => s.products);
   const providers = useStore((s) => s.providers);
+  const [products, setProducts] = useState<Product[]>([]);
   const [pricing, setPricing] = useState<PricingSettings>(() => pricingOf(settings.pricing));
   const [defaultPercent, setDefaultPercent] = useState(settings.margin ?? 12);
   const [cost, setCost] = useState("1000");
   const [rate, setRate] = useState("96");
   const [currency, setCurrency] = useState<"NGN" | "USD">("NGN");
   const [usdRate, setUsdRate] = useState(settings.usdNgn || 1343);
+  useEffect(() => {
+    pricingSample().then((rows) => setProducts(rows || [])).catch(() => undefined);
+  }, []);
 
   const preview = useMemo(() => customerPrice({
     cost: Number(cost) || 0,

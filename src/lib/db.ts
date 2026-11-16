@@ -1,11 +1,26 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { pendingMigrations } from "../../scripts/migration-plan.mjs";
 
 function bundledMigrations(): Record<string, string> {
-  return import.meta.glob("/migrations/*.sql", {
-    query: "?raw",
-    import: "default",
-    eager: true,
-  }) as Record<string, string>;
+  try {
+    const globbed = import.meta.glob("/migrations/*.sql", {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    }) as Record<string, string>;
+    if (globbed && Object.keys(globbed).length) return globbed;
+  } catch {
+    // Plain Node has no Vite glob. Tests read the same SQL files.
+  }
+  const dir = join(dirname(fileURLToPath(import.meta.url)), "../../migrations");
+  const out: Record<string, string> = {};
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith(".sql")) continue;
+    out[`/migrations/${name}`] = readFileSync(join(dir, name), "utf8");
+  }
+  return out;
 }
 
 /** Apply pending migrations/*.sql on one connection. Safe to run on every boot. */

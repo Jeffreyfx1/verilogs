@@ -45,6 +45,7 @@ export type Store = Data & Actions;
 
 let booted = false;
 let rev = 0;
+const purchaseKeys = new Map<string, string>();
 
 export const useStore = create<Store>((set) => {
   const adopt = (state: Data) => set({ ...normalizeData(state), ready: true });
@@ -89,7 +90,17 @@ export const useStore = create<Store>((set) => {
     resetPassword: async (email, password) => (await run("resetPassword", { email, password })).error,
     updateProfile: async (input) => (await run("updateProfile", input)).error,
     changePassword: async (oldPw, next) => (await run("changePassword", { oldPw, next })).error,
-    buy: async (productId, extra) => (await run("buy", { productId, phone: extra.phone, amount: extra.amount, detail: extra.detail })).error,
+    buy: async (productId, extra) => {
+      const slot = `${productId}|${extra.phone || ""}|${extra.amount || ""}|${extra.detail || ""}`;
+      let key = purchaseKeys.get(slot);
+      if (!key) {
+        key = crypto.randomUUID();
+        purchaseKeys.set(slot, key);
+      }
+      const res = await run("buy", { productId, phone: extra.phone, amount: extra.amount, detail: extra.detail, idempotencyKey: key });
+      if (!res.error || !/already processing|reconciliation|reconciled/i.test(res.error)) purchaseKeys.delete(slot);
+      return res.error;
+    },
     refund: async (orderId) => (await run("refund", { orderId })).error,
     tickWaiting: () => void run("tick").catch(() => undefined),
     importPayload: async (input) => {

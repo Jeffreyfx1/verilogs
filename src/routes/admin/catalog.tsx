@@ -23,6 +23,7 @@ function CatalogPage() {
   const [provider, setProvider] = useState("");
   const [only, setOnly] = useState<"all" | "off" | "on">("all");
   const [page, setPage] = useState(0);
+  const [cursors, setCursors] = useState<string[]>([""]);
   const [picked, setPicked] = useState<string[]>([]);
   const [rows, setRows] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
@@ -41,15 +42,23 @@ function CatalogPage() {
   const [custom, setCustom] = useState("");
   const [moving, setMoving] = useState("");
 
+  const after = cursors[page] || "";
   useEffect(() => {
     let stop = false;
     const timer = setTimeout(() => {
-      browseCatalog({ data: { q, category: cat, providerId: provider, only, page, subcategory: sub } })
+      browseCatalog({ data: { q, category: cat, providerId: provider, only, page, subcategory: sub, after } })
         .then((res) => {
           if (stop) return;
           setRows(res.rows);
           setTotal(res.total);
           setLive(res.live);
+          if (res.next) {
+            setCursors((prev) => {
+              const next = prev.slice();
+              next[page + 1] = res.next;
+              return next;
+            });
+          }
           setLoading(false);
         })
         .catch(() => { if (!stop) setLoading(false); });
@@ -58,7 +67,7 @@ function CatalogPage() {
       stop = true;
       clearTimeout(timer);
     };
-  }, [q, cat, provider, only, page, tick, sub]);
+  }, [q, cat, provider, only, page, tick, sub, after]);
 
   const pages = Math.max(1, Math.ceil(total / 40));
 
@@ -133,20 +142,20 @@ function CatalogPage() {
         <p className="text-sm text-muted">{total} matching · {live} live. Search and edit one page at a time. Logs and SMM rows can be moved between marketplace subcategories. A saved price or description stays locked on the next import.</p>
       </div>
       <div className="grid gap-2 md:grid-cols-3 lg:grid-cols-6">
-        <input className={inputClass} placeholder="Search" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} />
-        <select className={inputClass} value={cat} onChange={(e) => { setCat(e.target.value); setPage(0); }}>
+        <input className={inputClass} placeholder="Search" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); setCursors([""]); }} />
+        <select className={inputClass} value={cat} onChange={(e) => { setCat(e.target.value); setPage(0); setCursors([""]); }}>
           {CATS.map((c) => <option key={c || "all"} value={c}>{c ? CATEGORY_LABEL[c] : "All categories"}</option>)}
         </select>
-        <select className={inputClass} value={sub} onChange={(e) => { setSub(e.target.value); setPage(0); }}>
+        <select className={inputClass} value={sub} onChange={(e) => { setSub(e.target.value); setPage(0); setCursors([""]); }}>
           <option value="">All subcategories</option>
           <option value="none">Uncategorized</option>
           {namesFor(cat === "smm" ? "smm" : "logs").map((name) => <option key={name} value={name}>{name}</option>)}
         </select>
-        <select className={inputClass} value={provider} onChange={(e) => { setProvider(e.target.value); setPage(0); }}>
+        <select className={inputClass} value={provider} onChange={(e) => { setProvider(e.target.value); setPage(0); setCursors([""]); }}>
           <option value="">All providers</option>
           {providers.map((p) => <option key={p.id} value={p.id}>{labelFor(p.id)}</option>)}
         </select>
-        <select className={inputClass} value={only} onChange={(e) => { setOnly(e.target.value as typeof only); setPage(0); }}>
+        <select className={inputClass} value={only} onChange={(e) => { setOnly(e.target.value as typeof only); setPage(0); setCursors([""]); }}>
           <option value="all">Live and off</option>
           <option value="off">Switched off</option>
           <option value="on">Live</option>

@@ -9,7 +9,7 @@ import { IMPORT_CARDS } from "@/lib/import-source";
 import { batchWindow } from "@/lib/import-batch";
 import { resumeCatalogRun, startCatalogRun, useImportRun } from "@/lib/import-run";
 import { naira } from "@/lib/money";
-import { browseRemoteCatalog, clearNumberCatalog, testInstaking } from "@/lib/shop-fns";
+import { browseRemoteCatalog, clearNumberCatalog, openImportJobs, testInstaking } from "@/lib/shop-fns";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/import")({ component: ImportPage });
@@ -55,6 +55,7 @@ function ImportPage() {
   const [browsing, setBrowsing] = useState(false);
   const [browseNote, setBrowseNote] = useState("");
   const [testing, setTesting] = useState(false);
+  const [savedJob, setSavedJob] = useState<{ id: string; status: string; total: number; cursor: number; batchSize: number; error: string } | null>(null);
   const busy = phase === "fetch" || phase === "save";
   useEffect(() => {
     if (phase === "done" && run.selective && jobId && cleared.current !== jobId) {
@@ -62,6 +63,14 @@ function ImportPage() {
       setPicked(new Map());
     }
   }, [phase, run.selective, jobId]);
+  useEffect(() => {
+    if (phase !== "idle") return;
+    let stop = false;
+    openImportJobs()
+      .then((rows) => { if (!stop) setSavedJob(rows?.[0] || null); })
+      .catch(() => { if (!stop) setSavedJob(null); });
+    return () => { stop = true; };
+  }, [phase]);
   useEffect(() => {
     if (namesDirty) return;
     setNames((settings.wantedServices || []).join("\n"));
@@ -259,6 +268,13 @@ function ImportPage() {
           </Button>
         </div>
       </section>
+      {savedJob && phase === "idle" ? (
+        <section className="rounded-card border border-line bg-card p-4 shadow-card">
+          <p className="text-sm font-semibold">An import is still on the server ({savedJob.status}). {savedJob.cursor.toLocaleString("en-NG")} batches saved of {Math.max(1, Math.ceil(savedJob.total / (savedJob.batchSize || 2000))).toLocaleString("en-NG")}.</p>
+          {savedJob.error ? <p className="mt-1 text-xs text-danger">{savedJob.error}</p> : null}
+          <Button className="mt-3" onClick={() => resumeCatalogRun({ jobId: savedJob.id, total: savedJob.total, batches: Math.max(1, Math.ceil(savedJob.total / (savedJob.batchSize || 2000))), batch: savedJob.cursor, batchSize: savedJob.batchSize || 2000 })}>Resume this import</Button>
+        </section>
+      ) : null}
       {phase !== "idle" ? (
         <section className="rounded-card border border-line bg-card p-4 shadow-card">
           <div className="flex items-center justify-between gap-3">

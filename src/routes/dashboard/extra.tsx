@@ -94,13 +94,15 @@ export function Marketplace({ kind }: { kind: Shelf }) {
   const [remote, setRemote] = useState<Product[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [more, setMore] = useState(false);
-  const [page, setPage] = useState(0);
+  const [after, setAfter] = useState("");
+  const [nextAfter, setNextAfter] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [waiting, setWaiting] = useState(false);
   const options = groupsFor(kind, settings.marketplaceSubcategories || []);
 
   useEffect(() => {
-    setPage(0);
+    setAfter("");
+    setNextAfter("");
     setRemote(null);
     setFailed(false);
     setMore(false);
@@ -113,17 +115,18 @@ export function Marketplace({ kind }: { kind: Shelf }) {
     let stop = false;
     setWaiting(true);
     const timer = setTimeout(() => {
-      withTimeout(browseExtras({ data: { q, kind, page, subcategory: sub === "All" ? "" : sub } }))
+      withTimeout(browseExtras({ data: { q, kind, subcategory: sub === "All" ? "" : sub, after } }))
         .then((res) => {
           if (stop) return;
           const rows = (res?.rows || []).filter((row) => onShelf(row.category, kind));
-          setRemote((prev) => (page === 0 ? rows : [...(prev || []), ...rows]));
+          setRemote((prev) => (after ? [...(prev || []), ...rows] : rows));
           setMore(!!res?.more);
+          setNextAfter(res?.next || "");
           setFailed(false);
         })
         .catch(() => {
           if (stop) return;
-          if (page === 0) {
+          if (!after) {
             setFailed(true);
             setRemote([]);
           }
@@ -136,7 +139,7 @@ export function Marketplace({ kind }: { kind: Shelf }) {
       stop = true;
       clearTimeout(timer);
     };
-  }, [q, kind, page, attempt, sub]);
+  }, [q, kind, after, attempt, sub]);
 
   const items = useMemo(() => {
     if (failed) {
@@ -245,10 +248,10 @@ export function Marketplace({ kind }: { kind: Shelf }) {
         className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900"
         placeholder="Search by name"
         value={q}
-        onChange={(e) => { setQ(e.target.value); setPage(0); setRemote(null); setOpen(null); }}
+        onChange={(e) => { setQ(e.target.value); setAfter(""); setNextAfter(""); setRemote(null); setOpen(null); }}
       />
       <div className="mt-2 grid grid-cols-2 gap-2">
-        <select className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base" value={sub} onChange={(e) => { setSub(e.target.value); setPage(0); setRemote(null); setOpen(null); }}>
+        <select className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base" value={sub} onChange={(e) => { setSub(e.target.value); setAfter(""); setNextAfter(""); setRemote(null); setOpen(null); }}>
           {options.map((name) => <option key={name} value={name}>{name === "All" ? "All categories" : name}</option>)}
         </select>
         <select className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base" value={sort} onChange={(e) => setSort(e.target.value)}>
@@ -326,7 +329,7 @@ export function Marketplace({ kind }: { kind: Shelf }) {
             ))}
           </div>
           {more && !failed ? (
-            <button type="button" disabled={waiting} className="btn-accent mt-4 w-full rounded-xl py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={() => setPage((n) => n + 1)}>
+            <button type="button" disabled={waiting || !nextAfter} className="btn-accent mt-4 w-full rounded-xl py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={() => { if (nextAfter) setAfter(nextAfter); }}>
               {waiting ? <span className="inline-flex items-center justify-center gap-2"><BtnSpinner /> Loading more</span> : "Load more"}
             </button>
           ) : null}

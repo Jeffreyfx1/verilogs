@@ -141,11 +141,12 @@ export const browseNumbers = createServerFn({ method: "POST" })
   });
 
 export const browseExtras = createServerFn({ method: "POST" })
-  .validator((input: { q?: string; kind?: string; page?: number; subcategory?: string }) => ({
+  .validator((input: { q?: string; kind?: string; page?: number; subcategory?: string; after?: string }) => ({
     q: String(input?.q || "").slice(0, 60),
     kind: (input?.kind === "vpn" || input?.kind === "smm" ? input.kind : "random") as "vpn" | "smm" | "random",
     page: Math.max(0, Math.min(5000, Math.floor(Number(input?.page) || 0))),
     subcategory: String(input?.subcategory || "").slice(0, 40),
+    after: String(input?.after || "").slice(0, 200),
   }))
   .handler(async ({ data }) => {
     const { browseExtras } = await core();
@@ -160,18 +161,44 @@ export const testInstaking = createServerFn({ method: "POST" })
   });
 
 export const browseCatalog = createServerFn({ method: "POST" })
-  .validator((input: { q?: string; category?: string; providerId?: string; only?: string; page?: number; subcategory?: string }) => ({
+  .validator((input: { q?: string; category?: string; providerId?: string; only?: string; page?: number; subcategory?: string; after?: string }) => ({
     q: String(input?.q || "").slice(0, 60),
     category: String(input?.category || ""),
     providerId: String(input?.providerId || ""),
     only: input?.only === "on" || input?.only === "off" ? input.only : "all",
     page: Number(input?.page) || 0,
     subcategory: String(input?.subcategory || "").slice(0, 40),
+    after: String(input?.after || "").slice(0, 200),
   }))
   .handler(async ({ data }) => {
     const { browseCatalog } = await core();
     return browseCatalog(data);
   });
+
+export const listShelf = createServerFn({ method: "POST" })
+  .validator((input: { category?: string; q?: string }) => ({
+    category: String(input?.category || ""),
+    q: String(input?.q || "").slice(0, 60),
+  }))
+  .handler(async ({ data }) => {
+    const { listShelf } = await core();
+    return listShelf(data.category, data.q);
+  });
+
+export const catalogStats = createServerFn({ method: "GET" }).handler(async () => {
+  const { adminCatalogStats } = await core();
+  return adminCatalogStats();
+});
+
+export const pricingSample = createServerFn({ method: "GET" }).handler(async () => {
+  const { pricingSample } = await core();
+  return pricingSample();
+});
+
+export const openImportJobs = createServerFn({ method: "GET" }).handler(async () => {
+  const { openImportJobs } = await core();
+  return openImportJobs();
+});
 
 export const supportAsk = createServerFn({ method: "POST" })
   .validator((input: { question: string }) => ({ question: String(input?.question || "").slice(0, 500) }))
