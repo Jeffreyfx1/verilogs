@@ -3,16 +3,16 @@
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --color-paper: #eef7fb;
+  --color-paper: #eef7fa;
   --color-card: #ffffff;
-  --color-ink: #12313c;
-  --color-muted: #5c7380;
-  --color-line: #d5e6ee;
-  --color-primary: #0c6e8a;
-  --color-deep: #08324a;
-  --color-accent: #1287a8;
-  --color-on-primary: #f7f6ff;
-  --color-on-deep: #f4f2fb;
+  --color-ink: #193642;
+  --color-muted: #647985;
+  --color-line: #d6e6ed;
+  --color-primary: #286d86;
+  --color-deep: #174c70;
+  --color-accent: #1a8aa8;
+  --color-on-primary: #ffffff;
+  --color-on-deep: #f4fbfe;
   --color-ok: #0e8f62;
   --color-danger: #c43d4b;
   --color-warn: #9a6b12;
@@ -33,8 +33,8 @@
   }
   body {
     font-family: var(--font-sans);
-    background: #eef7fb;
-    color: #12313c;
+    background: #eef7fa;
+    color: #193642;
     min-height: 100%;
     max-width: 100%;
     overflow-x: hidden;
@@ -63,16 +63,16 @@
 }
 
 .btn-gradient {
-  background-image: linear-gradient(100deg, #6a5af0, #4d63e6 55%, #3157c9);
-  color: var(--color-on-primary);
+  background-image: linear-gradient(100deg, #174c70, #286d86 58%, #1a8aa8);
+  color: #ffffff;
   font-weight: 700;
 }
 
 .balance-card {
   background:
-    radial-gradient(90% 120% at 100% 0%, color-mix(in srgb, #7d8cff 42%, transparent), transparent 50%),
-    linear-gradient(145deg, #4d45b8, #2c2658 72%);
-  color: var(--color-on-deep);
+    radial-gradient(90% 120% at 100% 0%, rgba(255, 255, 255, 0.18), transparent 52%),
+    linear-gradient(145deg, #174c70, #286d86 72%);
+  color: #ffffff;
 }
 
 .promo-card {
@@ -80,18 +80,18 @@
   box-sizing: border-box;
   border-radius: var(--radius-card);
   padding: 1.15rem 1.2rem;
-  color: #f7f5ff;
-  border: 1px solid #6d28d9;
+  color: #ffffff;
+  border: 1px solid #d6e6ed;
   background:
-    radial-gradient(80% 120% at 100% 0%, color-mix(in srgb, #a78bfa 45%, transparent), transparent 55%),
-    linear-gradient(145deg, #4c1d95, #1e1038 70%);
-  box-shadow: 0 14px 30px color-mix(in srgb, #4c1d95 35%, transparent);
+    radial-gradient(80% 120% at 100% 0%, rgba(255, 255, 255, 0.2), transparent 55%),
+    linear-gradient(145deg, #174c70, #286d86 70%);
+  box-shadow: 0 14px 30px rgba(23, 76, 112, 0.18);
 }
 
 .promo-card-alt {
   background:
-    radial-gradient(80% 120% at 0% 100%, color-mix(in srgb, #6cb0ff 40%, transparent), transparent 52%),
-    linear-gradient(135deg, #3d4f9a, #2a2348);
+    radial-gradient(80% 120% at 0% 100%, rgba(255, 255, 255, 0.16), transparent 52%),
+    linear-gradient(135deg, #1a5f78, #174c70);
 }
 
 .orb {
@@ -131,31 +131,23 @@
 .tier-card {
   position: relative;
   background:
-    radial-gradient(80% 100% at 5% 100%, #9333ea 0%, transparent 65%),
-    radial-gradient(60% 80% at 100% 0%, #a855f755, transparent 60%),
-    linear-gradient(145deg, #391078 0%, #1a0840 48%, #0c0420 100%);
-  border: 1px solid #c084fc;
-  box-shadow:
-    0 0 0 1px #7c3aed,
-    0 0 20px #9333ea,
-    0 0 45px #6d28d977,
-    inset 0 0 35px #7c3aed44;
+    radial-gradient(80% 100% at 100% 0%, rgba(255, 255, 255, 0.16), transparent 60%),
+    linear-gradient(145deg, #174c70 0%, #286d86 55%, #123e58 100%);
+  border: 1px solid #d6e6ed;
+  box-shadow: 0 12px 28px rgba(23, 76, 112, 0.16);
 }
 
 .tier-photo {
-  border: 1px solid #c084fc80;
-  box-shadow: 0 0 18px #9333ea, inset 0 0 20px #7c3aed;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: none;
   animation: floaty 5.5s ease-in-out infinite;
 }
 
 .uk-card {
   position: relative;
   isolation: isolate;
-  border: 1px solid #c084fc;
-  box-shadow:
-    0 0 0 1px #7c3aed,
-    0 0 24px #9333ea99,
-    inset 0 0 30px #6d28d944;
+  border: 1px solid #d6e6ed;
+  box-shadow: 0 12px 28px rgba(23, 76, 112, 0.12);
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
@@ -229,9 +221,11 @@
   position: relative;
   isolation: isolate;
   min-height: 170px;
-  border: 1px solid #c084fc;
-  background: #16052f;
-  box-shadow: 0 0 0 1px #7c3aed, 0 0 24px #9333ea99, inset 0 0 30px #6d28d944;
+  border: 1px solid #d6e6ed;
+  background:
+    radial-gradient(80% 120% at 100% 0%, rgba(255, 255, 255, 0.2), transparent 55%),
+    linear-gradient(145deg, #174c70, #286d86 70%);
+  box-shadow: 0 14px 30px rgba(23, 76, 112, 0.16);
 }
 .promo-enter { animation: promoSlide 0.55s ease both; }
 @keyframes promoSlide {
@@ -246,10 +240,10 @@
   width: 30px;
   height: 30px;
   place-items: center;
-  border: 1px solid #d8b4fe66;
+  border: 1px solid #d6e6ed;
   border-radius: 50%;
-  background: #16052fcc;
-  color: white;
+  background: #ffffffee;
+  color: #174c70;
   transform: translateY(-50%);
 }
 .promo-prev { left: 5px; }
@@ -272,14 +266,15 @@
 }
 .promo-dot.active {
   width: 23px;
-  background: #c084fc;
-  box-shadow: 0 0 12px #c084fc;
+  background: #286d86;
+  box-shadow: none;
 }
 
 .hero-wash {
   background:
-    radial-gradient(32rem 18rem at 100% 0%, #4c1d95, transparent 58%),
-    #0e071c;
+    radial-gradient(32rem 18rem at 100% 0%, #d7eef6, transparent 58%),
+    radial-gradient(28rem 16rem at 0% 80%, #e5f2f8, transparent 55%),
+    #eef7fa;
 }
 
 .stat-row {
@@ -518,37 +513,33 @@ html[data-form="phone"] .scroll-pane {
 
 .tier-card {
   background:
-    radial-gradient(70% 90% at 100% 100%, #a21caf55 0%, transparent 65%),
-    linear-gradient(145deg, #2d0e66 0%, #1a0840 50%, #0c0420 100%);
-  border: 1.5px solid #a855f7;
-  box-shadow:
-    0 0 18px #9333ea88,
-    0 0 40px #6d28d944,
-    inset 0 0 30px #7c3aed33;
+    radial-gradient(70% 90% at 100% 0%, rgba(255, 255, 255, 0.16) 0%, transparent 65%),
+    linear-gradient(145deg, #174c70 0%, #286d86 55%, #123e58 100%);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 12px 28px rgba(23, 76, 112, 0.16);
 }
 
-/* photo blends into the card on its right edge */
 .tier-fade {
   background:
-    linear-gradient(90deg, #7c3aed22 0%, transparent 30%, #1c0a45cc 50%, #1a0840 62%),
-    linear-gradient(0deg, #0c042066, transparent 40%);
+    linear-gradient(90deg, transparent 0%, transparent 30%, rgba(23, 76, 112, 0.35) 55%, #174c70 68%),
+    linear-gradient(0deg, rgba(23, 76, 112, 0.25), transparent 40%);
 }
 
 .tier-badge {
-  background: #1a0a38cc;
-  border: 1px solid #facc1566;
+  background: rgba(23, 76, 112, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.35);
 }
 
 .upgrade-pill {
-  background: linear-gradient(135deg, #7c3aed, #9333ea);
-  border: 1px solid #c4b5fd88;
-  box-shadow: 0 0 14px #9333ea88;
+  background: linear-gradient(135deg, #174c70, #286d86);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: none;
 }
 
 .upgrade-btn {
-  background: linear-gradient(90deg, #6d28d9, #8b3dea 60%, #9333ea);
-  border: 1px solid #a78bfa88;
-  box-shadow: 0 0 18px #7c3aed99, inset 0 0 12px #c4b5fd22;
+  background: linear-gradient(90deg, #174c70, #286d86 60%, #1a8aa8);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: none;
 }
 
 /* ---------- PROMO SLIDES ---------- */
@@ -590,20 +581,20 @@ html[data-form="phone"] .scroll-pane {
 }
 
 .slide-violet {
-  --slide-solid: #25095a;
-  --slide-bg: linear-gradient(135deg, #3b1480, #1a0840);
-  --slide-border: #a855f7;
-  --slide-glow: #7c3aed66;
-  --slide-icon: linear-gradient(135deg, #8b5cf6, #5b21b6);
-  --slide-cta: linear-gradient(90deg, #4c1d95, #5b21b6);
+  --slide-solid: #123e58;
+  --slide-bg: linear-gradient(135deg, #174c70, #286d86);
+  --slide-border: #9fd0e0;
+  --slide-glow: #286d8633;
+  --slide-icon: linear-gradient(135deg, #1a8aa8, #174c70);
+  --slide-cta: linear-gradient(90deg, #174c70, #286d86);
 }
 .slide-blue {
-  --slide-solid: #0b1f55;
-  --slide-bg: linear-gradient(135deg, #1e3a8a, #0b1233);
-  --slide-border: #60a5fa;
-  --slide-glow: #3b82f666;
-  --slide-icon: linear-gradient(135deg, #3b82f6, #1d4ed8);
-  --slide-cta: linear-gradient(90deg, #1d4ed8, #2563eb);
+  --slide-solid: #123e58;
+  --slide-bg: linear-gradient(135deg, #174c70, #1a5f78);
+  --slide-border: #8ec4d6;
+  --slide-glow: #174c7033;
+  --slide-icon: linear-gradient(135deg, #286d86, #174c70);
+  --slide-cta: linear-gradient(90deg, #174c70, #286d86);
 }
 .slide-green {
   --slide-solid: #052e22;
@@ -622,12 +613,12 @@ html[data-form="phone"] .scroll-pane {
   --slide-cta: linear-gradient(90deg, #0369a1, #0284c7);
 }
 .slide-fuchsia {
-  --slide-solid: #3b0a4f;
-  --slide-bg: linear-gradient(135deg, #701a75, #2a0638);
-  --slide-border: #e879f9;
-  --slide-glow: #d946ef55;
-  --slide-icon: linear-gradient(135deg, #d946ef, #a21caf);
-  --slide-cta: linear-gradient(90deg, #a21caf, #c026d3);
+  --slide-solid: #0e4a52;
+  --slide-bg: linear-gradient(135deg, #0f6e78, #174c70);
+  --slide-border: #8ed4d4;
+  --slide-glow: #0f6e7833;
+  --slide-icon: linear-gradient(135deg, #14919c, #174c70);
+  --slide-cta: linear-gradient(90deg, #0f6e78, #174c70);
 }
 
 /* ---------- QUICK SERVICES ---------- */
@@ -647,7 +638,7 @@ html[data-form="phone"] .scroll-pane {
 
 .popular-badge {
   background: var(--gold);
-  color: #1a0b2e;
+  color: #193642;
   box-shadow: 0 0 8px #facc1566;
 }
 
@@ -662,9 +653,10 @@ html[data-form="phone"] .scroll-pane {
 /* ---------- NOTIFICATION PANEL ---------- */
 
 .notif-panel {
-  background: linear-gradient(145deg, #1a0840, #0c0420);
-  border: 1.5px solid #a855f7;
-  box-shadow: 0 12px 40px #000a, 0 0 22px #9333ea66;
+  background: #ffffff;
+  color: #193642;
+  border: 1px solid #d6e6ed;
+  box-shadow: 0 16px 40px rgba(23, 76, 112, 0.14);
   animation: notifIn 0.18s ease both;
   transform-origin: top right;
 }
@@ -695,15 +687,16 @@ html[data-form="phone"] .scroll-pane {
 }
 
 .account-pill {
-  background: #1a0a38cc;
-  border: 1px solid #7c3aed99;
-  box-shadow: 0 0 12px #7c3aed44;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: none;
 }
 
 .balance-card {
-  background: linear-gradient(145deg, #4c1d95 0%, #2d0e66 55%, #1a0840 100%);
-  border: 1.5px solid #a855f7;
-  box-shadow: 0 0 18px #9333ea88, 0 0 40px #6d28d944, inset 0 0 30px #7c3aed33;
+  background: linear-gradient(145deg, #174c70 0%, #286d86 58%, #1a8aa8 100%);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 14px 30px rgba(23, 76, 112, 0.18);
+  color: #ffffff;
 }
 
 .balance-orb {

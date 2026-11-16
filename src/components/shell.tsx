@@ -23,7 +23,6 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/ui";
 import { NoticeBell } from "@/components/bell";
-import { DevicePicker } from "@/components/device-picker";
 import { naira } from "@/lib/money";
 import { useStore, useUser } from "@/lib/store";
 
@@ -130,7 +129,6 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
           ) : null}
         </nav>
         <div className="mt-auto space-y-3 border-t border-line p-4">
-          <DevicePicker />
           <div className="rounded-xl bg-paper p-3">
             <p className="text-sm font-semibold">Need help?</p>
             <p className="text-xs text-muted">24/7 support</p>

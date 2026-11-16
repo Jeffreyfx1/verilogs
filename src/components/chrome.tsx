@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Menu, X } from "lucide-react";
 import { NoticeBell } from "@/components/bell";
-import { DevicePicker } from "@/components/device-picker";
 import { Logo } from "@/components/ui";
 import { useStore, useUser } from "@/lib/store";
 
@@ -31,7 +30,6 @@ export function PublicHeader() {
           ))}
         </nav>
         <span className="flex-1" />
-        <DevicePicker compact />
         <NoticeBell />
         <div className="nav-desk items-center gap-2">
           {user ? (

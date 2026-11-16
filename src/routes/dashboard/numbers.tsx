@@ -149,14 +149,14 @@ function NumbersPage() {
       </section>
 
       <div className="flex gap-2 overflow-x-auto pb-1">
-        <button type="button" onClick={() => { setCountryName("United States"); setPicked(false); setOperators([]); }} className={`shrink-0 rounded-full px-4 py-2 text-sm font-extrabold ${countryName === "United States" ? "bg-primary text-on-primary" : "bg-[#12081f] text-white"}`}>🇺🇸 USA</button>
+        <button type="button" onClick={() => { setCountryName("United States"); setPicked(false); setOperators([]); }} className={`shrink-0 rounded-full border px-4 py-2 text-sm font-extrabold ${countryName === "United States" ? "border-primary bg-primary text-on-primary" : "border-line bg-card text-ink"}`}>🇺🇸 USA</button>
         {liveServers.map((s) => (
-          <Link key={s.id} to="/dashboard/numbers" search={{ server: s.id, country: lockedCountry, kind, service: preset }} className={`shrink-0 rounded-full px-4 py-2 text-sm font-extrabold ${s.id === activeId ? "bg-violet-600 text-white" : "bg-[#12081f] text-white"}`}>
+          <Link key={s.id} to="/dashboard/numbers" search={{ server: s.id, country: lockedCountry, kind, service: preset }} className={`shrink-0 rounded-full border px-4 py-2 text-sm font-extrabold ${s.id === activeId ? "border-primary bg-primary text-on-primary" : "border-line bg-card text-ink"}`}>
             {s.label || "Server"}
           </Link>
         ))}
       </div>
-      {kind === "rent" ? null : <p className="text-xs font-extrabold text-violet-200">Note: England is the United Kingdom on this list.</p>}
+      {kind === "rent" ? null : <p className="text-xs font-extrabold text-muted">Note: England is the United Kingdom on this list.</p>}
 
       <section className="rounded-[1.4rem] border border-line bg-card p-4">
         <h1 className="text-xl font-extrabold">{title} <span className="text-sm text-primary">[{active?.label || `Server ${serverNo}`}]</span></h1>
@@ -216,7 +216,7 @@ function NumbersPage() {
                 <p className="font-extrabold">{op.operator || "any"} <span className="text-sm font-bold text-ok">Stock: {op.stock.toLocaleString("en-US")}</span></p>
                 {op.rate > 0 ? <p className="text-xs font-bold text-muted">Success {op.rate}%</p> : op.rates ? <p className="text-xs font-bold text-muted">{op.rates}</p> : null}
                 <p className="text-lg font-extrabold text-ok">{naira(op.price)}</p>
-                <button type="button" disabled={buying === op.id} className="mt-2 inline-flex items-center gap-2 rounded-xl bg-violet-700 px-5 py-2 text-sm font-extrabold text-white disabled:opacity-60" onClick={() => {
+                <button type="button" disabled={buying === op.id} className="mt-2 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-extrabold text-on-primary disabled:opacity-60" onClick={() => {
                   if ((user?.balance || 0) < op.price) {
                     toast.error("Insufficient balance. Top up your balance to make this purchase.");
                     return;
@@ -237,7 +237,7 @@ function NumbersPage() {
         ) : null}
       </section>
 
-      <section className="rounded-[1.4rem] bg-violet-300/15 p-4">
+      <section className="rounded-[1.4rem] bg-[#E5F2F8] p-4">
         <h2 className="text-lg font-extrabold">My active numbers</h2>
         <div className="mt-3 space-y-2">
           {orders.map((o) => (

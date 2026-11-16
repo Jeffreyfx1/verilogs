@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { isLive, type Product } from "@/lib/catalog";
@@ -137,12 +137,17 @@ export function Marketplace({ kind }: { kind: "vpn" | "shop" }) {
   };
 
   return (
-    <div className="-mx-3 min-h-full bg-white px-3 py-4 text-slate-900">
-      <div className="market-marquee rounded-xl">
-        <span className="px-4 text-sm font-bold">Please enable VPN for faster success rates. Please enable VPN for faster success rates.</span>
-      </div>
-      <h1 className="mt-4 text-2xl font-extrabold text-slate-900">{kind === "vpn" ? "VPN" : "Marketplace"}</h1>
-      <p className="mt-1 text-sm text-slate-600">{kind === "vpn" ? "VPN plans only. This list is separate from the other marketplace." : "Search a word such as house and the matching products stay together, with the full name and details."}</p>
+    <div className="-mx-3 min-h-full bg-[#EEF7FA] px-3 py-4 text-ink">
+      <section className="rounded-[1.6rem] bg-gradient-to-br from-[#174C70] to-[#286D86] p-5 text-white shadow-[0_12px_28px_rgba(23,76,112,0.16)]">
+        <p className="text-[11px] font-bold tracking-[0.14em] text-white/75">INSTANT DELIVERY</p>
+        <h1 className="mt-1 text-2xl font-extrabold">{kind === "vpn" ? "VPN plans" : "Marketplace"}</h1>
+        <p className="mt-1 max-w-sm text-sm text-white/85">{kind === "vpn" ? "VPN plans stay on their own shelf, separate from the rest of the shop." : "Ready products from your catalogues. Open a card to read the full description before you pay."}</p>
+        <div className="mt-4 rounded-2xl bg-white/12 px-4 py-3">
+          <p className="text-[11px] font-bold tracking-wide text-white/70">WALLET BALANCE</p>
+          <p className="text-2xl font-extrabold">{naira(user?.balance || 0)}</p>
+          <Link to="/dashboard/wallet" className="mt-1 inline-block text-sm font-bold underline">Fund wallet</Link>
+        </div>
+      </section>
       <input
         className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900"
         placeholder="Search by name"
@@ -185,7 +190,7 @@ export function Marketplace({ kind }: { kind: "vpn" | "shop" }) {
               <article key={row.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                 <p className="text-[11px] font-bold text-[#0c6e8a]">{row.category}{row.service ? ` · ${row.service}` : ""}</p>
                 <p className="mt-1 text-sm font-extrabold leading-snug break-words text-slate-900">{row.name}</p>
-                {row.description ? <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed break-words text-slate-600">{row.description}</p> : <p className="mt-1 text-xs leading-relaxed break-words text-slate-600">{facts(row)}</p>}
+                {row.description ? <p className="mt-1 line-clamp-2 text-xs leading-relaxed break-words text-slate-600">{row.description.replace(/\s+/g, " ").trim()}</p> : <p className="mt-1 text-xs leading-relaxed break-words text-slate-600">{facts(row)}</p>}
                 <p className="mt-2 text-xs font-bold text-emerald-700">{row.stock > 0 ? `${row.stock} in stock` : "Availability updates at checkout"}</p>
                 <div className="mt-3 flex items-end justify-between gap-3">
                   <p className="text-lg font-extrabold">{row.price > 0 ? naira(row.price) : "Price not set"}</p>

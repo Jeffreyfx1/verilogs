@@ -28,7 +28,8 @@ import {
 } from "lucide-react";
 
 import { TIER_IMAGE, UK_IMAGE } from "@/lib/dashboard-images";
-import { useUser } from "@/lib/store";
+import { useUser, useStore } from "@/lib/store";
+import { naira } from "@/lib/money";
 
 export const Route = createFileRoute("/dashboard/")({
   component: DashHome,
@@ -49,7 +50,7 @@ const buySearch = { server: "", country: "", kind: "", service: "" } as const;
 const slides = [
   {
     id: "uk",
-    tone: "violet",
+    tone: "blue",
     title: "Cheap UK Line",
     text: "Fast UK numbers for verification at the best rates.",
     icon: Zap,
@@ -85,7 +86,7 @@ const slides = [
   },
   {
     id: "rent",
-    tone: "fuchsia",
+    tone: "sky",
     title: "Rent a Number",
     text: "Keep a number longer for repeat logins.",
     icon: Crown,
@@ -206,7 +207,7 @@ function PromoCarousel() {
             aria-label={`Go to slide ${i + 1}`}
             onClick={() => goTo(i)}
             className={`h-1.5 rounded-full transition-all ${
-              i === active ? "w-5 bg-fuchsia-400" : "w-1.5 bg-violet-400/40"
+              i === active ? "w-5 bg-[#286D86]" : "w-1.5 bg-[#286D86]/30"
             }`}
           />
         ))}
@@ -222,24 +223,67 @@ function PromoCarousel() {
 
 function DashHome() {
   const user = useUser();
+  const orders = useStore((s) => s.orders);
+  const [hide, setHide] = useState(false);
   if (!user) return null;
+  const mine = orders.filter((order) => order.userId === user.id && order.status !== "refunded");
+  const sms = mine.filter((order) => order.category === "numbers" || order.category === "rent").length;
+  const spent = mine.reduce((sum, order) => sum + order.amount, 0);
 
   return (
     <div className="min-w-0 space-y-4 pb-4">
-      <section className="rounded-[1.4rem] bg-white p-3 shadow-[0_8px_24px_rgba(8,50,74,0.05)]">
+      <div>
+        <h1 className="text-2xl font-extrabold text-ink">Welcome back{user.name ? `, ${user.name.split(" ")[0]}` : ""}</h1>
+        <p className="mt-1 text-sm text-muted">Wallet, numbers, data and bills in one place.</p>
+      </div>
+
+      <section className="balance-card overflow-hidden rounded-[1.6rem] px-5 py-5 text-white">
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-[11px] font-bold tracking-[0.14em] text-white/80">AVAILABLE BALANCE</p>
+          <Link to="/dashboard/wallet" className="rounded-full bg-white/15 px-3 py-1.5 text-xs font-extrabold">+ Fund wallet</Link>
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <p className="text-4xl font-extrabold tracking-tight">{hide ? "₦••••" : naira(user.balance)}</p>
+          <button type="button" aria-label={hide ? "Show balance" : "Hide balance"} className="grid size-9 place-items-center rounded-full bg-white/15" onClick={() => setHide((v) => !v)}>
+            {hide ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+          </button>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="rounded-2xl bg-white/12 px-3 py-2">
+            <p className="text-[10px] font-bold tracking-wide text-white/70">NUMBERS</p>
+            <p className="text-lg font-extrabold">{sms}</p>
+            <p className="text-[11px] text-white/70">Bought</p>
+          </div>
+          <div className="rounded-2xl bg-white/12 px-3 py-2">
+            <p className="text-[10px] font-bold tracking-wide text-white/70">SPENT</p>
+            <p className="text-lg font-extrabold">{hide ? "••••" : naira(spent)}</p>
+            <p className="text-[11px] text-white/70">On this account</p>
+          </div>
+        </div>
+        <div className="mt-3 text-right">
+          <Link to="/dashboard/history" className="text-xs font-extrabold underline">View history</Link>
+        </div>
+      </section>
+
+      <PromoCarousel />
+
+      <section className="rounded-[1.4rem] bg-white p-3 shadow-[0_8px_24px_rgba(23,76,112,0.06)]">
+        <div className="mb-2 flex items-center justify-between px-1">
+          <h2 className="text-lg font-extrabold text-ink">Quick services</h2>
+        </div>
         <div className="grid grid-cols-4 gap-2">
           {quick.map((q) => {
             const soon = "soon" in q && q.soon;
             const body = (
               <>
                 {soon ? <span className="absolute -top-1 right-1 rounded-full bg-amber-400 px-1.5 py-0.5 text-[8px] font-extrabold text-slate-900">Soon</span> : null}
-                <span className="grid size-10 place-items-center rounded-2xl bg-[#0c6e8a] text-white">
+                <span className="grid size-10 place-items-center rounded-2xl bg-[#286D86] text-white">
                   <q.icon className="size-5" strokeWidth={2.2} />
                 </span>
-                <span className="text-[11px] font-bold leading-tight text-[#12313c]">{q.label}</span>
+                <span className="text-[11px] font-bold leading-tight text-ink">{q.label}</span>
               </>
             );
-            const cls = "relative flex min-h-[5.4rem] flex-col items-center justify-center gap-2 rounded-2xl bg-[#e7f5fb] px-1 py-3 text-center";
+            const cls = "relative flex min-h-[5.4rem] flex-col items-center justify-center gap-2 rounded-2xl bg-[#E5F2F8] px-1 py-3 text-center";
             if (soon) return <div key={q.label} className={`${cls} opacity-70`}>{body}</div>;
             return (
               <Link key={q.label} to={q.to} search={"search" in q ? q.search : undefined} className={cls}>
@@ -250,21 +294,21 @@ function DashHome() {
         </div>
       </section>
 
-      <section className="rounded-[1.4rem] bg-white p-3 shadow-[0_8px_24px_rgba(8,50,74,0.05)]">
-        <h2 className="px-1 text-lg font-extrabold text-[#12313c]">History</h2>
+      <section className="rounded-[1.4rem] bg-white p-3 shadow-[0_8px_24px_rgba(23,76,112,0.06)]">
+        <h2 className="px-1 text-lg font-extrabold text-ink">History</h2>
         <div className="mt-2 space-y-2">
           {[
             { hash: "deposits", title: "Deposit History", body: "Wallet deposits", icon: History },
             { hash: "numbers", title: "Number History", body: "Numbers, codes and active orders", icon: FileDigit },
             { hash: "bills", title: "Bills History", body: "Airtime, data and TV", icon: Smartphone },
           ].map((row) => (
-            <Link key={row.title} to="/dashboard/history" hash={row.hash} className="flex items-center gap-3 rounded-2xl bg-[#e7f5fb] px-3 py-3">
-              <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#0c6e8a] text-white">
+            <Link key={row.title} to="/dashboard/history" hash={row.hash} className="flex items-center gap-3 rounded-2xl bg-[#E5F2F8] px-3 py-3">
+              <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#286D86] text-white">
                 <row.icon className="size-5" />
               </span>
               <span className="min-w-0">
-                <span className="block text-sm font-extrabold text-[#12313c]">{row.title}</span>
-                <span className="block text-xs text-[#5c7380]">{row.body}</span>
+                <span className="block text-sm font-extrabold text-ink">{row.title}</span>
+                <span className="block text-xs text-muted">{row.body}</span>
               </span>
             </Link>
           ))}
@@ -279,7 +323,12 @@ function InstallApp() {
   const [prompt, setPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [ios, setIos] = useState(false);
   const [help, setHelp] = useState(false);
+  const [standalone, setStandalone] = useState(false);
   useEffect(() => {
+    const nav = navigator as Navigator & { standalone?: boolean };
+    const installed = window.matchMedia("(display-mode: standalone)").matches || nav.standalone === true;
+    setStandalone(installed);
+    if (installed) return;
     const ua = navigator.userAgent;
     setIos(/iPhone|iPad/i.test(ua) && !/CriOS|FxiOS/i.test(ua));
     const onPrompt = (event: Event) => {
@@ -289,6 +338,7 @@ function InstallApp() {
     window.addEventListener("beforeinstallprompt", onPrompt);
     return () => window.removeEventListener("beforeinstallprompt", onPrompt);
   }, []);
+  if (standalone) return null;
   return (
     <section className="rounded-[1.4rem] bg-white p-4 shadow-[0_8px_24px_rgba(8,50,74,0.05)]">
       <h2 className="text-base font-extrabold text-[#12313c]">Install app</h2>
