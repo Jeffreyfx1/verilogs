@@ -33,6 +33,8 @@ type Actions = {
   saveSettings: (patch: Partial<Data["settings"]>) => Promise<string | null>;
   addAnnouncement: (title: string, body: string) => Promise<string | null>;
   setAnnouncements: (announcements: Announcement[]) => Promise<string | null>;
+  setSubcategory: (id: string, subcategory: string) => Promise<string | null>;
+  refillOrder: (orderId: string) => Promise<string | null>;
   markNotes: () => void;
   mailUser: (userId: string, subject: string, body: string) => Promise<string | null>;
   resetDemo: () => void;
@@ -104,6 +106,8 @@ export const useStore = create<Store>((set) => {
     saveSettings: async (patch) => (await run("saveSettings", { patch })).error,
     addAnnouncement: async (title, body) => (await run("addAnnouncement", { title, body })).error,
     setAnnouncements: async (announcements) => (await run("setAnnouncements", { announcements })).error,
+    setSubcategory: async (id, subcategory) => (await run("setSubcategory", { id, subcategory })).error,
+    refillOrder: async (orderId) => (await run("refill", { orderId })).error,
     markNotes: () => void run("markNotes"),
     mailUser: async (userId, subject, body) => (await run("mailUser", { userId, subject, body })).error,
     resetDemo: () => void run("reset"),

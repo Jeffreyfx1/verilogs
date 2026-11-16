@@ -38,6 +38,25 @@ test("admin can create, publish, edit and delete the shared announcement list", 
   assert.equal(setAnnouncements(data, null, []).error, "Sign in first.");
 });
 
+test("older announcements stay in the full list until that one is deleted", () => {
+  const data = freshData();
+  const many = Array.from({ length: 45 }, (_, index) => ({
+    id: `old-${index}`,
+    title: `Notice ${index}`,
+    body: "kept",
+    createdAt: "2024-01-01T00:00:00.000Z",
+  }));
+  const saved = setAnnouncements({ ...data, announcements: many }, "usr_admin", many);
+  assert.equal(saved.error, null);
+  assert.equal(saved.data.announcements.length, 45);
+  assert.equal(saved.data.announcements.some((item) => item.id === "old-0"), true);
+  assert.equal(liveAnnouncements(saved.data.announcements).some((item) => item.id === "old-0"), true);
+  const dropped = setAnnouncements(saved.data, "usr_admin", saved.data.announcements.filter((item) => item.id !== "old-0"));
+  assert.equal(dropped.data.announcements.some((item) => item.id === "old-0"), false);
+  assert.equal(dropped.data.announcements.length, 44);
+  assert.equal(liveAnnouncements(dropped.data.announcements).some((item) => item.title === "Notice 0"), false);
+});
+
 test("scheduled and ended announcements stay off the customer banner", () => {
   const now = Date.parse("2026-06-01T12:00:00.000Z");
   const live = liveAnnouncements([

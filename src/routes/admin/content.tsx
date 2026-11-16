@@ -39,7 +39,7 @@ function ContentPage() {
       <div className="space-y-4">
         <section className="space-y-3 rounded-card border border-line bg-card p-4 shadow-card">
           <h2 className="text-xl font-extrabold">Announcements</h2>
-          <p className="text-sm text-muted">One list feeds the scrolling banner and the customer Announcements page. Hidden, scheduled and ended posts stay off both.</p>
+          <p className="text-sm text-muted">One list feeds the scrolling banner and the customer Announcements page. Every saved post is listed below, including older ones already in the shop. Hidden, scheduled and ended posts stay off both pages. Nothing is removed unless you delete that one post.</p>
           <AnnouncementManager />
         </section>
         <section className="space-y-3 rounded-card border border-line bg-card p-4 shadow-card">
@@ -226,7 +226,7 @@ function AnnouncementManager() {
             </article>
           );
         })}
-        {!items.length ? <p className="text-sm text-muted">No announcements yet.</p> : null}
+        {!items.length ? <p className="text-sm text-muted">No announcements yet.</p> : <p className="text-xs text-muted">{items.length} saved {items.length === 1 ? "announcement" : "announcements"}, including older posts. Deleting one removes it from the banner and the customer page.</p>}
       </div>
     </div>
   );

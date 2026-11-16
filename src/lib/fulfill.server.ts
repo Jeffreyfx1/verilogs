@@ -1,4 +1,5 @@
 import { nairaCost, type Product, type Provider } from "@/lib/catalog";
+import { instakingOrderFields, instakingPost, isInstakingHost, readSmmDetail } from "@/lib/instaking";
 
 export type Placement =
   | { ok: true; phone: string; ref: string; waiting: boolean; cost: number }
@@ -53,7 +54,7 @@ async function readBody(res: Response) {
   }
 }
 
-export async function placeOnProvider(input: { product: Product; provider: Provider; apiKey: string; phone: string; amount: number }): Promise<Placement> {
+export async function placeOnProvider(input: { product: Product; provider: Provider; apiKey: string; phone: string; amount: number; detail?: string }): Promise<Placement> {
   const { product, provider, apiKey } = input;
   if (!apiKey) return { ok: false, error: "This API has no key saved, so the order was not sent and the wallet was not charged." };
   const host = (() => {
@@ -67,6 +68,25 @@ export async function placeOnProvider(input: { product: Product; provider: Provi
   const sme = host.endsWith("smeapi.com.ng");
   const cost = product.variable ? input.amount : nairaCost(product.cost, provider.currency, provider.usdRate);
   const numberCategory = product.category === "number" || product.category === "numbers" || product.category === "rent";
+
+  if (isInstakingHost(host) && product.category === "smm") {
+    const fields = readSmmDetail(input.detail || "", 0);
+    const built = instakingOrderFields(product.smmType || product.operator || "Default", product.externalId || product.service, fields);
+    if ("error" in built && built.error) return { ok: false, error: built.error };
+    const sent = await instakingPost(apiKey, built);
+    if (!sent.ok) return { ok: false, error: sent.error || "Instaking refused the order. The wallet was not charged." };
+    const order = sent.body && typeof sent.body === "object" ? (sent.body as { order?: unknown }).order : "";
+    if (order == null || order === "") return { ok: false, error: "Instaking did not return an order id. The wallet was not charged." };
+    const type = product.smmType || product.operator || "";
+    const packaged = /^package$/i.test(type);
+    const subscription = /subscription/i.test(type);
+    const comments = /custom comments/i.test(type);
+    let units = 1;
+    if (subscription) units = Math.max(1, Math.round(Number(fields.max) || 1)) * Math.max(1, Math.round(Number(fields.posts) || 1));
+    else if (comments) units = Math.max(1, String(fields.comments || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean).length);
+    else if (!packaged) units = Math.max(1, Math.round(Number(fields.quantity) || 1));
+    return { ok: true, phone: "", ref: String(order), waiting: true, cost: nairaCost(product.cost, provider.currency, provider.usdRate) * units };
+  }
 
   if (five && numberCategory) {
     const country = fiveCountry(product.country);

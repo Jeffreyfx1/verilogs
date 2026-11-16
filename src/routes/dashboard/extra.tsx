@@ -13,59 +13,59 @@ import { useStore, useUser } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/extra")({ component: ExtraPage });
 
-const SKIP = new Set(["the", "and", "for", "with", "from", "your", "this", "that", "service", "services", "other", "default", "item", "items", "product", "products", "buy", "new", "premium", "basic", "pro", "plan", "plans", "account", "accounts", "order", "pack", "more", "all", "get", "top", "best", "cheap", "fast"]);
-
-function wordsOf(item: Product) {
-  const seen = new Set<string>();
-  const words: string[] = [];
-  for (const raw of `${item.service} ${item.name} ${item.category}`.toLowerCase().split(/[^a-z0-9]+/)) {
-    if (raw.length < 3 || SKIP.has(raw) || /^\d+$/.test(raw) || seen.has(raw)) continue;
-    seen.add(raw);
-    words.push(raw);
-  }
-  return words;
-}
-
-function labelOf(word: string) {
-  if (word === "vpn" || word === "smm" || word === "sms" || word === "vtu") return word.toUpperCase();
-  return word.charAt(0).toUpperCase() + word.slice(1);
-}
-
-function groupByWord(items: Product[]) {
-  const freq = new Map<string, number>();
-  const perItem = items.map(wordsOf);
-  for (const words of perItem) for (const word of words) freq.set(word, (freq.get(word) || 0) + 1);
-  const groups = new Map<string, Product[]>();
-  items.forEach((item, index) => {
-    const words = perItem[index];
-    const shared = words.filter((word) => (freq.get(word) || 0) > 1);
-    const pool = shared.length ? shared : words;
-    const pick = [...pool].sort((a, b) => (freq.get(b) || 0) - (freq.get(a) || 0) || a.localeCompare(b))[0] || item.category || "other";
-    const key = labelOf(pick);
-    groups.set(key, [...(groups.get(key) || []), item]);
-  });
-  return [...groups.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
-}
+const LOG_GROUPS = ["TikTok", "Facebook", "Instagram", "YouTube", "X (Twitter)", "Telegram", "Other"];
+const SMM_GROUPS = ["Instagram", "TikTok", "YouTube", "Facebook", "X (Twitter)", "Telegram", "Snapchat", "Twitch", "Audiomack", "Other"];
+const DELAYS = [0, 5, 10, 15, 30, 60, 90];
 
 function facts(row: Product) {
-  return [row.category, row.service, row.country, row.network, row.operator, row.validity, row.stock > 0 ? `${row.stock} in stock` : ""].filter(Boolean).join(" · ");
+  return [row.subcategory, row.category, row.service, row.country, row.network, row.operator, row.validity, row.stock > 0 ? `${row.stock} in stock` : ""].filter(Boolean).join(" · ");
+}
+
+function groupsFor(kind: Shelf, extra: string[]) {
+  const base = kind === "smm" ? SMM_GROUPS : LOG_GROUPS;
+  const more = extra.filter((name) => name && !base.includes(name));
+  return ["All", ...base, ...more];
+}
+
+function smmKind(row: Product) {
+  return (row.smmType || "").trim().toLowerCase();
+}
+
+function commentLines(text: string) {
+  return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).length;
+}
+
+function orderTotal(row: Product, qty: number, comments: string, span: number, posts: number) {
+  const unit = Math.round(row.price);
+  const kind = smmKind(row);
+  if (row.category !== "smm") return { units: qty, price: unit * qty };
+  if (kind === "package") return { units: 1, price: unit };
+  if (kind === "custom comments") {
+    const lines = commentLines(comments);
+    return { units: lines, price: unit * lines };
+  }
+  if (kind.includes("subscription")) {
+    const units = Math.max(0, span) * Math.max(0, posts);
+    return { units, price: unit * units };
+  }
+  return { units: qty, price: unit * qty };
 }
 
 const COPY: Record<Shelf, { title: string; body: string; empty: string }> = {
   vpn: {
     title: "VPN plans",
-    body: "VPN plans stay on their own shelf. Random and SMM products never appear here.",
-    empty: "No VPN plans yet. Import a VPN catalogue and turn the rows on.",
+    body: "VPN is coming soon. This shelf does not sell imported products.",
+    empty: "VPN is not for sale yet.",
   },
   smm: {
     title: "SMM services",
-    body: "Social services imported as SMM. VPN, numbers and random products stay off this shelf.",
-    empty: "No SMM services yet. Import an SMM catalogue and turn the rows on.",
+    body: "Instaking services, grouped by the provider category. Numbers, logs, airtime and data stay off this shelf.",
+    empty: "No SMM services yet. Import Instaking and turn the rows on.",
   },
   random: {
-    title: "Marketplace",
-    body: "Logs and other digital products imported through Random Import. Nothing else is mixed in.",
-    empty: "No logs are live yet.",
+    title: "Buy logs",
+    body: "Logs from Random Import. Pick a platform to see only that subcategory. Unassigned logs stay under All categories.",
+    empty: "No logs are live in this category yet.",
   },
 };
 
@@ -74,11 +74,20 @@ export function Marketplace({ kind }: { kind: Shelf }) {
   const all = useStore((s) => s.products);
   const providers = useStore((s) => s.providers);
   const buy = useStore((s) => s.buy);
+  const settings = useStore((s) => s.settings);
   const [q, setQ] = useState("");
-  const [cat, setCat] = useState("All");
+  const [sub, setSub] = useState("All");
   const [sort, setSort] = useState("popular");
   const [stockOnly, setStockOnly] = useState(false);
   const [qty, setQty] = useState(1);
+  const [link, setLink] = useState("");
+  const [comments, setComments] = useState("");
+  const [username, setUsername] = useState("");
+  const [smin, setSmin] = useState("");
+  const [smax, setSmax] = useState("");
+  const [posts, setPosts] = useState("");
+  const [delay, setDelay] = useState("0");
+  const [answer, setAnswer] = useState("");
   const [buying, setBuying] = useState("");
   const [paying, setPaying] = useState(false);
   const [open, setOpen] = useState<Product | null>(null);
@@ -88,6 +97,7 @@ export function Marketplace({ kind }: { kind: Shelf }) {
   const [page, setPage] = useState(0);
   const [attempt, setAttempt] = useState(0);
   const [waiting, setWaiting] = useState(false);
+  const options = groupsFor(kind, settings.marketplaceSubcategories || []);
 
   useEffect(() => {
     setPage(0);
@@ -95,13 +105,15 @@ export function Marketplace({ kind }: { kind: Shelf }) {
     setFailed(false);
     setMore(false);
     setOpen(null);
-  }, [q, kind, attempt]);
+    setSub("All");
+    setQ("");
+  }, [kind]);
 
   useEffect(() => {
     let stop = false;
     setWaiting(true);
     const timer = setTimeout(() => {
-      withTimeout(browseExtras({ data: { q, kind, page } }))
+      withTimeout(browseExtras({ data: { q, kind, page, subcategory: sub === "All" ? "" : sub } }))
         .then((res) => {
           if (stop) return;
           const rows = (res?.rows || []).filter((row) => onShelf(row.category, kind));
@@ -124,24 +136,23 @@ export function Marketplace({ kind }: { kind: Shelf }) {
       stop = true;
       clearTimeout(timer);
     };
-  }, [q, kind, page, attempt]);
+  }, [q, kind, page, attempt, sub]);
 
   const items = useMemo(() => {
     if (failed) {
       const needle = q.trim().toLowerCase();
       return all.filter((p) => {
         if (!isLive(p, providers) || !onShelf(p.category, kind)) return false;
+        if (sub !== "All" && (p.subcategory || "") !== sub) return false;
         if (!needle) return true;
         return `${p.service} ${p.name} ${p.description} ${p.category} ${p.country} ${p.network}`.toLowerCase().includes(needle);
       }).slice(0, 40);
     }
     return (remote || []).filter((row) => onShelf(row.category, kind));
-  }, [all, providers, q, remote, kind, failed]);
+  }, [all, providers, q, remote, kind, failed, sub]);
 
-  const groups = useMemo(() => groupByWord(items), [items]);
-  const picked = cat === "All" ? items : groups.find(([name]) => name === cat)?.[1] || [];
   const shown = useMemo(() => {
-    const rows = stockOnly ? picked.filter((row) => row.stock > 0) : [...picked];
+    const rows = stockOnly ? items.filter((row) => row.stock > 0) : [...items];
     rows.sort((a, b) => {
       if (sort === "price-asc") return a.price - b.price;
       if (sort === "price-desc") return b.price - a.price;
@@ -149,26 +160,59 @@ export function Marketplace({ kind }: { kind: Shelf }) {
       return b.stock - a.stock || a.name.localeCompare(b.name);
     });
     return rows;
-  }, [picked, sort, stockOnly]);
+  }, [items, sort, stockOnly]);
+
+  const openRow = (row: Product) => {
+    const floor = row.category === "smm" && row.smmMin && row.smmMin > 0 ? row.smmMin : 1;
+    setQty(floor);
+    setLink("");
+    setComments("");
+    setUsername("");
+    setSmin(row.smmMin ? String(row.smmMin) : "");
+    setSmax(row.smmMax ? String(row.smmMax) : "");
+    setPosts("");
+    setDelay("0");
+    setAnswer("");
+    setOpen(row);
+  };
 
   const purchase = async (row: Product) => {
     if (buying || paying) return;
-    const price = Math.round(row.price) * qty;
-    if ((user?.balance || 0) < price) return;
+    const detail = row.category === "smm"
+      ? JSON.stringify({
+        link,
+        comments,
+        username,
+        min: Number(smin) || 0,
+        max: Number(smax) || 0,
+        posts: Number(posts) || 0,
+        delay: Number(delay) || 0,
+        answerNumber: answer,
+        quantity: qty,
+      })
+      : "";
+    const total = orderTotal(row, qty, comments, Number(smax) || 0, Number(posts) || 0).price;
+    if ((user?.balance || 0) < total) return;
     setBuying(row.id);
     let err: string | null = null;
-    for (let i = 0; i < qty; i += 1) {
-      err = await buy(row.id, {});
-      if (err) break;
+    if (row.category === "smm") err = await buy(row.id, { amount: qty, detail });
+    else {
+      for (let i = 0; i < qty; i += 1) {
+        err = await buy(row.id, {});
+        if (err) break;
+      }
     }
     setBuying("");
     if (err) toast.error(err);
-    else toast.success(qty > 1 ? `${qty} orders placed` : "Order placed");
+    else {
+      toast.success(qty > 1 && row.category !== "smm" ? `${qty} orders placed` : "Order placed");
+      setOpen(null);
+    }
   };
 
   const topUp = async (row: Product) => {
     if (paying || buying) return;
-    const price = Math.round(row.price) * qty;
+    const price = orderTotal(row, qty, comments, Number(smax) || 0, Number(posts) || 0).price;
     if (price < 100) return toast.error("This product price is not ready for Paystack yet.");
     setPaying(true);
     try {
@@ -201,12 +245,11 @@ export function Marketplace({ kind }: { kind: Shelf }) {
         className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900"
         placeholder="Search by name"
         value={q}
-        onChange={(e) => { setQ(e.target.value); setCat("All"); setOpen(null); }}
+        onChange={(e) => { setQ(e.target.value); setPage(0); setRemote(null); setOpen(null); }}
       />
       <div className="mt-2 grid grid-cols-2 gap-2">
-        <select className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base" value={cat} onChange={(e) => { setCat(e.target.value); setOpen(null); }}>
-          <option value="All">All products</option>
-          {groups.map(([name]) => <option key={name} value={name}>{name}</option>)}
+        <select className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base" value={sub} onChange={(e) => { setSub(e.target.value); setPage(0); setRemote(null); setOpen(null); }}>
+          {options.map((name) => <option key={name} value={name}>{name === "All" ? "All categories" : name}</option>)}
         </select>
         <select className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base" value={sort} onChange={(e) => setSort(e.target.value)}>
           <option value="popular">Most popular</option>
@@ -225,11 +268,36 @@ export function Marketplace({ kind }: { kind: Shelf }) {
           <button type="button" className="mb-3 inline-flex items-center gap-1 text-sm font-bold text-slate-700" onClick={() => { setOpen(null); setQty(1); }}>
             <Glyph icon={glyph.back} className="size-4" /> Back to products
           </button>
-          <p className="text-xs font-bold uppercase tracking-wide text-[#0c6e8a]">{open.category || "Product"}</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-[#0c6e8a]">{[open.subcategory, open.category || "Product"].filter(Boolean).join(" · ")}</p>
           <h2 className="mt-1 text-xl font-extrabold leading-snug break-words">{open.name}</h2>
           <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed break-words text-slate-700">{open.description || facts(open)}</p>
           <p className="mt-2 text-sm text-slate-600">{facts(open)}</p>
-          <Checkout row={open} qty={qty} setQty={setQty} balance={user?.balance || 0} buying={buying === open.id} paying={paying} onBuy={() => void purchase(open)} onTopUp={() => void topUp(open)} />
+          <Checkout
+            row={open}
+            qty={qty}
+            setQty={setQty}
+            balance={user?.balance || 0}
+            buying={buying === open.id}
+            paying={paying}
+            link={link}
+            setLink={setLink}
+            comments={comments}
+            setComments={setComments}
+            username={username}
+            setUsername={setUsername}
+            smin={smin}
+            setSmin={setSmin}
+            smax={smax}
+            setSmax={setSmax}
+            posts={posts}
+            setPosts={setPosts}
+            delay={delay}
+            setDelay={setDelay}
+            answer={answer}
+            setAnswer={setAnswer}
+            onBuy={() => void purchase(open)}
+            onTopUp={() => void topUp(open)}
+          />
         </article>
       ) : (
         <>
@@ -244,13 +312,13 @@ export function Marketplace({ kind }: { kind: Shelf }) {
           <div className="mt-3 grid grid-cols-1 gap-3">
             {shown.map((row) => (
               <article key={row.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                <p className="text-[11px] font-bold text-[#0c6e8a]">{row.category}{row.service ? ` · ${row.service}` : ""}</p>
+                <p className="text-[11px] font-bold text-[#0c6e8a]">{[row.subcategory, row.category, row.service].filter(Boolean).join(" · ")}</p>
                 <p className="mt-1 text-sm font-extrabold leading-snug break-words text-slate-900">{row.name}</p>
                 {row.description ? <p className="mt-1 line-clamp-2 text-xs leading-relaxed break-words text-slate-600">{row.description.replace(/\s+/g, " ").trim()}</p> : <p className="mt-1 text-xs leading-relaxed break-words text-slate-600">{facts(row)}</p>}
                 <p className="mt-2 text-xs font-bold text-emerald-700">{row.stock > 0 ? `${row.stock} in stock` : "Availability updates at checkout"}</p>
                 <div className="mt-3 flex items-end justify-between gap-3">
                   <p className="text-lg font-extrabold">{row.price > 0 ? naira(row.price) : "Price not set"}</p>
-                  <button type="button" className="btn-accent rounded-xl px-4 py-2 text-sm font-extrabold text-white" onClick={() => { setQty(1); setOpen(row); }}>
+                  <button type="button" className="btn-accent rounded-xl px-4 py-2 text-sm font-extrabold text-white" onClick={() => openRow(row)}>
                     View & buy
                   </button>
                 </div>
@@ -268,39 +336,106 @@ export function Marketplace({ kind }: { kind: Shelf }) {
   );
 }
 
-function Checkout({ row, qty, setQty, balance, buying, paying, onBuy, onTopUp }: { row: Product; qty: number; setQty: (n: number) => void; balance: number; buying: boolean; paying: boolean; onBuy: () => void; onTopUp: () => void }) {
+function Checkout(props: {
+  row: Product;
+  qty: number;
+  setQty: (n: number) => void;
+  balance: number;
+  buying: boolean;
+  paying: boolean;
+  link: string;
+  setLink: (value: string) => void;
+  comments: string;
+  setComments: (value: string) => void;
+  username: string;
+  setUsername: (value: string) => void;
+  smin: string;
+  setSmin: (value: string) => void;
+  smax: string;
+  setSmax: (value: string) => void;
+  posts: string;
+  setPosts: (value: string) => void;
+  delay: string;
+  setDelay: (value: string) => void;
+  answer: string;
+  setAnswer: (value: string) => void;
+  onBuy: () => void;
+  onTopUp: () => void;
+}) {
+  const { row, qty, setQty, balance, buying, paying, onBuy, onTopUp } = props;
+  const smm = row.category === "smm";
+  const kind = smmKind(row);
+  const total = orderTotal(row, qty, props.comments, Number(props.smax) || 0, Number(props.posts) || 0);
   const unit = Math.round(row.price);
-  const price = unit * qty;
-  const short = price - balance;
-  const cap = row.stock > 0 ? Math.min(row.stock, 20) : 20;
+  const short = total.price - balance;
+  const floor = smm && row.smmMin && row.smmMin > 0 ? row.smmMin : 1;
+  const cap = smm ? (row.smmMax && row.smmMax > 0 ? row.smmMax : 100000) : row.stock > 0 ? Math.min(row.stock, 20) : 20;
+  const field = "w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900";
   return (
     <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
       <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Checkout</p>
-      <div className="mt-2 flex items-center gap-2">
-        <button type="button" className="grid size-9 place-items-center rounded-xl bg-white text-lg font-bold" onClick={() => setQty(Math.max(1, qty - 1))}>−</button>
-        <span className="min-w-8 text-center text-base font-extrabold">{qty}</span>
-        <button type="button" className="grid size-9 place-items-center rounded-xl bg-white text-lg font-bold" onClick={() => setQty(Math.min(cap, qty + 1))}>+</button>
-        <span className="text-xs text-slate-500">{row.stock > 0 ? `${row.stock} available` : "1 per tap, up to 20"}</span>
-      </div>
+      {smm && kind !== "subscriptions" && kind !== "subscription" ? (
+        <label className="mt-2 block text-xs font-semibold text-slate-600">
+          Link
+          <input className={`${field} mt-1`} value={props.link} onChange={(e) => props.setLink(e.target.value)} placeholder="https://" />
+        </label>
+      ) : null}
+      {smm && kind === "custom comments" ? (
+        <label className="mt-2 block text-xs font-semibold text-slate-600">
+          Comments, one per line
+          <textarea className={`${field} mt-1`} rows={4} value={props.comments} onChange={(e) => props.setComments(e.target.value)} />
+        </label>
+      ) : null}
+      {smm && kind === "poll" ? (
+        <label className="mt-2 block text-xs font-semibold text-slate-600">
+          Answer number
+          <input className={`${field} mt-1`} inputMode="numeric" value={props.answer} onChange={(e) => props.setAnswer(e.target.value.replace(/[^\d]/g, ""))} />
+        </label>
+      ) : null}
+      {smm && (kind === "subscriptions" || kind === "subscription") ? (
+        <div className="mt-2 grid gap-2">
+          <label className="text-xs font-semibold text-slate-600">Username<input className={`${field} mt-1`} value={props.username} onChange={(e) => props.setUsername(e.target.value)} /></label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs font-semibold text-slate-600">Min<input className={`${field} mt-1`} inputMode="numeric" value={props.smin} onChange={(e) => props.setSmin(e.target.value.replace(/[^\d]/g, ""))} /></label>
+            <label className="text-xs font-semibold text-slate-600">Max<input className={`${field} mt-1`} inputMode="numeric" value={props.smax} onChange={(e) => props.setSmax(e.target.value.replace(/[^\d]/g, ""))} /></label>
+          </div>
+          <label className="text-xs font-semibold text-slate-600">New posts<input className={`${field} mt-1`} inputMode="numeric" value={props.posts} onChange={(e) => props.setPosts(e.target.value.replace(/[^\d]/g, ""))} /></label>
+          <label className="text-xs font-semibold text-slate-600">
+            Delay (minutes)
+            <select className={`${field} mt-1`} value={props.delay} onChange={(e) => props.setDelay(e.target.value)}>
+              {DELAYS.map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+          </label>
+        </div>
+      ) : null}
+      {smm && (kind === "package" || kind === "custom comments" || kind.includes("subscription")) ? null : (
+        <div className="mt-2 flex items-center gap-2">
+          <button type="button" className="grid size-9 place-items-center rounded-xl bg-white text-lg font-bold" onClick={() => setQty(Math.max(floor, qty - 1))}>−</button>
+          <span className="min-w-8 text-center text-base font-extrabold">{qty}</span>
+          <button type="button" className="grid size-9 place-items-center rounded-xl bg-white text-lg font-bold" onClick={() => setQty(Math.min(cap, qty + 1))}>+</button>
+          <span className="text-xs text-slate-500">{smm ? `${floor}–${cap}` : row.stock > 0 ? `${row.stock} available` : "1 per tap, up to 20"}</span>
+        </div>
+      )}
       <div className="mt-3 space-y-1 text-sm">
-        <p className="flex justify-between"><span>Price each</span><span>{unit > 0 ? naira(unit) : "Not set"}</span></p>
-        <p className="flex justify-between"><span>Quantity</span><span>× {qty}</span></p>
-        <p className="flex justify-between text-base font-extrabold"><span>Total to pay</span><span>{unit > 0 ? naira(price) : "—"}</span></p>
+        <p className="flex justify-between"><span>{smm && kind !== "package" ? "Price per unit" : "Price each"}</span><span>{unit > 0 ? naira(unit) : "Not set"}</span></p>
+        <p className="flex justify-between"><span>Quantity</span><span>× {total.units}</span></p>
+        <p className="flex justify-between text-base font-extrabold"><span>Total to pay</span><span>{unit > 0 && total.price > 0 ? naira(total.price) : "—"}</span></p>
         <p className="flex justify-between"><span>Wallet balance</span><span className="font-bold text-[#0c6e8a]">{naira(balance)}</span></p>
       </div>
-      {row.validity ? <p className="mt-2 text-sm text-slate-600">Expires: {row.validity}</p> : null}
-      {unit <= 0 ? <p className="mt-2 text-sm font-bold text-red-700">This product has no price yet.</p> : short > 0 ? (
+      {smm && kind !== "package" ? <p className="mt-2 text-xs text-slate-500">The provider rate is per 1,000, except a package. The wallet is charged for the quantity you send.</p> : null}
+      {row.smmRefill ? <p className="mt-1 text-xs font-semibold text-emerald-700">Refill is available after this order.</p> : null}
+      {unit <= 0 || total.price <= 0 ? <p className="mt-2 text-sm font-bold text-red-700">This product has no price yet.</p> : short > 0 ? (
         <>
           <p className="mt-2 rounded-xl bg-[#eef4ff] px-3 py-2 text-sm font-bold text-[#1e3a8a]">Your balance is {naira(short)} short. Fund your wallet to continue.</p>
-          <button type="button" disabled={paying} className="btn-accent mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={onTopUp}>
+          <button type="button" disabled={paying || buying} className="btn-accent mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={onTopUp}>
             {paying ? <BtnSpinner /> : null}
-            {paying ? "Opening Paystack…" : `Top up ${naira(price)}`}
+            {paying ? "Opening Paystack…" : `Top up ${naira(total.price)}`}
           </button>
         </>
       ) : (
-        <button type="button" disabled={buying} className="btn-accent mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={onBuy}>
+        <button type="button" disabled={buying || paying} className="btn-accent mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-extrabold text-white disabled:opacity-60" onClick={onBuy}>
           {buying ? <BtnSpinner /> : null}
-          {buying ? "Buying…" : `Pay ${naira(price)} and get ${qty}`}
+          {buying ? "Buying…" : `Pay ${naira(total.price)}`}
         </button>
       )}
     </div>

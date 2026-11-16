@@ -2,7 +2,7 @@ import type { Product } from "@/lib/catalog";
 import { getSql } from "@/lib/db";
 import { SHELF_CATEGORIES, shelfOf } from "@/lib/shelves";
 
-const COLS = 21;
+const COLS = 26;
 
 function rowOf(row: Record<string, unknown>): Product {
   return {
@@ -26,6 +26,11 @@ function rowOf(row: Record<string, unknown>): Product {
     description: String(row.description || ""),
     importType: String(row.import_type || ""),
     serverId: String(row.server_id || ""),
+    subcategory: String(row.marketplace_subcategory || ""),
+    smmMin: Number(row.smm_min) || 0,
+    smmMax: Number(row.smm_max) || 0,
+    smmType: String(row.smm_type || ""),
+    smmRefill: !!row.smm_refill,
   };
 }
 
@@ -58,18 +63,25 @@ export async function upsertProductRows(products: Product[], sync: string) {
         product.description,
         product.importType || "",
         product.serverId || "",
+        product.subcategory || "",
+        Math.max(0, Math.round(Number(product.smmMin) || 0)),
+        Math.max(0, Math.round(Number(product.smmMax) || 0)),
+        product.smmType || "",
+        !!product.smmRefill,
         sync,
       );
       return `(${Array.from({ length: COLS }, (_, n) => `$${at + n + 1}`).join(",")})`;
     });
     await sql.query(
-      `insert into shop_products (id, provider_id, external_id, category, name, service, country, network, price, cost, stock, operator, rate, rates, enabled, validity, variable, description, import_type, server_id, sync)
+      `insert into shop_products (id, provider_id, external_id, category, name, service, country, network, price, cost, stock, operator, rate, rates, enabled, validity, variable, description, import_type, server_id, marketplace_subcategory, smm_min, smm_max, smm_type, smm_refill, sync)
        values ${groups.join(",")}
        on conflict (provider_id, external_id) do update set
          name = excluded.name, service = excluded.service, country = excluded.country, network = excluded.network,
          cost = excluded.cost, stock = excluded.stock, operator = excluded.operator,
          rate = excluded.rate, rates = excluded.rates, category = excluded.category,
          import_type = excluded.import_type, server_id = excluded.server_id, validity = excluded.validity,
+         smm_min = excluded.smm_min, smm_max = excluded.smm_max, smm_type = excluded.smm_type, smm_refill = excluded.smm_refill,
+         marketplace_subcategory = case when shop_products.marketplace_subcategory <> '' then shop_products.marketplace_subcategory else excluded.marketplace_subcategory end,
          variable = case when shop_products.price_locked then shop_products.variable else excluded.variable end,
          description = case when shop_products.description_locked then shop_products.description else excluded.description end,
          price = case when shop_products.price_locked then shop_products.price else excluded.price end,
@@ -128,7 +140,7 @@ export async function readShopRows(categories: string[], limit = 2000) {
   return rows.map(rowOf);
 }
 
-export async function queryExtras(input: { q?: string; providerIds: string[]; kind?: "vpn" | "smm" | "random" | "shop"; page?: number }) {
+export async function queryExtras(input: { q?: string; providerIds: string[]; kind?: "vpn" | "smm" | "random" | "shop"; page?: number; subcategory?: string }) {
   if (!input.providerIds.length) return { rows: [], more: false };
   const sql = await getSql();
   const shelf = shelfOf(input.kind === "shop" ? "random" : input.kind);
@@ -137,6 +149,10 @@ export async function queryExtras(input: { q?: string; providerIds: string[]; ki
   if (input.q) {
     values.push(`%${input.q.replace(/[%_]/g, "")}%`);
     parts.push(`(name ilike $${values.length} or service ilike $${values.length} or description ilike $${values.length} or category ilike $${values.length})`);
+  }
+  if (input.subcategory) {
+    values.push(input.subcategory);
+    parts.push(`marketplace_subcategory = $${values.length}`);
   }
   const page = Math.max(0, Math.min(5000, Math.floor(Number(input.page) || 0)));
   const limit = 40;
@@ -159,6 +175,16 @@ export async function setRowsEnabled(ids: string[], enabled: boolean) {
   if (!ids.length) return;
   const sql = await getSql();
   await sql.query("update shop_products set enabled = $1 where id = any($2::text[])", [enabled, ids]);
+}
+
+export async function setProductSubcategory(id: string, subcategory: string) {
+  const sql = await getSql();
+  const name = subcategory.trim().slice(0, 40);
+  const rows = await sql.query<{ id: string }>(
+    "update shop_products set marketplace_subcategory = $2 where id = $1 and category in ('logs', 'smm') returning id",
+    [id, name],
+  );
+  return !!rows[0];
 }
 
 export async function lockListing(id: string, patch: { description: string; price: number }) {
@@ -265,7 +291,7 @@ export async function queryHidden(providerId: string, category: string) {
   return Number(rows[0]?.n) || 0;
 }
 
-export async function queryCatalogPage(input: { q?: string; category?: string; providerId?: string; only?: string; page?: number }) {
+export async function queryCatalogPage(input: { q?: string; category?: string; providerId?: string; only?: string; page?: number; subcategory?: string }) {
   const sql = await getSql();
   const values: unknown[] = [];
   const parts: string[] = [];
@@ -279,6 +305,11 @@ export async function queryCatalogPage(input: { q?: string; category?: string; p
   }
   if (input.only === "on") parts.push("enabled = true");
   if (input.only === "off") parts.push("enabled = false");
+  if (input.subcategory === "none") parts.push("marketplace_subcategory = ''");
+  else if (input.subcategory) {
+    values.push(input.subcategory);
+    parts.push(`marketplace_subcategory = $${values.length}`);
+  }
   if (input.q) {
     values.push(`%${input.q.replace(/[%_]/g, "")}%`);
     parts.push(`(name ilike $${values.length} or service ilike $${values.length} or country ilike $${values.length} or network ilike $${values.length} or description ilike $${values.length})`);

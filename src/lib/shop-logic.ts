@@ -162,7 +162,7 @@ export async function changePassword(data: Data, userId: string | null, oldPw: s
   return { error: null, data: { ...data, users } };
 }
 
-export function buyProduct(data: Data, userId: string | null, productId: string, extra: { phone?: string; amount?: number; detail?: string; cost?: number; gain?: number; code?: string; status?: Order["status"]; charge?: number }) {
+export function buyProduct(data: Data, userId: string | null, productId: string, extra: { phone?: string; amount?: number; detail?: string; cost?: number; gain?: number; code?: string; status?: Order["status"]; charge?: number; providerOrderId?: string; providerStatus?: string; refillAvailable?: boolean }) {
   const user = actor(data, userId);
   if (!user) return { error: "Sign in first.", data };
   const product = data.products.find((p) => p.id === productId && p.enabled);
@@ -193,6 +193,9 @@ export function buyProduct(data: Data, userId: string | null, productId: string,
     cost,
     gain,
     createdAt: new Date().toISOString(),
+    providerOrderId: extra.providerOrderId || "",
+    providerStatus: extra.providerStatus || "",
+    refillAvailable: !!extra.refillAvailable,
   };
   let next: Data = {
     ...data,
@@ -354,8 +357,8 @@ export function addAnnouncement(data: Data, userId: string | null, title: string
 export function setAnnouncements(data: Data, userId: string | null, items: Announcement[]) {
   const denied = adminGuard(data, userId);
   if (denied) return { error: denied, data };
-  const announcements = (Array.isArray(items) ? items : []).slice(0, 40).map((item) => ({
-    id: String(item?.id || uid("ann")).slice(0, 40),
+  const announcements = (Array.isArray(items) ? items : []).map((item) => ({
+    id: String(item?.id || uid("ann")).slice(0, 64),
     title: String(item?.title || "").trim().slice(0, 160),
     body: String(item?.body || "").trim().slice(0, 4000),
     createdAt: item?.createdAt || new Date().toISOString(),

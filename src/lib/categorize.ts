@@ -47,6 +47,11 @@ export type ParsedItem = {
   description: string;
   importType: string;
   serverId: string;
+  subcategory?: string;
+  smmMin?: number;
+  smmMax?: number;
+  smmType?: string;
+  smmRefill?: boolean;
 };
 
 export type CatalogExtract = { items: ParsedItem[]; skipped: number };

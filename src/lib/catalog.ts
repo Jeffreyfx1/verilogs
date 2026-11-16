@@ -66,6 +66,11 @@ export type Product = {
   description: string;
   importType?: string;
   serverId?: string;
+  subcategory?: string;
+  smmMin?: number;
+  smmMax?: number;
+  smmType?: string;
+  smmRefill?: boolean;
 };
 
 export type Order = {
@@ -84,6 +89,10 @@ export type Order = {
   cost: number;
   gain: number;
   createdAt: string;
+  providerOrderId?: string;
+  providerStatus?: string;
+  refillId?: string;
+  refillAvailable?: boolean;
 };
 
 export type Txn = {
@@ -165,6 +174,7 @@ export type Settings = {
   popup: WelcomePopup;
   wantedServices: string[];
   pricing: PricingSettings;
+  marketplaceSubcategories: string[];
 };
 
 export type Data = {
@@ -213,6 +223,7 @@ export function defaultSettings(): Settings {
     popup: defaultPopup(),
     wantedServices: [...MAJOR_SERVICES],
     pricing: pricingOf(null),
+    marketplaceSubcategories: [],
   };
 }
 
@@ -273,6 +284,11 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
       description: product.description || "",
       importType: product.importType || "",
       serverId: product.serverId || "",
+      subcategory: product.subcategory || "",
+      smmMin: Math.max(0, Math.round(Number(product.smmMin) || 0)),
+      smmMax: Math.max(0, Math.round(Number(product.smmMax) || 0)),
+      smmType: product.smmType || "",
+      smmRefill: !!product.smmRefill,
     })),
     orders: src.orders ?? [],
     txns: src.txns ?? [],
@@ -298,6 +314,9 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
         ? incoming.wantedServices.map((name) => String(name || "").trim()).filter(Boolean).slice(0, 200)
         : base.wantedServices,
       pricing: pricingOf(incoming?.pricing),
+      marketplaceSubcategories: Array.isArray(incoming?.marketplaceSubcategories)
+        ? [...new Set(incoming.marketplaceSubcategories.map((name) => String(name || "").trim()).filter((name) => name && name.length <= 40))].slice(0, 30)
+        : base.marketplaceSubcategories,
     },
   };
 }

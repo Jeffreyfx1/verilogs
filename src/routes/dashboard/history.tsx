@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
+import { toast } from "sonner";
+import { BtnSpinner } from "@/components/ui";
 import { naira, when } from "@/lib/money";
 import { useStore } from "@/lib/store";
 
@@ -13,6 +15,8 @@ function HistoryPage() {
   const allOrders = useStore((s) => s.orders);
   const allTxns = useStore((s) => s.txns);
   const session = useStore((s) => s.sessionUserId);
+  const refillOrder = useStore((s) => s.refillOrder);
+  const [busy, setBusy] = useState("");
   const orders = useMemo(() => allOrders.filter((o) => o.userId === session), [allOrders, session]);
   const txns = useMemo(() => allTxns.filter((t) => t.userId === session), [allTxns, session]);
   const numbers = orders.filter((o) => o.category === "numbers" || o.category === "rent");
@@ -34,7 +38,26 @@ function HistoryPage() {
         )) : (tab === "numbers" ? numbers : bills).map((o) => (
           <div key={o.id} className="border-b border-line px-4 py-3 text-sm">
             <div className="flex justify-between gap-3"><span className="font-semibold">{o.title}</span><span>{naira(o.amount)}</span></div>
-            <p className="text-xs text-muted">{[o.server, o.network, o.phone, o.code && `code ${o.code}`, o.status, when(o.createdAt)].filter(Boolean).join(" · ")}</p>
+            <p className="text-xs text-muted">{[o.server, o.network, o.phone, o.code && `code ${o.code}`, o.providerOrderId && `provider ${o.providerOrderId}`, o.providerStatus, o.status, when(o.createdAt)].filter(Boolean).join(" · ")}</p>
+            {o.category === "smm" && o.refillAvailable && o.providerOrderId && o.status !== "refunded" ? (
+              <button
+                type="button"
+                disabled={busy === o.id}
+                className="mt-2 inline-flex items-center gap-2 rounded-full border border-line px-3 py-1 text-xs font-bold disabled:opacity-60"
+                onClick={() => {
+                  if (busy) return;
+                  setBusy(o.id);
+                  void refillOrder(o.id).then((err) => {
+                    setBusy("");
+                    if (err) toast.error(err);
+                    else toast.success("Refill requested");
+                  });
+                }}
+              >
+                {busy === o.id ? <BtnSpinner /> : null}
+                {busy === o.id ? "Requesting refill…" : o.refillId ? "Request refill again" : "Request refill"}
+              </button>
+            ) : null}
           </div>
         ))}
         {((tab === "txns" && !txns.length) || (tab === "numbers" && !numbers.length) || (tab === "bills" && !bills.length)) ? <p className="p-6 text-sm text-muted">Nothing here yet.</p> : null}

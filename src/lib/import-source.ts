@@ -90,13 +90,13 @@ export function flattenGetaText(payload: unknown): Array<Record<string, unknown>
 export const IMPORT_CARDS = [
   {
     kind: "smm" as const,
-    title: "SMM Import",
-    providerName: "SMM",
-    blurb: "Social media services. They are filed as SMM and nowhere else.",
-    url: "",
+    title: "Instaking · SMM",
+    providerName: "Instaking",
+    blurb: "Social media services from Instaking. They are filed as SMM and nowhere else.",
+    url: "https://instaking.ng/api/v1",
     currency: "USD" as const,
     usdRate: 0,
-    auth: "Paste this provider's catalogue URL and key. There is no preset vendor.",
+    auth: "POST key and action=services. The key stays on the server. Balance reports the currency. A rate is per 1,000, except a package.",
   },
   {
     kind: "numbers" as const,

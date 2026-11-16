@@ -5,6 +5,7 @@ import { freshData, isLive, normalizeData, quoteProduct, repairCatalog, serverLa
 import { customerPrice, pricingOf, successRateOf } from "@/lib/pricing";
 import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, shapeImport, airtimeProductsFromPayload, MAJOR_SERVICES, type ImportKind, type ParsedItem } from "@/lib/categorize";
 import { destinationOf, flattenGetaText, sourceKindOf } from "@/lib/import-source";
+import { instakingCurrency, instakingPost, isInstakingHost, parseInstakingServices, readSmmDetail } from "@/lib/instaking";
 import { catalogStamp, followCatalogPages, walkBrowse } from "@/lib/catalog-pages";
 import { IMPORT_BATCH, importBatchCount } from "@/lib/import-batch";
 import { uid } from "@/lib/money";
@@ -22,6 +23,7 @@ import {
   queryServices,
   readProduct,
   readShopRows,
+  setProductSubcategory,
   setRowsEnabled,
   lockListing,
   upsertProductRows,
@@ -451,7 +453,22 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
       doc = out.data;
       error = out.error;
     } else if (op === "tick") {
+      doc = await syncInstakingOrders(doc);
       doc = tickWaiting(doc);
+    } else if (op === "refill") {
+      const out = await refillInstakingOrder(doc, userId, str("orderId"));
+      doc = out.data;
+      error = out.error;
+    } else if (op === "setSubcategory") {
+      const me = doc.users.find((user) => user.id === userId);
+      if (me?.role !== "admin") error = "Only an admin can do that.";
+      else {
+        const name = str("subcategory").trim().slice(0, 40);
+        const id = str("id");
+        const saved = await setProductSubcategory(id, name);
+        if (!saved) error = "That product cannot take a marketplace subcategory.";
+        else doc = { ...doc, products: doc.products.map((product) => product.id === id ? { ...product, subcategory: name } : product) };
+      }
     } else if (op === "import") {
       const out = importServices(doc, userId, {
         providerId: str("providerId") || undefined,
@@ -584,15 +601,46 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
   const ready = { ...doc, products: [quoted, ...doc.products.filter((item) => item.id !== quoted.id)] };
   const user = userId ? ready.users.find((item) => item.id === userId) : null;
   const face = quoted.variable ? Math.round(extra.amount || 0) : sticker;
-  const charge = face;
+  let charge = face;
+  if (quoted.category === "smm") {
+    const fields = readSmmDetail(extra.detail || "", Math.round(extra.amount || 0));
+    const type = quoted.smmType || quoted.operator || "Default";
+    const packaged = /^package$/i.test(type);
+    const subscription = /subscription/i.test(type);
+    const comments = /custom comments/i.test(type);
+    const lines = String(fields.comments || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean).length;
+    const quantity = packaged ? 1 : comments ? lines : Math.round(Number(fields.quantity) || 0);
+    if (comments && quantity <= 0) return { error: "Add the comments, one per line.", data: doc };
+    if (!packaged && !subscription && !comments) {
+      if (quantity <= 0) return { error: "Enter the quantity.", data: doc };
+      if (quoted.smmMin && quantity < quoted.smmMin) return { error: `Minimum quantity is ${quoted.smmMin}.`, data: doc };
+      if (quoted.smmMax && quantity > quoted.smmMax) return { error: `Maximum quantity is ${quoted.smmMax}.`, data: doc };
+    }
+    const posts = Math.round(Number(fields.posts) || 0);
+    const span = Math.round(Number(fields.max) || quoted.smmMax || 0);
+    if (subscription && (span <= 0 || posts <= 0)) return { error: "Set the maximum quantity and how many posts to cover.", data: doc };
+    charge = Math.round(sticker * (packaged ? 1 : subscription ? span * posts : quantity));
+  }
   if (!user) return { error: "Sign in first.", data: doc };
   if (quoted.category === "airtime" && (face < 50 || face > 50000)) return { error: "Airtime must be between ₦50 and ₦50,000.", data: doc };
   if (!quoted.variable && charge <= 0) return { error: "This item has no price yet.", data: doc };
   if (user.balance < charge) return { error: "Insufficient balance. Top up your balance to make this purchase.", data: doc };
-  const placed = await placeOnProvider({ product: quoted, provider, apiKey: await readProviderKey(provider.id), phone: extra.phone || "", amount: quoted.variable ? face : charge });
+  const placed = await placeOnProvider({ product: quoted, provider, apiKey: await readProviderKey(provider.id), phone: extra.phone || "", amount: quoted.variable ? face : charge, detail: extra.detail || "" });
   if (!placed.ok) return { error: placed.error, data: doc };
   const cost = placed.cost;
-  return buyProduct(ready, userId, quoted.id, { phone: placed.phone || extra.phone, amount: quoted.variable ? face : charge, charge, detail: extra.detail, cost, gain: charge - cost, code: placed.ref, status: placed.waiting ? "waiting" : "completed" });
+  return buyProduct(ready, userId, quoted.id, {
+    phone: placed.phone || extra.phone,
+    amount: quoted.variable ? face : charge,
+    charge,
+    detail: extra.detail,
+    cost,
+    gain: charge - cost,
+    code: quoted.category === "smm" ? "" : placed.ref,
+    providerOrderId: quoted.category === "smm" ? placed.ref : "",
+    providerStatus: quoted.category === "smm" ? "Pending" : "",
+    refillAvailable: !!quoted.smmRefill,
+    status: placed.waiting ? "waiting" : "completed",
+  });
 }
 
 async function finishPaidNumber(doc: Data, userId: string, productId: string) {
@@ -767,6 +815,16 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
   };
   try {
     const allow = [...new Set([...(input.allow || []), routed.product].filter(Boolean))];
+    if (isInstakingHost(host)) {
+      if (!key) return { ok: false as const, error: "Instaking needs an API key. It is posted as the key field." };
+      const balance = await instakingPost(key, { action: "balance" });
+      const services = await instakingPost(key, { action: "services" });
+      if (!services.ok) return { ok: false as const, error: services.error || "Instaking did not return services." };
+      const items = parseInstakingServices(services.body);
+      if (!items?.length) return { ok: false as const, error: "Instaking did not return a service list." };
+      const reported = balance.ok && balance.body && typeof balance.body === "object" ? instakingCurrency((balance.body as { currency?: unknown }).currency) : "";
+      return { ok: true as const, payload: { instaking: true, items }, currency: reported || undefined };
+    }
     if (key && /(^|\.)getatext\.com$/i.test(host) && !url.searchParams.has("api_key")) url.searchParams.set("api_key", key);
     const barePrices = url.hostname.endsWith("5sim.net") && /\/v1\/guest\/prices\/?$/.test(url.pathname) && !url.searchParams.get("product") && !routed.product;
     if (barePrices) {
@@ -1080,10 +1138,12 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
   const routed = input.url ? fiveSimCategoryUrl(input.url) : { url: "", product: "" };
   const wantedForPull = routed.product ? [...wanted, routed.product] : wanted;
   let payload = input.payload;
+  let reportedCurrency: "NGN" | "USD" | "" = "";
   if (!selective && input.url) {
     const fetched = await pullRemote({ url: input.url, apiKey: input.apiKey, providerId: input.providerId, allow: kind === "numbers" ? wantedForPull : [], kind });
     if (!fetched.ok) return emptyImport(fetched.error);
     payload = fetched.payload;
+    if ("currency" in fetched && (fetched.currency === "NGN" || fetched.currency === "USD")) reportedCurrency = fetched.currency;
   }
   if (payload == null) return emptyImport(selective ? "Tick products before importing." : "Add a catalogue URL or paste JSON.");
   if (selective) {
@@ -1095,18 +1155,21 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
     }
     if (size > 8_000_000) return emptyImport("That selection is too large. Import fewer products.");
   }
-  const extracted = extractCatalog(payload);
+  const instakingBundle = payload && typeof payload === "object" && !Array.isArray(payload) && (payload as { instaking?: boolean }).instaking === true
+    ? (payload as { instaking: true; items: ParsedItem[] })
+    : null;
+  const extracted = instakingBundle ? { items: instakingBundle.items, skipped: 0 } : extractCatalog(payload);
   const numberLike = kind === "numbers" || kind === "server2" || kind === "server3" || kind === "usa";
   const shaped = kind === "vtu-airtime"
     ? airtimeProductsFromPayload(payload).map((item) => ({ ...item, category: "airtime" as const, importType: "VTU_IMPORT", serverId: "" }))
-    : shapeImport(extracted.items, kind, !selective && numberLike ? wantedForPull : []);
+    : shapeImport(extracted.items, instakingBundle ? "smm" : kind, !selective && numberLike ? wantedForPull : []);
   const items = selective ? shaped.slice(0, 200) : shaped;
   if (!items.length) return emptyImport(selective ? "None of the ticked products could be read." : KIND_EMPTY[kind]);
   const jobId = crypto.randomUUID();
   const meta: ImportMeta = {
     name: input.name || "New API",
     baseUrl: input.baseUrl || input.url || "https://provider.example/api",
-    currency: input.currency === "USD" ? "USD" : "NGN",
+    currency: reportedCurrency || (input.currency === "USD" ? "USD" : "NGN"),
     usdRate: Number(input.usdRate) || 0,
     markup: Number(input.markup) || 0,
     publish: !!input.publish,
@@ -1266,6 +1329,11 @@ async function stepFromMemory(jobId: string) {
         description: item.description,
         importType: item.importType || "",
         serverId: item.serverId || "",
+        subcategory: item.subcategory || "",
+        smmMin: item.smmMin || 0,
+        smmMax: item.smmMax || 0,
+        smmType: item.smmType || "",
+        smmRefill: !!item.smmRefill,
       }));
       await upsertProductRows(products, jobId);
       job.light.push(...products.filter((product) => product.category === "airtime" || product.category === "data" || product.category === "logs" || product.category === "smm"));
@@ -1503,17 +1571,17 @@ export async function browseNumbers(input: { providerId?: string; category?: str
   return { ...empty, countries };
 }
 
-export async function browseExtras(input: { q?: string; kind?: string; page?: number }) {
+export async function browseExtras(input: { q?: string; kind?: string; page?: number; subcategory?: string }) {
   const doc = await loadLight();
   const session = await readSession();
   if (!session.userId) return { rows: [] as Product[], more: false };
   const providerIds = doc.providers.filter((provider) => provider.enabled).map((provider) => provider.id);
   const kind = input.kind === "vpn" || input.kind === "smm" ? input.kind : "random";
-  const page = await queryExtras({ q: (input.q || "").trim(), providerIds, kind, page: input.page });
+  const page = await queryExtras({ q: (input.q || "").trim(), providerIds, kind, page: input.page, subcategory: (input.subcategory || "").trim() });
   return { rows: page.rows.map((row) => quoteProduct(row, doc)), more: page.more };
 }
 
-export async function browseCatalog(input: { q?: string; category?: string; providerId?: string; only?: string; page?: number }) {
+export async function browseCatalog(input: { q?: string; category?: string; providerId?: string; only?: string; page?: number; subcategory?: string }) {
   const doc = await loadLight();
   const session = await readSession();
   const me = doc.users.find((u) => u.id === session.userId);
@@ -1524,7 +1592,95 @@ export async function browseCatalog(input: { q?: string; category?: string; prov
     providerId: input.providerId || "",
     only: input.only || "",
     page: Number(input.page) || 0,
+    subcategory: input.subcategory || "",
   });
+}
+
+function providerHost(url: string) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
+}
+
+async function syncInstakingOrders(doc: Data): Promise<Data> {
+  const waiting = doc.orders.filter((order) => order.category === "smm" && order.status === "waiting" && order.providerOrderId);
+  const refills = doc.orders.filter((order) => order.category === "smm" && order.refillId && order.providerStatus === "Refill requested");
+  if (!waiting.length && !refills.length) return doc;
+  const groups = new Map<string, typeof waiting>();
+  for (const order of waiting) {
+    const product = doc.products.find((item) => item.id === order.productId) || await readProduct(order.productId);
+    if (!product) continue;
+    const list = groups.get(product.providerId) || [];
+    list.push(order);
+    groups.set(product.providerId, list);
+  }
+  let orders = doc.orders;
+  for (const [providerId, rows] of groups) {
+    const provider = doc.providers.find((item) => item.id === providerId);
+    if (!provider || !isInstakingHost(providerHost(provider.baseUrl))) continue;
+    const key = await readProviderKey(providerId);
+    if (!key) continue;
+    const ids = rows.map((order) => order.providerOrderId || "").filter(Boolean).slice(0, 100);
+    const sent = await instakingPost(key, { action: "status", orders: ids.join(",") });
+    if (!sent.ok || !sent.body || typeof sent.body !== "object" || Array.isArray(sent.body)) continue;
+    const table = sent.body as Record<string, unknown>;
+    orders = orders.map((order) => {
+      const id = order.providerOrderId || "";
+      if (!ids.includes(id)) return order;
+      const row = table[id];
+      if (!row || typeof row !== "object" || Array.isArray(row)) return order;
+      const record = row as { status?: unknown; error?: unknown };
+      const status = String(record.status || record.error || "");
+      if (!status) return order;
+      return { ...order, providerStatus: status, status: /completed/i.test(status) ? "completed" as const : order.status };
+    });
+  }
+  for (const order of refills) {
+    const product = doc.products.find((item) => item.id === order.productId) || await readProduct(order.productId);
+    const provider = product && doc.providers.find((item) => item.id === product.providerId);
+    if (!provider || !isInstakingHost(providerHost(provider.baseUrl))) continue;
+    const key = await readProviderKey(provider.id);
+    if (!key) continue;
+    const sent = await instakingPost(key, { action: "refill_status", refill: order.refillId || "" });
+    const status = sent.ok && sent.body && typeof sent.body === "object" ? String((sent.body as { status?: unknown }).status || "") : "";
+    if (!status) continue;
+    orders = orders.map((item) => item.id === order.id ? { ...item, providerStatus: `Refill ${status}` } : item);
+  }
+  return orders === doc.orders ? doc : { ...doc, orders };
+}
+
+async function refillInstakingOrder(doc: Data, userId: string | null, orderId: string) {
+  const user = doc.users.find((item) => item.id === userId);
+  const order = doc.orders.find((item) => item.id === orderId && (user?.role === "admin" || item.userId === user?.id));
+  if (!user || !order) return { error: "Order not found.", data: doc };
+  if (!order.refillAvailable || !order.providerOrderId) return { error: "This order cannot be refilled.", data: doc };
+  const product = doc.products.find((item) => item.id === order.productId) || await readProduct(order.productId);
+  const provider = product && doc.providers.find((item) => item.id === product.providerId);
+  if (!provider || !isInstakingHost(providerHost(provider.baseUrl))) return { error: "This order is not an Instaking order.", data: doc };
+  const key = await readProviderKey(provider.id);
+  if (!key) return { error: "Instaking has no key saved.", data: doc };
+  const sent = await instakingPost(key, { action: "refill", order: order.providerOrderId });
+  if (!sent.ok) return { error: sent.error || "Instaking refused the refill.", data: doc };
+  const refill = sent.body && typeof sent.body === "object" ? String((sent.body as { refill?: unknown }).refill || "") : "";
+  return {
+    error: null,
+    data: { ...doc, orders: doc.orders.map((item) => item.id === order.id ? { ...item, refillId: refill, providerStatus: "Refill requested" } : item) },
+  };
+}
+
+export async function testInstakingKey(apiKey: string) {
+  const session = await readSession();
+  const doc = await loadLight();
+  const me = doc.users.find((user) => user.id === session.userId);
+  if (me?.role !== "admin") return { ok: false, error: "Only an admin can test a key.", balance: "", currency: "" };
+  const key = apiKey.trim();
+  if (!key) return { ok: false, error: "Add the Instaking API key first.", balance: "", currency: "" };
+  const sent = await instakingPost(key, { action: "balance" });
+  if (!sent.ok || !sent.body || typeof sent.body !== "object") return { ok: false, error: sent.error || "Instaking rejected that key.", balance: "", currency: "" };
+  const body = sent.body as { balance?: unknown; currency?: unknown };
+  return { ok: true, error: "", balance: String(body.balance ?? ""), currency: instakingCurrency(body.currency) || String(body.currency || "") };
 }
 
 export async function askSupport(question: string) {

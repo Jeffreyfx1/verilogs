@@ -141,23 +141,32 @@ export const browseNumbers = createServerFn({ method: "POST" })
   });
 
 export const browseExtras = createServerFn({ method: "POST" })
-  .validator((input: { q?: string; kind?: string; page?: number }) => ({
+  .validator((input: { q?: string; kind?: string; page?: number; subcategory?: string }) => ({
     q: String(input?.q || "").slice(0, 60),
     kind: (input?.kind === "vpn" || input?.kind === "smm" ? input.kind : "random") as "vpn" | "smm" | "random",
     page: Math.max(0, Math.min(5000, Math.floor(Number(input?.page) || 0))),
+    subcategory: String(input?.subcategory || "").slice(0, 40),
   }))
   .handler(async ({ data }) => {
     const { browseExtras } = await core();
     return browseExtras(data);
   });
 
+export const testInstaking = createServerFn({ method: "POST" })
+  .validator((input: { apiKey?: string }) => ({ apiKey: String(input?.apiKey || "") }))
+  .handler(async ({ data }) => {
+    const { testInstakingKey } = await core();
+    return testInstakingKey(data.apiKey);
+  });
+
 export const browseCatalog = createServerFn({ method: "POST" })
-  .validator((input: { q?: string; category?: string; providerId?: string; only?: string; page?: number }) => ({
+  .validator((input: { q?: string; category?: string; providerId?: string; only?: string; page?: number; subcategory?: string }) => ({
     q: String(input?.q || "").slice(0, 60),
     category: String(input?.category || ""),
     providerId: String(input?.providerId || ""),
     only: input?.only === "on" || input?.only === "off" ? input.only : "all",
     page: Number(input?.page) || 0,
+    subcategory: String(input?.subcategory || "").slice(0, 40),
   }))
   .handler(async ({ data }) => {
     const { browseCatalog } = await core();

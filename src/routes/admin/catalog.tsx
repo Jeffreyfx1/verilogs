@@ -9,7 +9,9 @@ import { useServers, useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/catalog")({ component: CatalogPage });
 
-const CATS = ["", "numbers", "rent", "data", "airtime", "cable", "electricity", "exam", "boost", "vpn", "giftcard", "betting", "other"];
+const CATS = ["", "numbers", "rent", "logs", "smm", "data", "airtime", "cable", "electricity", "exam", "boost", "vpn", "giftcard", "betting", "other"];
+const LOG_GROUPS = ["TikTok", "Facebook", "Instagram", "YouTube", "X (Twitter)", "Telegram", "Other"];
+const SMM_GROUPS = ["Instagram", "TikTok", "YouTube", "Facebook", "X (Twitter)", "Telegram", "Snapchat", "Twitch", "Audiomack", "Other"];
 
 function CatalogPage() {
   const providers = useStore((s) => s.providers);
@@ -32,11 +34,17 @@ function CatalogPage() {
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
+  const settings = useStore((s) => s.settings);
+  const saveSettings = useStore((s) => s.saveSettings);
+  const setSubcategory = useStore((s) => s.setSubcategory);
+  const [sub, setSub] = useState("");
+  const [custom, setCustom] = useState("");
+  const [moving, setMoving] = useState("");
 
   useEffect(() => {
     let stop = false;
     const timer = setTimeout(() => {
-      browseCatalog({ data: { q, category: cat, providerId: provider, only, page } })
+      browseCatalog({ data: { q, category: cat, providerId: provider, only, page, subcategory: sub } })
         .then((res) => {
           if (stop) return;
           setRows(res.rows);
@@ -50,7 +58,7 @@ function CatalogPage() {
       stop = true;
       clearTimeout(timer);
     };
-  }, [q, cat, provider, only, page, tick]);
+  }, [q, cat, provider, only, page, tick, sub]);
 
   const pages = Math.max(1, Math.ceil(total / 40));
 
@@ -89,16 +97,50 @@ function CatalogPage() {
     toast.success("Listing saved");
   };
 
+  const namesFor = (category: string) => {
+    const base = category === "smm" ? SMM_GROUPS : LOG_GROUPS;
+    const extra = (settings.marketplaceSubcategories || []).filter((name) => !base.includes(name));
+    return [...base, ...extra];
+  };
+
+  const assign = async (id: string, name: string) => {
+    if (moving) return;
+    setMoving(id);
+    const error = await setSubcategory(id, name);
+    setMoving("");
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    toast.success(name ? `Moved to ${name}` : "Left uncategorized");
+    setTick((n) => n + 1);
+  };
+
+  const addName = async () => {
+    const name = custom.trim().slice(0, 40);
+    if (!name) return toast.error("Type a subcategory name.");
+    const next = [...new Set([...(settings.marketplaceSubcategories || []), name])].slice(0, 30);
+    const error = await saveSettings({ marketplaceSubcategories: next });
+    if (error) return toast.error(error);
+    setCustom("");
+    toast.success("Subcategory added. Assign it on a logs or SMM row.");
+  };
+
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-extrabold">Catalogue</h1>
-        <p className="text-sm text-muted">{total} matching · {live} live. Search and edit one page at a time. A saved price or description stays locked on the next import.</p>
+        <p className="text-sm text-muted">{total} matching · {live} live. Search and edit one page at a time. Logs and SMM rows can be moved between marketplace subcategories. A saved price or description stays locked on the next import.</p>
       </div>
       <div className="grid gap-2 md:grid-cols-3 lg:grid-cols-6">
         <input className={inputClass} placeholder="Search" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} />
         <select className={inputClass} value={cat} onChange={(e) => { setCat(e.target.value); setPage(0); }}>
           {CATS.map((c) => <option key={c || "all"} value={c}>{c ? CATEGORY_LABEL[c] : "All categories"}</option>)}
+        </select>
+        <select className={inputClass} value={sub} onChange={(e) => { setSub(e.target.value); setPage(0); }}>
+          <option value="">All subcategories</option>
+          <option value="none">Uncategorized</option>
+          {namesFor(cat === "smm" ? "smm" : "logs").map((name) => <option key={name} value={name}>{name}</option>)}
         </select>
         <select className={inputClass} value={provider} onChange={(e) => { setProvider(e.target.value); setPage(0); }}>
           <option value="">All providers</option>
@@ -110,6 +152,10 @@ function CatalogPage() {
           <option value="on">Live</option>
         </select>
         <Button tone="soft" onClick={() => apply(rows.map((p) => p.id), only !== "on")}>{only === "on" ? "Disable this page" : "Enable this page"}</Button>
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <input className={inputClass} value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="New subcategory name" />
+        <Button tone="soft" onClick={() => void addName()}>Add subcategory</Button>
       </div>
       {picked.length ? (
         <div className="flex flex-wrap gap-2">
@@ -127,7 +173,7 @@ function CatalogPage() {
                 <input type="checkbox" checked={picked.includes(p.id)} onChange={() => toggle(p.id)} className="mt-1" aria-label={`Select ${p.name}`} />
                 <span className="min-w-0 flex-1">
                   <span className="font-semibold">{p.name}</span>
-                  <span className="mt-0.5 block text-xs text-muted">{CATEGORY_LABEL[p.category]} · {labelFor(p.providerId)} · {[p.country, p.network, p.service].filter(Boolean).join(" · ")}</span>
+                  <span className="mt-0.5 block text-xs text-muted">{CATEGORY_LABEL[p.category]} · {labelFor(p.providerId)} · {[p.subcategory, p.country, p.network, p.service].filter(Boolean).join(" · ")}</span>
                   {p.description ? <span className="mt-1 block line-clamp-2 text-xs text-muted">{p.description.replace(/\s+/g, " ").trim()}</span> : null}
                 </span>
                 <span className="shrink-0 text-right">
@@ -145,6 +191,15 @@ function CatalogPage() {
                   </div>
                   {note ? <p className="text-xs text-danger sm:col-span-2">{note}</p> : <p className="text-xs text-muted sm:col-span-2">Saving locks this description and price so a later import will not overwrite them.</p>}
                 </div>
+              ) : null}
+              {p.category === "logs" || p.category === "smm" ? (
+                <label className="mt-2 block text-xs font-semibold text-muted">
+                  Marketplace subcategory
+                  <select className={`${inputClass} mt-1`} value={p.subcategory || ""} disabled={moving === p.id} onChange={(e) => void assign(p.id, e.target.value)}>
+                    <option value="">Uncategorized — needs review</option>
+                    {namesFor(p.category).map((name) => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </label>
               ) : null}
             </div>
           ))}

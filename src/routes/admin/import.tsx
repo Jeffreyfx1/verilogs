@@ -9,7 +9,7 @@ import { IMPORT_CARDS } from "@/lib/import-source";
 import { batchWindow } from "@/lib/import-batch";
 import { resumeCatalogRun, startCatalogRun, useImportRun } from "@/lib/import-run";
 import { naira } from "@/lib/money";
-import { browseRemoteCatalog, clearNumberCatalog } from "@/lib/shop-fns";
+import { browseRemoteCatalog, clearNumberCatalog, testInstaking } from "@/lib/shop-fns";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/import")({ component: ImportPage });
@@ -54,6 +54,7 @@ function ImportPage() {
   const [browseQ, setBrowseQ] = useState("");
   const [browsing, setBrowsing] = useState(false);
   const [browseNote, setBrowseNote] = useState("");
+  const [testing, setTesting] = useState(false);
   const busy = phase === "fetch" || phase === "save";
   useEffect(() => {
     if (phase === "done" && run.selective && jobId && cleared.current !== jobId) {
@@ -166,6 +167,20 @@ function ImportPage() {
   const resume = () => {
     if (!jobId || busy) return;
     resumeCatalogRun();
+  };
+
+  const probeInstaking = async () => {
+    if (testing || busy) return;
+    setTesting(true);
+    try {
+      const res = await testInstaking({ data: { apiKey } });
+      if (!res.ok) toast.error(res.error || "Instaking rejected that key.");
+      else toast.success(`Instaking balance ${res.balance}${res.currency ? ` ${res.currency}` : ""}`.trim());
+    } catch {
+      toast.error("Could not reach Instaking.");
+    } finally {
+      setTesting(false);
+    }
   };
 
   return (
@@ -311,6 +326,11 @@ function ImportPage() {
           <Field label="API key" hint="Stored on the server for this provider. It is not shown again.">
             <input className={inputClass} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Optional until you pull a live URL" />
           </Field>
+          {kind === "smm" ? (
+            <Button tone="soft" busy={testing} disabled={busy || !apiKey.trim()} onClick={() => void probeInstaking()}>
+              {testing ? "Testing Instaking…" : "Test Instaking connection"}
+            </Button>
+          ) : null}
           <Field label="Import type" hint="This choice is the category. It is not guessed from the product text.">
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {IMPORT_CARDS.map((card) => (
