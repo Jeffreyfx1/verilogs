@@ -68,7 +68,7 @@ export const clearNumberCatalog = createServerFn({ method: "POST" }).handler(asy
 });
 
 export const beginCatalogImport = createServerFn({ method: "POST" })
-  .validator((input: { url?: string; payload?: unknown; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean; kind?: string }) => ({
+  .validator((input: { url?: string; payload?: unknown; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean; kind?: string; selective?: boolean }) => ({
     url: String(input?.url || ""),
     payload: input?.payload,
     apiKey: input?.apiKey ? String(input.apiKey) : "",
@@ -80,10 +80,24 @@ export const beginCatalogImport = createServerFn({ method: "POST" })
     markup: Number(input?.markup) || 0,
     publish: !!input?.publish,
     kind: input?.kind === "vtu" || input?.kind === "vpn" || input?.kind === "smm" || input?.kind === "random" ? input.kind : "numbers",
+    selective: !!input?.selective,
   }))
   .handler(async ({ data }): Promise<ImportStep> => {
     const { beginCatalogImport } = await core();
     return beginCatalogImport(data);
+  });
+
+export const browseRemoteCatalog = createServerFn({ method: "POST" })
+  .validator((input: { url?: string; apiKey?: string; providerId?: string; cursor?: string; q?: string }) => ({
+    url: String(input?.url || "").slice(0, 2000),
+    apiKey: input?.apiKey ? String(input.apiKey).slice(0, 500) : "",
+    providerId: input?.providerId ? String(input.providerId).slice(0, 80) : "",
+    cursor: input?.cursor ? String(input.cursor).slice(0, 2000) : "",
+    q: String(input?.q || "").slice(0, 80),
+  }))
+  .handler(async ({ data }) => {
+    const { browseRemoteCatalog } = await core();
+    return browseRemoteCatalog(data);
   });
 
 export const stepCatalogImport = createServerFn({ method: "POST" })

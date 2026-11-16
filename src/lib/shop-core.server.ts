@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
 import { freshData, isLive, isUsaWhatsapp, normalizeData, quoteProduct, rankUsaWhatsapp, repairCatalog, sellPrice, markupFor, usaWhatsappPrice, withMargin, serverLabel, topupQuote, withAdminLogin, applyImportSlice, type Data, type Product, type SyncReport } from "@/lib/catalog";
 import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, shapeImport, airtimeProductsFromPayload, MAJOR_SERVICES, type ImportKind, type ParsedItem } from "@/lib/categorize";
+import { catalogStamp, followCatalogPages, walkBrowse } from "@/lib/catalog-pages";
 import { IMPORT_BATCH, importBatchCount } from "@/lib/import-batch";
 import { uid } from "@/lib/money";
 import { placeOnProvider } from "@/lib/fulfill.server";
@@ -21,6 +22,7 @@ import {
   readProduct,
   readShopRows,
   setRowsEnabled,
+  lockListing,
   upsertProductRows,
 } from "@/lib/product-rows.server";
 import {
@@ -43,6 +45,7 @@ import {
   saveFaqs,
   saveSettings,
   setEnabled,
+  editListing,
   setProvider,
   tickWaiting,
   updateProfile,
@@ -433,6 +436,13 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
       doc = out.data;
       error = out.error;
       if (!error) await setRowsEnabled(ids as string[], !!payload.enabled);
+    } else if (op === "editListing") {
+      const description = typeof payload.description === "string" ? payload.description : "";
+      const price = num("price");
+      const out = editListing(doc, userId, str("id"), { description, price });
+      doc = out.data;
+      error = out.error;
+      if (!error) await lockListing(str("id"), { description, price });
     } else if (op === "setProvider") {
       const patch: { enabled?: boolean; name?: string; usdRate?: number; markup?: number; currency?: "NGN" | "USD"; operatorMarkups?: Record<string, number>; operatorPrices?: Record<string, number> } = {};
       if (typeof payload.enabled === "boolean") patch.enabled = payload.enabled;
@@ -700,7 +710,19 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     headers["api-key"] = key;
   }
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 90000);
+  const timer = setTimeout(() => ctrl.abort(), 180000);
+  const tooBig = 32_000_000;
+  const readJson = async (target: URL) => {
+    const res = await fetch(target, { headers, signal: ctrl.signal });
+    if (!res.ok) return null;
+    const text = await res.text();
+    if (!text || text.length > tooBig) return null;
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      return null;
+    }
+  };
   try {
     const allow = [...new Set([...(input.allow || []), routed.product].filter(Boolean))];
     const barePrices = url.hostname.endsWith("5sim.net") && /\/v1\/guest\/prices\/?$/.test(url.pathname) && !url.searchParams.get("product") && !routed.product;
@@ -736,7 +758,7 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     }
     const res = await fetch(url, { headers, signal: ctrl.signal });
     const text = await res.text();
-    if (text.length > 16_000_000) return { ok: false as const, error: "That catalogue is larger than 16MB." };
+    if (text.length > tooBig) return { ok: false as const, error: "That catalogue is larger than 32MB." };
     const both = input.kind === "vtu" || input.kind === "random";
     if (!res.ok && !both) {
       const detail = text.replace(/\s+/g, " ").trim().slice(0, 160);
@@ -760,7 +782,7 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
         try {
           const extra = await fetch(keyed, { headers, signal: ctrl.signal });
           const extraText = await extra.text();
-          if (extra.ok && extraText && extraText.length <= 16_000_000) {
+          if (extra.ok && extraText && extraText.length <= tooBig) {
             const parsed = JSON.parse(extraText) as unknown;
             if (extractCatalog(parsed).items.length) found.push(parsed);
           }
@@ -784,7 +806,7 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
           try {
             const posted = await fetch(url, init);
             const postedText = await posted.text();
-            if (!posted.ok || !postedText || postedText.length > 16_000_000) continue;
+            if (!posted.ok || !postedText || postedText.length > tooBig) continue;
             const parsed = JSON.parse(postedText) as unknown;
             if (extractCatalog(parsed).items.length) found.push(parsed);
           } catch {
@@ -795,6 +817,13 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
       if (found.length) payload = found.length === 1 ? found[0] : found;
     }
     if (payload == null) return { ok: false as const, error: both ? "The API did not return a catalogue. Tried GET and POST." : "The API did not return JSON." };
+    if (!url.hostname.endsWith("5sim.net")) {
+      try {
+        payload = await followCatalogPages(url, payload, readJson);
+      } catch {
+        // A later page can fail. The pages already read stay in the payload.
+      }
+    }
     const hint = /hosting|rent/i.test(url.search + url.pathname) ? "hosting" : "";
     const parts = url.pathname.split("/").filter(Boolean);
     const at = parts.findIndex((part) => part === "products");
@@ -803,6 +832,151 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     return { ok: true as const, payload: ready };
   } catch {
     return { ok: false as const, error: "Could not reach that API. Check the URL and key." };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const BROWSE_RAW_CAP = 48_000;
+const BROWSE_KEEP = new Set([
+  "id", "service_id", "product_id", "external_id", "sku", "name", "title", "service", "service_name",
+  "category", "type", "country", "price", "cost", "rate", "amount", "stock", "count", "qty", "quantity",
+  "description", "desc", "details", "detail", "info", "about", "long_description", "longdescription",
+  "full_description", "fulldescription", "product_description", "content", "body", "text", "note", "notes",
+  "operator", "network", "min", "max",
+]);
+
+export type RemoteCard = {
+  stamp: string;
+  name: string;
+  service: string;
+  category: string;
+  country: string;
+  price: number;
+  stock: number;
+  blurb: string;
+  raw: string;
+};
+
+function slimBrowseRaw(item: unknown): unknown {
+  let text = "";
+  try {
+    text = JSON.stringify(item);
+  } catch {
+    return { note: "This row could not be copied." };
+  }
+  if (text.length <= BROWSE_RAW_CAP) return item;
+  const bag = item && typeof item === "object" && !Array.isArray(item) ? (item as Record<string, unknown>) : null;
+  if (!bag) return { note: text.slice(0, 4000) };
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(bag)) {
+    if (BROWSE_KEEP.has(key) || BROWSE_KEEP.has(key.toLowerCase())) out[key] = value;
+  }
+  return Object.keys(out).length ? out : { note: text.slice(0, 4000) };
+}
+
+function emptyBrowse(error: string | null) {
+  return { error, items: [] as RemoteCard[], total: null as number | null, page: null as number | null, lastPage: null as number | null, nextCursor: "" };
+}
+
+export async function browseRemoteCatalog(input: { url: string; apiKey?: string; providerId?: string; cursor?: string; q?: string }) {
+  const session = await readSession();
+  const doc = await loadLight();
+  const me = doc.users.find((u) => u.id === session.userId);
+  if (me?.role !== "admin") return emptyBrowse("Only an admin can browse an API.");
+  let start: URL;
+  try {
+    start = new URL(input.url);
+  } catch {
+    return emptyBrowse("Enter a full https address.");
+  }
+  if (start.protocol !== "https:" && start.protocol !== "http:") return emptyBrowse("Only http and https catalogues can be browsed.");
+  let pageUrl = start;
+  let from = 0;
+  if (input.cursor) {
+    try {
+      pageUrl = new URL(input.cursor);
+    } catch {
+      return emptyBrowse("That page link is not valid.");
+    }
+    if (pageUrl.hostname !== start.hostname) return emptyBrowse("The next page left this catalogue.");
+    from = Math.max(0, Number(pageUrl.searchParams.get("vl_from") || 0) || 0);
+  }
+  pageUrl.searchParams.delete("vl_from");
+  const key = input.apiKey?.trim() || (input.providerId ? await readProviderKey(input.providerId) : "");
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (key) {
+    const tokenAuth = /smeapi\.com\.ng$/i.test(pageUrl.hostname);
+    headers.Authorization = (tokenAuth ? "Token " : "Bearer ") + key;
+    headers["X-API-KEY"] = key;
+    headers["api-key"] = key;
+  }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 45000);
+  const tooBig = 32_000_000;
+  const readJson = async (target: URL) => {
+    if (target.hostname !== start.hostname) return null;
+    const clean = new URL(target);
+    clean.searchParams.delete("vl_from");
+    try {
+      const res = await fetch(clean, { headers, signal: ctrl.signal });
+      if (!res.ok) return null;
+      const text = await res.text();
+      if (!text || text.length > tooBig) return null;
+      return JSON.parse(text) as unknown;
+    } catch {
+      return null;
+    }
+  };
+  try {
+    const first = await readJson(pageUrl);
+    if (first == null) return emptyBrowse("That page did not come back as JSON.");
+    const walked = await walkBrowse({
+      start: pageUrl,
+      first,
+      from,
+      q: input.q || "",
+      fetchPage: readJson,
+      limit: 40,
+      extraHops: 10,
+    });
+    const items: RemoteCard[] = walked.items.map((item) => {
+      const raw = slimBrowseRaw(item);
+      const parsed = extractCatalog({ items: [raw] }).items[0];
+      const bag = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+      const fallback = String(bag.name || bag.title || bag.service_name || bag.service || catalogStamp(item)).slice(0, 180);
+      const description = parsed?.description || "";
+      let packed = "{}";
+      try {
+        packed = JSON.stringify(raw);
+      } catch {
+        packed = "{}";
+      }
+      return {
+        stamp: catalogStamp(item),
+        name: parsed?.name || fallback || "Untitled",
+        service: parsed?.service || "",
+        category: parsed?.category || "",
+        country: parsed?.country || "",
+        price: parsed?.price || 0,
+        stock: parsed?.stock || 0,
+        blurb: description.replace(/\s+/g, " ").trim().slice(0, 180),
+        raw: packed,
+      };
+    });
+    if (!items.length && !walked.nextCursor) {
+      return {
+        error: input.q ? "Nothing on the pages searched matched that text." : "This address did not return a product list. A full pull still works for catalogues that are not paged lists.",
+        items,
+        total: walked.total,
+        page: walked.page,
+        lastPage: walked.lastPage,
+        nextCursor: "",
+      };
+    }
+    return { error: null, items, total: walked.total, page: walked.page, lastPage: walked.lastPage, nextCursor: walked.nextCursor };
+  } catch {
+    return emptyBrowse("Could not reach that API. Check the URL and key.");
   } finally {
     clearTimeout(timer);
   }
@@ -818,6 +992,7 @@ type PendingImport = {
   skipped: number;
   touched: string[];
   light: Product[];
+  keepOthers: boolean;
   tally: { created: number; updated: number; byCategory: Record<string, number>; byNetwork: Record<string, number> };
 };
 
@@ -839,28 +1014,39 @@ function importKindOf(value: string | undefined): ImportKind {
   return value === "vtu" || value === "vpn" || value === "smm" || value === "random" ? value : "numbers";
 }
 
-export async function beginCatalogImport(input: { url?: string; payload?: unknown; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean; kind?: string }) {
+export async function beginCatalogImport(input: { url?: string; payload?: unknown; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean; kind?: string; selective?: boolean }) {
   const session = await readSession();
   const doc = await loadLight();
   const me = doc.users.find((u) => u.id === session.userId);
   if (me?.role !== "admin") return emptyImport("Only an admin can pull an API.");
+  const selective = !!input.selective;
   const kind = importKindOf(input.kind);
   const wanted = doc.settings.wantedServices?.length ? doc.settings.wantedServices : [...MAJOR_SERVICES];
   const routed = input.url ? fiveSimCategoryUrl(input.url) : { url: "", product: "" };
   const wantedForPull = routed.product ? [...wanted, routed.product] : wanted;
   let payload = input.payload;
-  if (input.url) {
+  if (!selective && input.url) {
     const fetched = await pullRemote({ url: input.url, apiKey: input.apiKey, providerId: input.providerId, allow: kind === "numbers" ? wantedForPull : [], kind });
     if (!fetched.ok) return emptyImport(fetched.error);
     payload = fetched.payload;
   }
-  if (payload == null) return emptyImport("Add a catalogue URL or paste JSON.");
+  if (payload == null) return emptyImport(selective ? "Tick products before importing." : "Add a catalogue URL or paste JSON.");
+  if (selective) {
+    let size = 0;
+    try {
+      size = JSON.stringify(payload).length;
+    } catch {
+      return emptyImport("Those products could not be read.");
+    }
+    if (size > 8_000_000) return emptyImport("That selection is too large. Import fewer products.");
+  }
   const extracted = extractCatalog(payload);
-  const airtime = kind === "vtu" ? airtimeProductsFromPayload(payload) : [];
-  const shaped = shapeImport(extracted.items, kind, wantedForPull);
+  const airtime = !selective && kind === "vtu" ? airtimeProductsFromPayload(payload) : [];
+  const shaped = selective ? shapeImport(extracted.items, "random", []) : shapeImport(extracted.items, kind, wantedForPull);
   const have = new Set(shaped.filter((item) => item.category === "airtime").map((item) => item.network.toLowerCase()));
-  const items = [...shaped, ...airtime.filter((item) => !have.has(item.network.toLowerCase()))];
-  if (!items.length) return emptyImport(KIND_EMPTY[kind]);
+  const joined = selective ? shaped : [...shaped, ...airtime.filter((item) => !have.has(item.network.toLowerCase()))];
+  const items = selective ? joined.slice(0, 200) : joined;
+  if (!items.length) return emptyImport(selective ? "None of the ticked products could be read." : KIND_EMPTY[kind]);
   const jobId = crypto.randomUUID();
   const meta: ImportMeta = {
     name: input.name || "New API",
@@ -883,6 +1069,7 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
     skipped: extracted.skipped + (extracted.items.length - items.length),
     touched,
     light: [],
+    keepOthers: selective,
     tally: { created: 0, updated: 0, byCategory: {}, byNetwork: {} },
   });
   return { error: null, jobId, total: items.length, saved: 0, batch: 0, batches: importBatchCount(items.length), batchSize: IMPORT_BATCH, done: false, report: null, state: null };
@@ -943,6 +1130,27 @@ function mergeLight(doc: Data, providerId: string, rows: Product[]): Data {
   return { ...doc, products };
 }
 
+function mergeLightAdd(doc: Data, providerId: string, rows: Product[]): Data {
+  if (!rows.length) return doc;
+  const products = [...doc.products];
+  const byExternal = new Map(products.filter((product) => product.providerId === providerId).map((product) => [product.externalId, product]));
+  for (const row of rows) {
+    const prev = byExternal.get(row.externalId);
+    if (!prev) {
+      products.push(row);
+      byExternal.set(row.externalId, row);
+      continue;
+    }
+    const at = products.indexOf(prev);
+    if (at >= 0) {
+      const next = { ...row, id: prev.id, enabled: prev.enabled || row.enabled };
+      products[at] = next;
+      byExternal.set(row.externalId, next);
+    }
+  }
+  return { ...doc, products };
+}
+
 async function stepFromMemory(jobId: string) {
   const job = pendingImports.get(jobId);
   if (!job) return emptyImport("That import is no longer running. Start it again.");
@@ -998,10 +1206,14 @@ async function stepFromMemory(jobId: string) {
         job.meta.apiKey = "";
       }
       if (finalize) {
-        const categories = [...new Set(job.items.map((item) => item.category))];
-        await pruneSyncedProducts(held.provider.id, jobId, job.touched, categories);
-        if (categories.includes("boost")) await dropMisfiledBoost(held.provider.id);
-        held.doc = mergeLight(held.doc, held.provider.id, job.light);
+        if (job.keepOthers) {
+          held.doc = mergeLightAdd(held.doc, held.provider.id, job.light);
+        } else {
+          const categories = [...new Set(job.items.map((item) => item.category))];
+          await pruneSyncedProducts(held.provider.id, jobId, job.touched, categories);
+          if (categories.includes("boost")) await dropMisfiledBoost(held.provider.id);
+          held.doc = mergeLight(held.doc, held.provider.id, job.light);
+        }
       }
       if (job.items.some((item) => item.category === "numbers" || item.category === "rent")) held.provider.servesNumbers = true;
       held.provider.enabled = true;

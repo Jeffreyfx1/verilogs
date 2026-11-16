@@ -5,10 +5,23 @@ import { Button, Field, inputClass } from "@/components/ui";
 import { CATEGORY_LABEL, type SyncReport } from "@/lib/catalog";
 import { extractCatalog, shapeImport, type ImportKind } from "@/lib/categorize";
 import { batchWindow } from "@/lib/import-batch";
-import { beginCatalogImport, clearNumberCatalog, stepCatalogImport } from "@/lib/shop-fns";
+import { naira } from "@/lib/money";
+import { beginCatalogImport, browseRemoteCatalog, clearNumberCatalog, stepCatalogImport } from "@/lib/shop-fns";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/import")({ component: ImportPage });
+
+type BrowseCard = {
+  stamp: string;
+  name: string;
+  service: string;
+  category: string;
+  country: string;
+  price: number;
+  stock: number;
+  blurb: string;
+  raw: string;
+};
 
 function ImportPage() {
   const providers = useStore((s) => s.providers);
@@ -37,6 +50,13 @@ function ImportPage() {
   const [namesDirty, setNamesDirty] = useState(false);
   const [status, setStatus] = useState("");
   const [kind, setKind] = useState<ImportKind>("numbers");
+  const [rows, setRows] = useState<BrowseCard[]>([]);
+  const [picked, setPicked] = useState<Map<string, string>>(() => new Map());
+  const [nextCursor, setNextCursor] = useState("");
+  const [remoteTotal, setRemoteTotal] = useState<number | null>(null);
+  const [browseQ, setBrowseQ] = useState("");
+  const [browsing, setBrowsing] = useState(false);
+  const [browseNote, setBrowseNote] = useState("");
   const busy = phase === "fetch" || phase === "save";
   useEffect(() => {
     if (namesDirty) return;
@@ -69,12 +89,12 @@ function ImportPage() {
     }
   }, [kind, names, text]);
 
-  const runJob = async (payload: unknown | undefined, url: string, forced?: ImportKind) => {
+  const runJob = async (payload: unknown | undefined, url: string, forced?: ImportKind, selective = false) => {
     if (busy) return;
     const existing = providerId ? providers.find((p) => p.id === providerId) : undefined;
     const label = (existing?.name || name).trim() || (url ? "New API" : "Pasted API");
-    setPhase(url ? "fetch" : "save");
-    setStatus(url ? "Downloading the catalogue." : "Splitting the catalogue into batches of 2,000.");
+    setPhase(url && !selective ? "fetch" : "save");
+    setStatus(selective ? "Saving the products you ticked. Other products stay." : url ? "Downloading the catalogue." : "Splitting the catalogue into batches of 2,000.");
     setReport(null);
     setSaved(0);
     setDoneBatches(0);
@@ -95,6 +115,7 @@ function ImportPage() {
           markup,
           publish,
           kind: forced || kind,
+          selective,
         },
       });
       if (started.error || !started.jobId) {
@@ -135,6 +156,7 @@ function ImportPage() {
       }
       setReport(latest.report);
       setPhase("done");
+      if (selective) setPicked(new Map());
       const message = `${latest.report.imported.toLocaleString("en-NG")} services filed under ${latest.report.serverLabel || label}`;
       setStatus(message);
       toast.success(message);
@@ -143,6 +165,58 @@ function ImportPage() {
       setStatus("Could not keep saving. The batches already saved are still in the catalogue.");
       toast.error("Import stopped.");
     }
+  };
+
+  const loadBrowse = async (cursor: string, q: string) => {
+    if (browsing || busy) return;
+    if (!apiUrl.trim()) {
+      toast.error("Add the catalogue URL first.");
+      return;
+    }
+    setBrowsing(true);
+    setBrowseNote("");
+    try {
+      const res = await browseRemoteCatalog({ data: { url: apiUrl.trim(), apiKey, providerId, cursor, q } });
+      setRows(res.items);
+      setNextCursor(res.nextCursor || "");
+      setRemoteTotal(res.total);
+      setBrowseNote(res.error || "");
+      if (res.error && !res.items.length) toast.error(res.error);
+    } catch {
+      setBrowseNote("Could not browse that catalogue.");
+      toast.error("Could not browse that catalogue.");
+    } finally {
+      setBrowsing(false);
+    }
+  };
+
+  const selectPage = () => {
+    const next = new Map(picked);
+    const clearing = rows.length > 0 && rows.every((row) => next.has(row.stamp));
+    if (clearing) {
+      for (const row of rows) next.delete(row.stamp);
+      setPicked(next);
+      return;
+    }
+    let capped = false;
+    for (const row of rows) {
+      if (next.has(row.stamp)) continue;
+      if (next.size >= 200) {
+        capped = true;
+        break;
+      }
+      next.set(row.stamp, row.raw);
+    }
+    setPicked(next);
+    if (capped) toast.error("Select at most 200 products at a time.");
+  };
+
+  const priceLabel = (price: number) => {
+    if (currency === "USD") {
+      const n = Number(price) || 0;
+      return `$${n.toLocaleString("en-NG", { maximumFractionDigits: 4 })}`;
+    }
+    return naira(price);
   };
 
   const resume = async () => {
@@ -189,7 +263,7 @@ function ImportPage() {
       <div>
         <h1 className="text-2xl font-extrabold">Import services</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Only the service names below are imported, for every country that API actually sells. WhatsApp, Telegram, Facebook, Instagram, Amazon, Google, YouTube, TikTok and ChatGPT are already on the list. Add a name, save it, then pull again. A pull replaces the old number catalogue.
+          A catalogue URL is read page by page. Pull and import replaces that type on this provider. Browse lets you tick products and import only those, without removing the rest.
         </p>
       </div>
       <section className="rounded-card border border-line bg-card p-4 shadow-card">
@@ -338,6 +412,71 @@ function ImportPage() {
           ) : null}
         </section>
       </div>
+      <section className="rounded-card border border-line bg-card p-4 shadow-card">
+        <h2 className="font-extrabold">Browse this catalogue</h2>
+        <p className="mt-1 text-sm text-muted">
+          Browse does not import and does not remove other products. Tick what you want, then import only those. Prices shown are the API price, before markup. A full pull still replaces that type.
+        </p>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <input className={inputClass} value={browseQ} onChange={(e) => setBrowseQ(e.target.value)} placeholder='Search, e.g. "WhatsApp" or "Gmail"' />
+          <Button tone="soft" disabled={busy || browsing || !apiUrl.trim()} onClick={() => void loadBrowse("", browseQ.trim())}>{browsing ? "Reading…" : "Browse this API"}</Button>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+          <span className="rounded-full bg-paper px-3 py-1">Available {remoteTotal == null ? "—" : remoteTotal.toLocaleString("en-NG")}</span>
+          <span className="rounded-full bg-paper px-3 py-1">On this page {rows.length.toLocaleString("en-NG")}</span>
+          <span className="rounded-full bg-paper px-3 py-1">Selected {picked.size.toLocaleString("en-NG")}</span>
+        </div>
+        {browseNote ? <p className="mt-3 text-sm text-muted">{browseNote}</p> : null}
+        {rows.length || nextCursor || picked.size ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {rows.length ? <Button tone="soft" disabled={busy || browsing} onClick={selectPage}>{rows.every((row) => picked.has(row.stamp)) ? "Clear this page" : "Tick this page"}</Button> : null}
+            <Button tone="soft" disabled={busy || browsing || !nextCursor} onClick={() => void loadBrowse(nextCursor, browseQ.trim())}>Next page</Button>
+            <Button disabled={busy || browsing || picked.size === 0} onClick={() => {
+              const items = [...picked.values()].flatMap((raw) => {
+                try {
+                  return [JSON.parse(raw) as unknown];
+                } catch {
+                  return [];
+                }
+              });
+              if (!items.length) {
+                toast.error("The ticked products could not be read.");
+                return;
+              }
+              void runJob({ items }, "", kind, true);
+            }}>{busy ? "Importing…" : `Import selected (${picked.size})`}</Button>
+          </div>
+        ) : null}
+        <ul className="mt-3 space-y-2">
+          {rows.map((row) => (
+            <li key={row.stamp}>
+              <label className="flex items-start gap-3 rounded-xl border border-line bg-paper p-3">
+                <input type="checkbox" className="mt-1 h-5 w-5" checked={picked.has(row.stamp)} onChange={() => {
+                  if (!picked.has(row.stamp) && picked.size >= 200) {
+                    toast.error("Select at most 200 products at a time.");
+                    return;
+                  }
+                  setPicked((prev) => {
+                    const next = new Map(prev);
+                    if (next.has(row.stamp)) next.delete(row.stamp);
+                    else next.set(row.stamp, row.raw);
+                    return next;
+                  });
+                }} />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-extrabold">{row.name}</span>
+                  <span className="mt-1 block text-xs text-muted">
+                    {[row.service, row.country, row.category ? (CATEGORY_LABEL[row.category] || row.category) : ""].filter(Boolean).join(" · ") || "Unfiled"}
+                    {row.stock ? ` · stock ${row.stock.toLocaleString("en-NG")}` : ""}
+                  </span>
+                  {row.blurb ? <span className="mt-1 block text-sm text-muted">{row.blurb}</span> : null}
+                </span>
+                <span className="shrink-0 text-sm font-extrabold">{priceLabel(row.price)}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
   );
 }
