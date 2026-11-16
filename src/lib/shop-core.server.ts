@@ -132,47 +132,7 @@ function withoutSampleCatalog(doc: Data): Data {
   };
 }
 
-async function resetImportedCataloguesOnce() {
-  const sql = await getSql();
-  const existing = await sql<{ id: string }>`select id from shop_catalog_backups where id = 'pre-source-reset'`;
-  if (existing.length) return;
-  const products = await sql`select * from shop_products`;
-  const catalog = await sql<{ doc: string }>`select doc from shop_catalog where id = 'main'`;
-  const stateRows = await sql<{ doc: string }>`select doc from shop_state where id = 'main'`;
-  let stateProducts: unknown[] = [];
-  let stripped = "";
-  let preservedCounts = { users: 0, orders: 0, txns: 0 };
-  if (stateRows[0]?.doc) {
-    const doc = JSON.parse(stateRows[0].doc) as Data;
-    stateProducts = Array.isArray(doc.products) ? doc.products : [];
-    const users = Array.isArray(doc.users) ? doc.users.length : 0;
-    const orders = Array.isArray(doc.orders) ? doc.orders.length : 0;
-    const txns = Array.isArray(doc.txns) ? doc.txns.length : 0;
-    doc.products = [];
-    doc.providers = (doc.providers || []).map((provider) => ({ ...provider, lastSync: null }));
-    stripped = JSON.stringify(doc);
-    preservedCounts = { users, orders, txns };
-  }
-  const note = "Imported catalogues only. Customer accounts, wallets, orders, deposits and provider keys were not deleted.";
-  const payload = JSON.stringify({
-    shopProducts: products,
-    shopCatalog: catalog[0]?.doc || "[]",
-    stateProducts,
-    preserved: preservedCounts,
-  });
-  try {
-    await sql`insert into shop_catalog_backups (id, note, products_json, product_count) values ('pre-source-reset', ${note}, ${payload}, ${products.length + stateProducts.length})`;
-  } catch {
-    return;
-  }
-  await sql`delete from shop_products`;
-  await sql`update shop_catalog set doc = '[]' where id = 'main'`;
-  if (stripped) await sql`update shop_state set doc = ${stripped}, updated_at = now() where id = 'main'`;
-  catalogCache = [];
-}
-
 async function loadDoc(withCatalog = false): Promise<Data> {
-  await resetImportedCataloguesOnce();
   const sql = await getSql();
   const rows = await sql<{ doc: string }>`select doc from shop_state where id = 'main'`;
   if (!rows[0]) {
@@ -203,7 +163,6 @@ async function loadDoc(withCatalog = false): Promise<Data> {
 }
 
 async function loadLight(): Promise<Data> {
-  await resetImportedCataloguesOnce();
   const sql = await getSql();
   const rows = await sql<{ doc: string }>`select doc from shop_state where id = 'main'`;
   if (!rows[0]) {

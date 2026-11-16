@@ -1,5 +1,43 @@
 import { pendingMigrations } from "../../scripts/migration-plan.mjs";
 
+function bundledMigrations(): Record<string, string> {
+  return import.meta.glob("/migrations/*.sql", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }) as Record<string, string>;
+}
+
+/** Apply pending migrations/*.sql on one connection. Safe to run on every boot. */
+async function applyBundledMigrations(client: {
+  query: (text: string, params?: unknown[]) => Promise<{ rows: Array<{ name?: string }> }>;
+}) {
+  const migrations = bundledMigrations();
+  await client.query(
+    "CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())",
+  );
+  const applied = await client.query("SELECT name FROM _migrations");
+  const done = applied.rows.map((row) => String(row.name || ""));
+  for (const { name, path } of pendingMigrations(Object.keys(migrations), done)) {
+    const text = migrations[path];
+    if (!text) continue;
+    try {
+      await client.query("BEGIN");
+      await client.query(text);
+      await client.query("INSERT INTO _migrations (name) VALUES ($1)", [name]);
+      await client.query("COMMIT");
+    } catch (err) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        // The connection may already be aborted. Keep the original error.
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`Migration ${name} failed: ${message}`);
+    }
+  }
+}
+
 /** Which database backend is active. */
 export type DbSource = "neon" | "pglite";
 
@@ -117,6 +155,12 @@ function createNeonSql(): Promise<Sql> {
     pool.on("error", (err) => {
       console.error("Postgres connection dropped:", err.message);
     });
+    const client = await pool.connect();
+    try {
+      await applyBundledMigrations(client);
+    } finally {
+      client.release();
+    }
     const once = async <T>(text: string, params: unknown[]) => {
       const res = await pool.query(text, params);
       return res.rows as T[];
@@ -169,11 +213,7 @@ async function createPgliteSql(): Promise<Sql> {
   // passes serialized on a global chain so concurrent callers never
   // double-apply.
   const migrate = async (): Promise<void> => {
-    const migrations = import.meta.glob("/migrations/*.sql", {
-      query: "?raw",
-      import: "default",
-      eager: true,
-    }) as Record<string, string>;
+    const migrations = bundledMigrations();
     const doneRows = await pg.query<{ name: string }>(
       "select name from _migrations",
     );
@@ -244,27 +284,27 @@ export async function getPglite(): Promise<import("@electric-sql/pglite").PGlite
 /**
  * Finish DB bootstrap before the server handles traffic.
  *
- * - **PGLite** (preview / no `DATABASE_URL`): open the in-memory DB and apply
- *   `migrations/*.sql`. Idempotent — concurrent callers share one promise.
- * - **Neon**: no-op (pool is created lazily on first query).
+ * - **Postgres** (`DATABASE_URL`, including Render): open the pool and apply
+ *   pending `migrations/*.sql` before the first query. Build-time migrate is
+ *   skipped when the database URL is only present at runtime.
+ * - **PGLite** (no `DATABASE_URL`): open the in-memory DB and apply the same files.
  *
  * Vite `configureServer` awaits this at dev startup; production imports of this
  * module kick it off immediately (see bottom of file).
  */
 export function ensureDbReady(): Promise<void> {
-  if (dbSource !== "pglite") return Promise.resolve();
   return getSql().then(() => undefined);
 }
 
-// Server-only eager start: kick PGLite bootstrap as soon as this module loads in
-// Node. Client bundles never hit this path (`getSql` throws in the browser).
+// Server-only eager start: apply schema as soon as this module loads in Node.
+// Client bundles never hit this path (`getSql` throws in the browser).
 const globalBoot = globalThis as typeof globalThis & {
   __pgBootstrapPromise__?: Promise<void>;
 };
-if (typeof window === "undefined" && dbSource === "pglite") {
+if (typeof window === "undefined") {
   globalBoot.__pgBootstrapPromise__ ??= ensureDbReady().catch((err) => {
     globalBoot.__pgBootstrapPromise__ = undefined;
-    console.error("[db] PGLite bootstrap failed:", err);
+    console.error("[db] database bootstrap failed:", err);
     throw err;
   });
 }
