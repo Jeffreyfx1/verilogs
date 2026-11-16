@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { CATEGORY_LABEL, type Provider } from "@/lib/catalog";
+import { toast } from "sonner";
+import { CATEGORY_LABEL, quoteProduct, type Provider } from "@/lib/catalog";
 import { Button, Field, inputClass } from "@/components/ui";
 import { naira, when } from "@/lib/money";
 import { useServers, useStore } from "@/lib/store";
@@ -66,7 +67,7 @@ function AdminHome() {
                   <p className="font-bold">{label ? `${label} · ` : ""}{p.name}</p>
                   <p className="text-xs text-muted">{p.baseUrl} · {p.currency} · {on} live / {count} imported{p.servesNumbers ? "" : " · not an SMS server"}</p>
                 </div>
-                <button type="button" className="rounded-xl border border-line px-3 py-2 text-sm font-semibold" onClick={() => setProvider(p.id, { enabled: !p.enabled })}>
+                <button type="button" className="rounded-xl border border-line px-3 py-2 text-sm font-semibold" onClick={() => { setProvider(p.id, { enabled: !p.enabled }); toast.success(p.enabled ? "Provider disabled. Its products stay off the shop." : "Provider enabled"); }}>
                   {p.enabled ? "Disable provider" : "Enable provider"}
                 </button>
               </div>
@@ -88,42 +89,26 @@ function AdminHome() {
 
 function ProviderMargin({ provider }: { provider: Provider }) {
   const setProvider = useStore((s) => s.setProvider);
-  const [rate, setRate] = useState(provider.usdRate || 2646);
-  const [markup, setMarkup] = useState(provider.markup || 1.6);
-  const names = [...new Set([...Object.keys(provider.operatorMarkups || {}), ...Object.keys(provider.operatorPrices || {})])];
-  const [rows, setRows] = useState(names.length ? names.map((name) => ({ name, markup: String(provider.operatorMarkups?.[name] || ""), price: String(provider.operatorPrices?.[name] || "") })) : [{ name: "virtual8", markup: "", price: "" }]);
-  const five = /5sim/i.test(`${provider.name} ${provider.baseUrl}`);
-  const sample = Math.ceil((0.1 * (Number(rate) || 0) * (Number(markup) || 1)) / 5) * 5;
+  const settings = useStore((s) => s.settings);
+  const [rate, setRate] = useState(provider.usdRate || settings.usdNgn || 1343);
+  const [percent, setPercent] = useState(provider.markupPercent || 0);
   const save = () => {
-    const operatorMarkups: Record<string, number> = {};
-    const operatorPrices: Record<string, number> = {};
-    for (const row of rows) {
-      const name = row.name.trim().toLowerCase();
-      if (!name) continue;
-      if (Number(row.markup) > 0) operatorMarkups[name] = Number(row.markup);
-      if (Number(row.price) > 0) operatorPrices[name] = Number(row.price);
-    }
-    setProvider(provider.id, { usdRate: Number(rate) || 2646, markup: Number(markup) || 1, currency: provider.currency === "NGN" ? "NGN" : "USD", operatorMarkups, operatorPrices });
+    setProvider(provider.id, {
+      usdRate: Number(rate) || settings.usdNgn,
+      markupPercent: Number(percent) || 0,
+      currency: provider.currency === "NGN" ? "NGN" : "USD",
+    });
+    toast.success("API margin saved");
   };
+  const sample = quoteProduct(
+    { id: "", providerId: provider.id, externalId: "", category: "number", name: "Sample", service: "Sample", country: "", network: "", price: 0, cost: provider.currency === "USD" ? 0.1 : 1000, stock: 0, operator: "", rate: 96, rates: "", enabled: true, validity: "", variable: false, description: "" },
+    { providers: [{ ...provider, usdRate: Number(rate) || provider.usdRate, markupPercent: Number(percent) || 0 }], settings },
+  );
   return (
     <div className="mt-3 grid gap-2 sm:grid-cols-2">
       <Field label="Naira per 1 USD"><input className={inputClass} inputMode="decimal" value={rate} onChange={(e) => setRate(Number(e.target.value))} /></Field>
-      <Field label="Normal markup"><input className={inputClass} inputMode="decimal" value={markup} onChange={(e) => setMarkup(Number(e.target.value))} /></Field>
-      {five ? (
-        <div className="space-y-2 sm:col-span-2">
-          <p className="text-sm font-semibold">Each 5sim server</p>
-          <p className="text-xs text-muted">A naira price here replaces the formula for that server only. Leave the naira blank and set a markup if you only want a different multiplier. virtual8 at $0.85 with markup 1.6 and rate {rate || 0} is {naira(Math.ceil((0.85 * (Number(rate) || 0) * 1.6) / 5) * 5)}.</p>
-          {rows.map((row, index) => (
-            <div key={index} className="grid grid-cols-[1fr_5rem_6rem] gap-2">
-              <input className={inputClass} value={row.name} placeholder="virtual8" onChange={(e) => setRows(rows.map((item, i) => i === index ? { ...item, name: e.target.value } : item))} />
-              <input className={inputClass} inputMode="decimal" value={row.markup} placeholder="×" onChange={(e) => setRows(rows.map((item, i) => i === index ? { ...item, markup: e.target.value } : item))} />
-              <input className={inputClass} inputMode="decimal" value={row.price} placeholder="₦" onChange={(e) => setRows(rows.map((item, i) => i === index ? { ...item, price: e.target.value } : item))} />
-            </div>
-          ))}
-          <Button tone="soft" onClick={() => setRows([...rows, { name: "", markup: "", price: "" }])}>Add a server</Button>
-        </div>
-      ) : null}
-      <p className="text-xs text-muted sm:col-span-2">$0.10 at the normal markup sells at {naira(sample)}.</p>
+      <Field label="Markup % when rate is missing"><input className={inputClass} inputMode="decimal" value={percent} onChange={(e) => setPercent(Number(e.target.value))} /></Field>
+      <p className="text-xs text-muted sm:col-span-2">A reported 96% success rate is priced from the tiers. This sample of {provider.currency === "USD" ? "$0.10" : "₦1,000"} at 96% sells at {naira(sample.price)}. Leave the percent at 0 to use the global default when a rate is missing.</p>
       <Button tone="soft" onClick={save}>Save this API margin</Button>
     </div>
   );

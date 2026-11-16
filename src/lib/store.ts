@@ -26,13 +26,13 @@ type Actions = {
   importPayload: (input: { providerId?: string; name: string; baseUrl: string; currency: "NGN" | "USD"; usdRate?: number; markup?: number; payload: unknown; hasKey?: boolean; publish?: boolean; apiKey?: string }) => Promise<SyncReport>;
   setEnabled: (ids: string[], enabled: boolean) => void;
   editListing: (id: string, description: string, price: number) => Promise<string | null>;
-  setProvider: (id: string, patch: Partial<Pick<Provider, "enabled" | "name" | "usdRate" | "markup" | "currency" | "operatorMarkups" | "operatorPrices">>) => void;
+  setProvider: (id: string, patch: Partial<Pick<Provider, "enabled" | "name" | "usdRate" | "markup" | "markupPercent" | "currency" | "operatorMarkups" | "operatorPrices" | "importType" | "serverId">>) => void;
   adjustBalance: (userId: string, amount: number, note: string) => Promise<string | null>;
   addTicket: (input: { email: string; subject: string; body: string }) => Promise<string | null>;
   saveFaqs: (faqs: Faq[]) => void;
   saveSettings: (patch: Partial<Data["settings"]>) => Promise<string | null>;
   addAnnouncement: (title: string, body: string) => Promise<string | null>;
-  setAnnouncements: (announcements: Announcement[]) => void;
+  setAnnouncements: (announcements: Announcement[]) => Promise<string | null>;
   markNotes: () => void;
   mailUser: (userId: string, subject: string, body: string) => Promise<string | null>;
   resetDemo: () => void;
@@ -103,7 +103,7 @@ export const useStore = create<Store>((set) => {
     saveFaqs: (faqs) => void run("saveFaqs", { faqs }),
     saveSettings: async (patch) => (await run("saveSettings", { patch })).error,
     addAnnouncement: async (title, body) => (await run("addAnnouncement", { title, body })).error,
-    setAnnouncements: (announcements) => void run("setAnnouncements", { announcements }),
+    setAnnouncements: async (announcements) => (await run("setAnnouncements", { announcements })).error,
     markNotes: () => void run("markNotes"),
     mailUser: async (userId, subject, body) => (await run("mailUser", { userId, subject, body })).error,
     resetDemo: () => void run("reset"),
@@ -119,9 +119,9 @@ export function useServers() {
   return useMemo(
     () =>
       providers
-        .filter((p) => p.servesNumbers)
-        .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name))
-        .map((p, i) => ({ ...p, label: "Server " + (i + 1) })),
+        .filter((p) => p.enabled !== false && p.serverId !== "usa" && (p.servesNumbers || p.serverId === "1" || p.serverId === "2" || p.serverId === "3"))
+        .sort((a, b) => (a.serverId || "9").localeCompare(b.serverId || "9") || a.createdAt.localeCompare(b.createdAt))
+        .map((p) => ({ ...p, label: p.serverId === "1" || p.serverId === "2" || p.serverId === "3" ? `Server ${p.serverId}` : p.name })),
     [providers],
   );
 }

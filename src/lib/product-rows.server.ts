@@ -2,7 +2,7 @@ import type { Product } from "@/lib/catalog";
 import { getSql } from "@/lib/db";
 import { SHELF_CATEGORIES, shelfOf } from "@/lib/shelves";
 
-const COLS = 19;
+const COLS = 21;
 
 function rowOf(row: Record<string, unknown>): Product {
   return {
@@ -24,6 +24,8 @@ function rowOf(row: Record<string, unknown>): Product {
     validity: String(row.validity || ""),
     variable: !!row.variable,
     description: String(row.description || ""),
+    importType: String(row.import_type || ""),
+    serverId: String(row.server_id || ""),
   };
 }
 
@@ -54,17 +56,20 @@ export async function upsertProductRows(products: Product[], sync: string) {
         product.validity,
         product.variable,
         product.description,
+        product.importType || "",
+        product.serverId || "",
         sync,
       );
       return `(${Array.from({ length: COLS }, (_, n) => `$${at + n + 1}`).join(",")})`;
     });
     await sql.query(
-      `insert into shop_products (id, provider_id, external_id, category, name, service, country, network, price, cost, stock, operator, rate, rates, enabled, validity, variable, description, sync)
+      `insert into shop_products (id, provider_id, external_id, category, name, service, country, network, price, cost, stock, operator, rate, rates, enabled, validity, variable, description, import_type, server_id, sync)
        values ${groups.join(",")}
        on conflict (provider_id, external_id) do update set
          name = excluded.name, service = excluded.service, country = excluded.country, network = excluded.network,
          cost = excluded.cost, stock = excluded.stock, operator = excluded.operator,
-         rate = excluded.rate, rates = excluded.rates, category = excluded.category, validity = excluded.validity,
+         rate = excluded.rate, rates = excluded.rates, category = excluded.category,
+         import_type = excluded.import_type, server_id = excluded.server_id, validity = excluded.validity,
          variable = case when shop_products.price_locked then shop_products.variable else excluded.variable end,
          description = case when shop_products.description_locked then shop_products.description else excluded.description end,
          price = case when shop_products.price_locked then shop_products.price else excluded.price end,
@@ -87,7 +92,7 @@ export async function countExistingProducts(providerId: string, externalIds: str
 export async function pruneSyncedProducts(providerId: string, sync: string, touched: string[], categories: string[] = ["numbers", "rent"]) {
   const sql = await getSql();
   const cats = [...new Set(categories.filter(Boolean))];
-  const heavy = cats.filter((category) => category === "numbers" || category === "rent");
+  const heavy = cats.filter((category) => category === "numbers" || category === "rent" || category === "number" || category === "usa");
   const rest = cats.filter((category) => category !== "numbers" && category !== "rent");
   if (heavy.length && touched.length) {
     const size = 500;
@@ -109,15 +114,8 @@ export async function pruneSyncedProducts(providerId: string, sync: string, touc
   }
 }
 
-const BOOST_MISFILE = String.raw`(name ~* '\m(followers|likes|subscribers|comments|smm|boost|watchtime|impressions|retweets)\M' or service ~* '\m(followers|likes|subscribers|smm|boost)\M' or name ~* '\mviews\M')`;
-
-export async function dropMisfiledBoost(providerId?: string) {
-  const sql = await getSql();
-  if (providerId) {
-    await sql.query(`delete from shop_products where provider_id = $1 and category in ('numbers','rent') and ${BOOST_MISFILE}`, [providerId]);
-    return;
-  }
-  await sql.query(`delete from shop_products where category in ('numbers','rent') and ${BOOST_MISFILE}`);
+export async function dropMisfiledBoost(_providerId?: string) {
+  return;
 }
 
 export async function readShopRows(categories: string[], limit = 2000) {
@@ -180,7 +178,7 @@ export async function lockListing(id: string, patch: { description: string; pric
 
 export async function providerIdsWithNumbers() {
   const sql = await getSql();
-  const rows = await sql<{ provider_id: string }>`select distinct provider_id from shop_products where category in ('numbers','rent')`;
+  const rows = await sql<{ provider_id: string }>`select distinct provider_id from shop_products where category in ('number','numbers','rent')`;
   return rows.map((row) => row.provider_id);
 }
 
@@ -189,11 +187,19 @@ export async function clearProducts() {
   await sql`delete from shop_products`;
 }
 
-type BrowseInput = { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean; admin?: boolean; enabledProviderIds?: string[] };
+type BrowseInput = { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean; admin?: boolean; enabledProviderIds?: string[]; serverId?: string };
 
 function filters(input: BrowseInput, values: unknown[]) {
-  const parts = ["category = $1", "country <> ''", "country <> 'Any'"];
-  values.push(input.category === "rent" ? "rent" : "numbers");
+  const category = input.category === "usa" ? "usa" : input.category === "rent" ? "rent" : input.category === "numbers" ? "number" : input.category || "number";
+  const parts = ["category = $1"];
+  values.push(category);
+  if (category === "number" || category === "rent") {
+    parts.push("country <> ''", "country <> 'Any'");
+  }
+  if (category === "number" && input.serverId) {
+    values.push(input.serverId);
+    parts.push(`server_id = $${values.length}`);
+  }
   if (input.providerId) {
     values.push(input.providerId);
     parts.push(`provider_id = $${values.length}`);

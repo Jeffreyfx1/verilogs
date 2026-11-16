@@ -13,7 +13,7 @@ export const Route = createFileRoute("/dashboard/numbers")({
   validateSearch: (search: Record<string, unknown>) => ({
     server: typeof search.server === "string" ? search.server : "",
     country: typeof search.country === "string" ? search.country : "",
-    kind: search.kind === "rent" ? "rent" : "",
+    kind: search.kind === "rent" ? "rent" : search.kind === "usa" ? "usa" : "",
     service: typeof search.service === "string" ? search.service : "",
   }),
   component: NumbersPage,
@@ -49,14 +49,14 @@ function NumbersPage() {
   const liveServers = servers.filter((s) => s.enabled);
   const allOrders = useStore((s) => s.orders);
   const session = useStore((s) => s.sessionUserId);
-  const orders = useMemo(() => allOrders.filter((o) => o.userId === session && (o.category === "numbers" || o.category === "rent") && o.status === "waiting"), [allOrders, session]);
-  const bought = useMemo(() => allOrders.filter((o) => o.userId === session && (o.category === "numbers" || o.category === "rent")).length, [allOrders, session]);
+  const orders = useMemo(() => allOrders.filter((o) => o.userId === session && (o.category === "numbers" || o.category === "rent" || o.category === "number" || o.category === "usa") && o.status === "waiting"), [allOrders, session]);
+  const bought = useMemo(() => allOrders.filter((o) => o.userId === session && (o.category === "numbers" || o.category === "rent" || o.category === "number" || o.category === "usa")).length, [allOrders, session]);
   const refund = useStore((s) => s.refund);
   const buy = useStore((s) => s.buy);
   const [buying, setBuying] = useState("");
-  const activeId = liveServers.some((s) => s.id === server) ? server : liveServers[0]?.id || "";
+  const usa = kind === "usa";
+  const activeId = usa ? "" : liveServers.some((s) => s.id === server) ? server : liveServers[0]?.id || "";
   const active = servers.find((s) => s.id === activeId);
-  const serverNo = Math.max(1, liveServers.findIndex((s) => s.id === activeId) + 1);
   const [countryName, setCountryName] = useState(lockedCountry);
   const [countryQ, setCountryQ] = useState("");
   const [countryOpen, setCountryOpen] = useState(false);
@@ -69,7 +69,7 @@ function NumbersPage() {
   const [picked, setPicked] = useState(false);
   const [loadingOps, setLoadingOps] = useState(false);
   const [opsError, setOpsError] = useState("");
-  const want = kind === "rent" ? "rent" : "numbers";
+  const want = usa ? "usa" : kind === "rent" ? "rent" : "number";
 
   useEffect(() => {
     let stop = false;
@@ -141,7 +141,7 @@ function NumbersPage() {
   };
 
   const shownCountries = countries.filter((c) => countryHit(c.country, countryQ)).slice(0, 40);
-  const title = kind === "rent" ? "Rent a number" : lockedCountry === "United States" ? "USA numbers" : "Buy all countries";
+  const title = usa ? "USA Services" : kind === "rent" ? "Rent a number" : "Buy a number";
 
   return (
     <div className="space-y-4">
@@ -160,17 +160,17 @@ function NumbersPage() {
       </section>
 
       <div className="flex gap-2 overflow-x-auto pb-1">
-        <button type="button" onClick={() => { setCountryName("United States"); setPicked(false); setOperators([]); }} className={`shrink-0 rounded-full border px-4 py-2 text-sm font-extrabold ${countryName === "United States" ? "border-primary bg-primary text-on-primary" : "border-line bg-card text-ink"}`}>🇺🇸 USA</button>
-        {liveServers.map((s) => (
+        <Link to="/dashboard/numbers" search={{ server: "", country: "", kind: "usa", service: "" }} className={`shrink-0 rounded-full border px-4 py-2 text-sm font-extrabold ${usa ? "border-primary bg-primary text-on-primary" : "border-line bg-card text-ink"}`}>USA</Link>
+        {usa ? null : liveServers.map((s) => (
           <Link key={s.id} to="/dashboard/numbers" search={{ server: s.id, country: lockedCountry, kind, service: preset }} className={`shrink-0 rounded-full border px-4 py-2 text-sm font-extrabold ${s.id === activeId ? "border-primary bg-primary text-on-primary" : "border-line bg-card text-ink"}`}>
             {s.label || "Server"}
           </Link>
         ))}
       </div>
-      {kind === "rent" ? null : <p className="text-xs font-extrabold text-muted">Note: England is the United Kingdom on this list.</p>}
+      {usa ? <p className="text-xs font-extrabold text-muted">USA services stay separate from Server 1, Server 2 and Server 3. A higher reported success rate costs more.</p> : kind === "rent" ? null : <p className="text-xs font-extrabold text-muted">Note: England is the United Kingdom on this list.</p>}
 
       <section className="rounded-[1.4rem] border border-line bg-card p-4">
-        <h1 className="text-xl font-extrabold">{title} <span className="text-sm text-primary">[{active?.label || `Server ${serverNo}`}]</span></h1>
+        <h1 className="text-xl font-extrabold">{title} {usa ? null : <span className="text-sm text-primary">[{active?.label || "Server"}]</span>}</h1>
         <label className="mt-4 block text-sm font-extrabold">Country</label>
         <div className="relative mt-1">
           <input
@@ -217,7 +217,10 @@ function NumbersPage() {
           ) : null}
         </div>
 
-        <button type="button" className="btn-gradient mt-4 w-full rounded-xl py-3 text-sm font-extrabold tracking-wide" onClick={() => runSelect(countryName, service)}>SELECT</button>
+        <button type="button" disabled={loadingOps} className="btn-gradient mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-extrabold tracking-wide disabled:opacity-60" onClick={() => { if (!loadingOps) runSelect(countryName, service); }}>
+          {loadingOps ? <BtnSpinner /> : null}
+          {loadingOps ? "Loading servers…" : "SELECT"}
+        </button>
 
         {loadingOps ? (
           <div className="mt-3 space-y-3" aria-hidden="true">

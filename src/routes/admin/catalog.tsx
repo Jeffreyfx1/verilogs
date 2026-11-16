@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { Button, inputClass } from "@/components/ui";
 import { CATEGORY_LABEL, type Product } from "@/lib/catalog";
 import { naira } from "@/lib/money";
@@ -30,6 +31,7 @@ function CatalogPage() {
   const [price, setPrice] = useState("");
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let stop = false;
@@ -40,8 +42,9 @@ function CatalogPage() {
           setRows(res.rows);
           setTotal(res.total);
           setLive(res.live);
+          setLoading(false);
         })
-        .catch(() => undefined);
+        .catch(() => { if (!stop) setLoading(false); });
     }, 250);
     return () => {
       stop = true;
@@ -59,8 +62,10 @@ function CatalogPage() {
 
   const toggle = (id: string) => setPicked((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
   const apply = (ids: string[], enabled: boolean) => {
+    if (!ids.length) return;
     setEnabled(ids, enabled);
     setPicked([]);
+    toast.success(enabled ? "Products enabled" : "Products disabled");
     setTimeout(() => setTick((n) => n + 1), 700);
   };
   const openEdit = (product: Product) => {
@@ -81,6 +86,7 @@ function CatalogPage() {
     }
     setEditId("");
     setTick((n) => n + 1);
+    toast.success("Listing saved");
   };
 
   return (
@@ -113,6 +119,8 @@ function CatalogPage() {
       ) : null}
       <div className="overflow-hidden rounded-card border border-line bg-card">
         <div className="scroll-tall">
+          {loading && !rows.length ? <p className="px-3 py-6 text-sm text-muted">Loading catalogue…</p> : null}
+          {!loading && !rows.length ? <p className="px-3 py-6 text-sm text-muted">No products match this filter.</p> : null}
           {rows.map((p) => (
             <div key={p.id} className="border-b border-line px-3 py-3 text-sm">
               <div className="flex items-start gap-3">
@@ -133,7 +141,7 @@ function CatalogPage() {
                   <textarea className={inputClass} rows={6} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Full description. Line breaks are kept." />
                   <div className="flex flex-col gap-2">
                     <input className={inputClass} inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d]/g, ""))} placeholder="Price" aria-label="Selling price" />
-                    <Button onClick={() => void saveEdit()} disabled={saving}>{saving ? "Saving" : "Save"}</Button>
+                    <Button busy={saving} onClick={() => void saveEdit()}>{saving ? "Saving" : "Save"}</Button>
                   </div>
                   {note ? <p className="text-xs text-danger sm:col-span-2">{note}</p> : <p className="text-xs text-muted sm:col-span-2">Saving locks this description and price so a later import will not overwrite them.</p>}
                 </div>

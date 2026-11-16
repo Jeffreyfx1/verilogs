@@ -3,8 +3,7 @@ import {
   ingest,
   isLive,
   normalizeData,
-  markupFor,
-  sellPrice,
+  quoteProduct,
   serverLabel,
   type Announcement,
   type Data,
@@ -172,13 +171,12 @@ export function buyProduct(data: Data, userId: string | null, productId: string,
   const face = product.variable ? Math.round(extra.amount || 0) : product.price;
   const amount = extra.charge && extra.charge > 0 ? Math.round(extra.charge) : face;
   if (product.category === "airtime" && (face < 50 || face > 50000)) return { error: "Airtime must be between ₦50 and ₦50,000.", data };
-  if (product.category === "electricity" && (face < 1000 || face > 200000)) return { error: "Electricity must be between ₦1,000 and ₦200,000.", data };
   if (!product.variable && amount <= 0) return { error: "This item has no price yet.", data };
   if (user.balance < amount) return { error: "Insufficient balance. Top up your balance to make this purchase.", data };
   const server = serverLabel(data.providers, provider.id) || provider.name;
   const cost = Math.max(0, Math.round(extra.cost ?? 0));
   const gain = Math.round(extra.gain ?? amount - cost);
-  const number = product.category === "numbers" || product.category === "rent";
+  const number = product.category === "numbers" || product.category === "rent" || product.category === "number" || product.category === "usa";
   const order: Order = {
     id: uid("ord"),
     userId: user.id,
@@ -265,19 +263,17 @@ export function editListing(data: Data, userId: string | null, id: string, patch
   };
 }
 
-export function setProvider(data: Data, userId: string | null, id: string, patch: { enabled?: boolean; name?: string; usdRate?: number; markup?: number; currency?: "NGN" | "USD"; operatorMarkups?: Record<string, number>; operatorPrices?: Record<string, number> }) {
+export function setProvider(data: Data, userId: string | null, id: string, patch: { enabled?: boolean; name?: string; usdRate?: number; markup?: number; markupPercent?: number; currency?: "NGN" | "USD"; operatorMarkups?: Record<string, number>; operatorPrices?: Record<string, number>; importType?: string; serverId?: string }) {
   const denied = adminGuard(data, userId);
   if (denied) return { error: denied, data };
   const providers = data.providers.map((p) => (p.id === id ? { ...p, ...patch } : p));
-  const provider = providers.find((p) => p.id === id);
-  const products = provider
-    ? data.products.map((product) => {
-        if (product.providerId !== id || !(product.cost > 0)) return product;
-        const price = sellPrice(product.cost, provider.currency, provider.usdRate, markupFor(provider, product.operator), `${product.externalId}|${product.name}|${product.country}|${product.operator}`, product.category);
-        return price > 0 && price !== product.price ? { ...product, price } : product;
-      })
-    : data.products;
-  return { error: null, data: { ...data, providers, products } };
+  const next = { ...data, providers };
+  const products = data.products.map((product) => {
+    if (product.providerId !== id || !(product.cost > 0) || product.variable) return product;
+    const price = quoteProduct(product, next).price;
+    return price > 0 && price !== product.price ? { ...product, price } : product;
+  });
+  return { error: null, data: { ...next, products } };
 }
 
 export function adjustBalance(data: Data, actorId: string | null, userId: string, amount: number, note: string) {

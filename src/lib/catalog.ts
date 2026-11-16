@@ -1,4 +1,5 @@
 import { extractCatalog, MAJOR_SERVICES, serviceAllowed, type ParsedItem } from "@/lib/categorize";
+import { customerPrice, pricingOf, successRateOf, type PricingSettings } from "@/lib/pricing";
 import { uid } from "@/lib/money";
 import type { Category } from "@/lib/categorize";
 
@@ -29,6 +30,9 @@ export type Provider = {
   markup: number;
   operatorMarkups: Record<string, number>;
   operatorPrices: Record<string, number>;
+  importType?: string;
+  serverId?: string;
+  markupPercent?: number;
   createdAt: string;
   lastSync: {
     at: string;
@@ -60,6 +64,8 @@ export type Product = {
   validity: string;
   variable: boolean;
   description: string;
+  importType?: string;
+  serverId?: string;
 };
 
 export type Order = {
@@ -158,6 +164,7 @@ export type Settings = {
   banners: Banner[];
   popup: WelcomePopup;
   wantedServices: string[];
+  pricing: PricingSettings;
 };
 
 export type Data = {
@@ -205,6 +212,7 @@ export function defaultSettings(): Settings {
     ],
     popup: defaultPopup(),
     wantedServices: [...MAJOR_SERVICES],
+    pricing: pricingOf(null),
   };
 }
 
@@ -230,11 +238,25 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
     sessionUserId: src.sessionUserId ?? null,
     googleDraft: src.googleDraft ?? null,
     providers: (src.providers ?? []).map((provider) => {
-      const five = /5sim/i.test(`${provider.name || ""} ${provider.baseUrl || ""}`);
+      const host = `${provider.name || ""} ${provider.baseUrl || ""}`;
+      const known = !provider.importType
+        ? /getatext\.com/i.test(host)
+          ? { importType: "USA_IMPORT", serverId: "usa" }
+          : /5sim\.net/i.test(host)
+            ? { importType: "NUMBER_IMPORT", serverId: "1" }
+            : /smeapi\.com\.ng/i.test(host)
+              ? { importType: "VTU_IMPORT", serverId: "" }
+              : /acctglobe/i.test(host)
+                ? { importType: "RANDOM_IMPORT", serverId: "" }
+                : null
+        : null;
       return {
         ...provider,
-        usdRate: provider.usdRate > 0 ? provider.usdRate : five ? 2646 : base.usdNgn,
-        markup: provider.markup > 0 ? provider.markup : five ? 1.6 : 1 + base.margin / 100,
+        usdRate: provider.usdRate > 0 ? provider.usdRate : /5sim\.net/i.test(host) ? 2646 : base.usdNgn,
+        markup: provider.markup > 0 ? provider.markup : 1,
+        markupPercent: provider.markupPercent && provider.markupPercent > 0 ? provider.markupPercent : 0,
+        importType: provider.importType || known?.importType || "",
+        serverId: provider.serverId || known?.serverId || "",
         operatorMarkups: operatorMarkupsOf(provider.operatorMarkups),
         operatorPrices: operatorMarkupsOf(provider.operatorPrices),
       };
@@ -249,6 +271,8 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
       rates: product.rates || "",
       validity: product.validity || "",
       description: product.description || "",
+      importType: product.importType || "",
+      serverId: product.serverId || "",
     })),
     orders: src.orders ?? [],
     txns: src.txns ?? [],
@@ -273,6 +297,7 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
       wantedServices: Array.isArray(incoming?.wantedServices) && incoming.wantedServices.length
         ? incoming.wantedServices.map((name) => String(name || "").trim()).filter(Boolean).slice(0, 200)
         : base.wantedServices,
+      pricing: pricingOf(incoming?.pricing),
     },
   };
 }
@@ -375,70 +400,12 @@ export function operatorMarkupsOf(input: unknown): Record<string, number> {
   return out;
 }
 
-export function markupFor(provider: Pick<Provider, "markup" | "operatorMarkups">, operator: string) {
-  const custom = provider.operatorMarkups?.[String(operator || "").trim().toLowerCase()];
-  if (custom && custom > 0) return custom;
-  return provider.markup > 0 ? provider.markup : 1;
-}
-
 export const USD_NGN = 1343;
 
-const BILL_PRICE = new Set(["airtime", "data", "cable", "electricity", "exam", "giftcard", "betting"]);
-
-function spreadPrice(seed: string) {
-  let hash = 2166136261;
-  const text = seed || "price";
-  for (let i = 0; i < text.length; i++) {
-    hash ^= text.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  const slots = (2700 - 1850) / 50 + 1;
-  return 1850 + ((hash >>> 0) % slots) * 50;
-}
-
-export function usaWhatsappPrice(rank: number, total = 1) {
-  const low = 3888;
-  const high = 4650;
-  const count = Math.max(1, total);
-  if (count === 1) return low;
-  const step = (high - low) / (count - 1);
-  return Math.round(low + Math.min(Math.max(0, rank), count - 1) * step);
-}
-
-export function rankUsaWhatsapp<T extends { id: string; operator: string; rate: number }>(rows: T[]) {
-  const ranked = [...rows].sort((a, b) => b.rate - a.rate || String(a.operator || "").localeCompare(String(b.operator || "")) || a.id.localeCompare(b.id));
-  return ranked.map((row, index) => ({ ...row, price: usaWhatsappPrice(index, ranked.length) }));
-}
-
-export function isUsaWhatsapp(country: string, service: string) {
-  const place = String(country || "").trim().toLowerCase();
-  const name = String(service || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
-  const usa = place === "united states" || place === "usa" || place === "us" || place === "america";
-  return usa && (name === "whatsapp" || name === "wa");
-}
-
-export function withMargin(amount: number, markup: number) {
-  if (!(amount > 0)) return 0;
-  const factor = markup > 0 ? markup : 1;
-  return Math.ceil((amount * factor) / 5) * 5;
-}
-
-export function nairaCost(cost: number, currency: "NGN" | "USD") {
+export function nairaCost(cost: number, currency: "NGN" | "USD", usdRate = USD_NGN) {
   if (!(cost > 0)) return 0;
-  return Math.round(currency === "USD" ? cost * USD_NGN : cost);
-}
-
-export function sellPrice(cost: number, currency: "NGN" | "USD", _rate: number, markup: number, seed = "", category = "") {
-  const factor = markup > 0 ? markup : 1;
-  if (BILL_PRICE.has(category)) {
-    if (!(cost > 0)) return 0;
-    return Math.ceil((cost * factor) / 5) * 5;
-  }
-  const ngn = nairaCost(cost, currency);
-  if (ngn <= 0) return 0;
-  const priced = Math.ceil((ngn * factor) / 5) * 5;
-  if (priced > 2000) return priced;
-  return spreadPrice(seed || `${category}|${ngn}|${factor}`);
+  const rate = currency === "USD" ? (usdRate > 0 ? usdRate : USD_NGN) : 1;
+  return Math.round(cost * rate);
 }
 
 export function quoteProduct(product: Product, doc: Pick<Data, "providers" | "settings">): Product {
@@ -446,15 +413,21 @@ export function quoteProduct(product: Product, doc: Pick<Data, "providers" | "se
   if (!provider) return product;
   const operator = String(product.operator || "").trim().toLowerCase();
   const fixed = provider.operatorPrices?.[operator];
-  if (fixed && fixed > 0 && !BILL_PRICE.has(product.category)) return { ...product, price: Math.ceil(fixed / 5) * 5 };
+  if (fixed && fixed > 0 && !product.variable) return { ...product, price: Math.round(fixed) };
   if (!(product.cost > 0) || product.variable) return product;
-  const bill = BILL_PRICE.has(product.category);
-  if (!bill && provider.currency === "USD" && product.cost > 500) return product;
-  const five = /5sim/i.test(`${provider.name || ""} ${provider.baseUrl || ""}`);
-  const fallback = provider.markup > 0 ? provider.markup : five ? 1.6 : 1 + (doc.settings?.margin || 0) / 100;
-  const custom = provider.operatorMarkups?.[operator];
-  const price = sellPrice(product.cost, bill ? "NGN" : provider.currency, USD_NGN, custom && custom > 0 ? custom : fallback, `${product.externalId}|${product.name}|${product.country}|${product.operator}`, product.category);
-  return price > 0 ? { ...product, price } : product;
+  const pricing = pricingOf(doc.settings?.pricing);
+  const quote = customerPrice({
+    cost: product.cost,
+    currency: provider.currency,
+    usdRate: provider.usdRate || doc.settings?.usdNgn || USD_NGN,
+    successRate: successRateOf(product.rate < 0 ? null : product.rate),
+    pricing,
+    providerId: provider.id,
+    service: product.service,
+    providerPercent: provider.markupPercent && provider.markupPercent > 0 ? provider.markupPercent : null,
+    defaultPercent: doc.settings?.margin ?? 12,
+  });
+  return quote.price > 0 ? { ...product, price: quote.price } : product;
 }
 
 export function topupQuote(credit: number, settings: Pick<Settings, "paystackPercent" | "paystackFlat">) {
@@ -477,9 +450,12 @@ export type SyncReport = {
 };
 
 export function serverLabel(providers: Provider[], id: string) {
+  const provider = providers.find((item) => item.id === id);
+  if (provider?.serverId === "1" || provider?.serverId === "2" || provider?.serverId === "3") return `Server ${provider.serverId}`;
+  if (provider?.serverId === "usa") return "USA";
   const list = providers
-    .filter((p) => p.servesNumbers)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name));
+    .filter((p) => p.servesNumbers && p.serverId !== "usa")
+    .sort((a, b) => (a.serverId || "9").localeCompare(b.serverId || "9") || a.createdAt.localeCompare(b.createdAt));
   const i = list.findIndex((p) => p.id === id);
   return i === -1 ? null : "Server " + (i + 1);
 }
@@ -557,7 +533,17 @@ export function applyImportSlice(
   for (const item of input.items) {
     tally.byCategory[item.category] = (tally.byCategory[item.category] || 0) + 1;
     if (item.network) tally.byNetwork[item.network] = (tally.byNetwork[item.network] || 0) + 1;
-    const price = sellPrice(item.price, provider.currency, provider.usdRate, markupFor(provider, item.operator || ""), `${item.externalId}|${item.name}|${item.country}|${item.operator}`, item.category);
+    const price = customerPrice({
+      cost: item.price,
+      currency: provider.currency,
+      usdRate: provider.usdRate || data.settings.usdNgn,
+      successRate: successRateOf(item.rate < 0 ? null : item.rate),
+      pricing: pricingOf(data.settings.pricing),
+      providerId: provider.id,
+      service: item.service,
+      providerPercent: provider.markupPercent && provider.markupPercent > 0 ? provider.markupPercent : null,
+      defaultPercent: data.settings.margin,
+    }).price;
     const existing = byExternal.get(item.externalId);
     if (existing) {
       existing.name = item.name;
@@ -677,8 +663,10 @@ export const CATEGORY_LABEL: Record<string, string> = {
   exam: "Exam PINs",
   giftcard: "Gift cards",
   betting: "Betting",
-  boost: "Social boost",
-  vpn: "VPN",
+  smm: "SMM",
+  number: "Number",
+  logs: "Logs",
+  usa: "USA",
   other: "Other",
 };
 
@@ -716,36 +704,14 @@ export function repairCatalog(doc: Data): Data {
       changed = true;
       continue;
     }
-    const rent = /\b(hosting|rent)\b/i.test(`${product.description} ${product.name}`);
-    const boost = product.category === "boost" || /\b(smm|boost|followers?|likes?|subscribers?|watchtime)\b/i.test(`${product.name} ${product.service} ${product.description}`);
-    if ((product.category === "numbers" || product.category === "rent") && (!product.country || product.country === "Any") && !boost) {
-      changed = true;
-      continue;
-    }
     const country = product.country === "Any" ? "" : product.country;
-    let category = product.category;
-    if (boost && category !== "airtime" && category !== "data" && category !== "cable" && category !== "electricity" && category !== "exam" && category !== "vpn") category = "boost";
-    else if (rent && category === "numbers") category = "rent";
-    if (category !== product.category || country !== product.country || !(product.service || product.name)) {
+    if (country !== product.country) {
       changed = true;
-      products.push({ ...product, category, country, service: product.service || product.name });
+      products.push({ ...product, country });
     } else products.push(product);
   }
-  const providers = doc.providers.map((provider) => {
-    const five = /5sim/i.test(`${provider.name} ${provider.baseUrl}`);
-    const usdRate = provider.usdRate > 0 ? provider.usdRate : five ? 2646 : doc.settings.usdNgn;
-    const markup = provider.markup > 0 ? provider.markup : five ? 1.6 : 1 + doc.settings.margin / 100;
-    const servesNumbers = products.some((p) => p.providerId === provider.id && (p.category === "numbers" || p.category === "rent"));
-    if (usdRate !== provider.usdRate || markup !== provider.markup || servesNumbers !== provider.servesNumbers) {
-      changed = true;
-      return { ...provider, usdRate, markup, servesNumbers };
-    }
-    return provider;
-  });
   const priced = products.map((product) => {
-    const provider = providers.find((item) => item.id === product.providerId);
-    if (!provider || !(product.cost > 0)) return product;
-    const price = sellPrice(product.cost, provider.currency, provider.usdRate, markupFor(provider, product.operator), `${product.externalId}|${product.name}|${product.country}|${product.operator}`, product.category);
+    const price = quoteProduct(product, doc).price;
     if (price > 0 && price !== product.price) {
       changed = true;
       return { ...product, price };
@@ -753,7 +719,7 @@ export function repairCatalog(doc: Data): Data {
     return product;
   });
   if (!changed) return doc;
-  return { ...doc, products: priced, providers };
+  return { ...doc, products: priced };
 }
 
 export function isLive(product: Product, providers: Provider[]) {

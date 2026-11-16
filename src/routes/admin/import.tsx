@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
+import { PricingAdmin } from "@/components/pricing-admin";
 import { CATEGORY_LABEL } from "@/lib/catalog";
 import { extractCatalog, shapeImport, type ImportKind } from "@/lib/categorize";
+import { IMPORT_CARDS } from "@/lib/import-source";
 import { batchWindow } from "@/lib/import-batch";
 import { resumeCatalogRun, startCatalogRun, useImportRun } from "@/lib/import-run";
 import { naira } from "@/lib/money";
@@ -31,7 +33,7 @@ function ImportPage() {
   const [baseUrl, setBaseUrl] = useState("https://");
   const [currency, setCurrency] = useState<"NGN" | "USD">("NGN");
   const [usdRate, setUsdRate] = useState(1650);
-  const [markup, setMarkup] = useState(1);
+  const [markup, setMarkup] = useState(0);
   const [providerId, setProviderId] = useState("");
   const [publish, setPublish] = useState(false);
   const [text, setText] = useState("");
@@ -67,14 +69,13 @@ function ImportPage() {
     const existing = providers.find((p) => p.id === providerId);
     if (existing) {
       setCurrency(existing.currency);
-      setUsdRate(existing.usdRate || 2646);
-      setMarkup(existing.markup || 1.6);
+      setUsdRate(existing.usdRate || settings.usdNgn || 1343);
+      setMarkup(existing.markupPercent || 0);
       return;
     }
-    if (/5sim/i.test(apiUrl + name)) {
+    if (/5sim\.net/i.test(apiUrl + name) || /getatext\.com/i.test(apiUrl)) {
       setCurrency("USD");
-      setUsdRate(2646);
-      setMarkup(1.6);
+      if (/5sim\.net/i.test(apiUrl)) setUsdRate(2646);
     }
   }, [providerId, apiUrl, name, providers]);
 
@@ -172,9 +173,43 @@ function ImportPage() {
       <div>
         <h1 className="text-2xl font-extrabold">Import services</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          A catalogue URL is read page by page. Pull and import replaces that type on this provider. Browse lets you tick products and import only those, without removing the rest.
+          The import you pick is the category. Words in a product name or description never move it to another marketplace.
         </p>
       </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {IMPORT_CARDS.map((card) => {
+          const provider = providers.find((item) => item.importType && item.name === card.providerName) || providers.find((item) => item.serverId && item.serverId === (card.kind === "numbers" ? "1" : card.kind === "server2" ? "2" : card.kind === "server3" ? "3" : card.kind === "usa" ? "usa" : ""));
+          const sync = provider?.lastSync;
+          return (
+            <article key={card.kind} className={`rounded-card border bg-card p-4 shadow-card ${kind === card.kind ? "border-primary" : "border-line"}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-extrabold">{card.title}</h2>
+                  <p className="mt-1 text-sm text-muted">{card.blurb}</p>
+                </div>
+                <Button tone="soft" onClick={() => {
+                  setKind(card.kind);
+                  setName(card.providerName);
+                  setProviderId("");
+                  setApiUrl(card.url);
+                  setBaseUrl(card.url || "https://");
+                  setCurrency(card.currency);
+                  if (card.usdRate > 0) setUsdRate(card.usdRate);
+                }}>Use</Button>
+              </div>
+              <p className="mt-2 text-xs text-muted">{card.auth}</p>
+              <p className="mt-2 text-xs">
+                {sync ? `${sync.imported} read · ${sync.created} new · ${sync.updated} updated · ${sync.skipped} skipped · ${new Date(sync.at).toLocaleString("en-NG")}` : "No import yet."}
+              </p>
+            </article>
+          );
+        })}
+        <article className="rounded-card border border-line bg-card p-4 shadow-card">
+          <h2 className="font-extrabold">VPN</h2>
+          <p className="mt-1 text-sm text-muted">Coming soon. This card does not import products and checkout will not sell VPN.</p>
+        </article>
+      </div>
+      <PricingAdmin />
       <section className="rounded-card border border-line bg-card p-4 shadow-card">
         <h2 className="font-extrabold">Services to import</h2>
         <p className="mt-1 text-sm text-muted">One name per line. The match is the API's service name, so WhatsApp also catches whatsapp.</p>
@@ -220,14 +255,18 @@ function ImportPage() {
           <div className={`import-meter mt-3 ${total > 0 ? "" : phase === "fetch" || phase === "save" ? "is-wait" : ""}`}>
             <span style={total > 0 ? { width: `${Math.min(100, Math.round((saved / total) * 100))}%` } : undefined} />
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+          <div className="mt-3 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
             <div className="rounded-xl bg-paper px-2 py-2">
               <p className="text-[11px] font-bold text-muted">Processed</p>
               <p className="text-sm font-extrabold">{phase === "fetch" ? "—" : saved.toLocaleString("en-NG")}</p>
             </div>
             <div className="rounded-xl bg-paper px-2 py-2">
-              <p className="text-[11px] font-bold text-muted">Successful</p>
-              <p className="text-sm font-extrabold">{report ? (report.created + report.updated).toLocaleString("en-NG") : phase === "fetch" ? "—" : saved.toLocaleString("en-NG")}</p>
+              <p className="text-[11px] font-bold text-muted">Imported</p>
+              <p className="text-sm font-extrabold">{report ? (report.created + report.updated).toLocaleString("en-NG") : "—"}</p>
+            </div>
+            <div className="rounded-xl bg-paper px-2 py-2">
+              <p className="text-[11px] font-bold text-muted">Skipped</p>
+              <p className="text-sm font-extrabold">{report ? report.skipped.toLocaleString("en-NG") : "—"}</p>
             </div>
             <div className="rounded-xl bg-paper px-2 py-2">
               <p className="text-[11px] font-bold text-muted">Failed</p>
@@ -272,24 +311,16 @@ function ImportPage() {
           <Field label="API key" hint="Stored on the server for this provider. It is not shown again.">
             <input className={inputClass} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Optional until you pull a live URL" />
           </Field>
-          <Field label="Import type" hint="Pick one type. Importing it again only replaces that type on this server. Numbers, VTU, VPN and SMM stay side by side.">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-              {([
-                ["numbers", "Numbers"],
-                ["vtu", "VTU"],
-                ["vpn", "VPN"],
-                ["smm", "SMM"],
-                ["random", "Random"],
-              ] as const).map(([id, label]) => (
-                <button key={id} type="button" onClick={() => setKind(id)} className={`rounded-xl border px-2 py-2 text-sm font-extrabold ${kind === id ? "border-primary bg-primary text-white" : "border-line bg-paper"}`}>
-                  {label}
+          <Field label="Import type" hint="This choice is the category. It is not guessed from the product text.">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {IMPORT_CARDS.map((card) => (
+                <button key={card.kind} type="button" onClick={() => setKind(card.kind)} className={`rounded-xl border px-2 py-2 text-sm font-extrabold ${kind === card.kind ? "border-primary bg-primary text-white" : "border-line bg-paper"}`}>
+                  {card.title}
                 </button>
               ))}
             </div>
           </Field>
-          <p className="text-xs text-muted">
-            Numbers uses the saved names. VTU tries GET and POST. An airtime purchase URL has no catalogue, so VTU reads the data plans and adds MTN, Airtel, Glo and 9mobile as top-up amounts. Random stores those rows as category “other”, so they stay on the Random shelf and never mix into VPN, SMM, numbers or VTU.
-          </p>
+          <p className="text-xs text-muted">VPN is not an import. Electricity and TV are not part of VTU. A selected import only saves the products you tick.</p>
           <Field label="Catalogue URL" hint="The saved name list only filters a Numbers import.">
             <input className={inputClass} value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="https://provider.example/api/services" />
           </Field>
@@ -306,10 +337,10 @@ function ImportPage() {
           <Field label="Naira per 1 USD" hint="5sim uses 2,646. Each API keeps its own rate.">
             <input className={inputClass} inputMode="decimal" value={usdRate} onChange={(e) => setUsdRate(Number(e.target.value))} />
           </Field>
-          <Field label="Markup" hint="5sim uses 1.6. A $0.10 number becomes 0.10 × rate × markup.">
+          <Field label="Markup percent" hint="Used only when this provider has no success rate. 35 means +35%, not ×1.35 stored as 1.35.">
             <input className={inputClass} inputMode="decimal" value={markup} onChange={(e) => setMarkup(Number(e.target.value))} />
           </Field>
-          <p className="text-xs text-muted">$1 is ₦1,343. A margin price above ₦2,000 stays as it is. A cheaper number, VPN or boost is spread from ₦1,850 to ₦2,700. Data, airtime and bills keep the markup you set on that server.</p>
+          <p className="text-xs text-muted">Selling prices use the success-rate tiers in the pricing panel. A missing rate uses the default percent.</p>
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} className="mt-1" />
             <span>Put new services live immediately. Leave this off if you want to review first. Already-enabled rows stay as they are.</span>

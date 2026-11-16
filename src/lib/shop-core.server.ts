@@ -1,8 +1,10 @@
 import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/react-start/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
-import { freshData, isLive, isUsaWhatsapp, normalizeData, quoteProduct, rankUsaWhatsapp, repairCatalog, sellPrice, markupFor, usaWhatsappPrice, withMargin, serverLabel, topupQuote, withAdminLogin, applyImportSlice, type Data, type Product, type SyncReport } from "@/lib/catalog";
+import { freshData, isLive, normalizeData, quoteProduct, repairCatalog, serverLabel, topupQuote, withAdminLogin, applyImportSlice, type Data, type Product, type SyncReport } from "@/lib/catalog";
+import { customerPrice, pricingOf, successRateOf } from "@/lib/pricing";
 import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, shapeImport, airtimeProductsFromPayload, MAJOR_SERVICES, type ImportKind, type ParsedItem } from "@/lib/categorize";
+import { destinationOf, flattenGetaText, sourceKindOf } from "@/lib/import-source";
 import { catalogStamp, followCatalogPages, walkBrowse } from "@/lib/catalog-pages";
 import { IMPORT_BATCH, importBatchCount } from "@/lib/import-batch";
 import { uid } from "@/lib/money";
@@ -10,7 +12,6 @@ import { placeOnProvider } from "@/lib/fulfill.server";
 import {
   clearProducts,
   countExistingProducts,
-  dropMisfiledBoost,
   pruneSyncedProducts,
   providerIdsWithNumbers,
   queryCatalogPage,
@@ -129,7 +130,47 @@ function withoutSampleCatalog(doc: Data): Data {
   };
 }
 
+async function resetImportedCataloguesOnce() {
+  const sql = await getSql();
+  const existing = await sql<{ id: string }>`select id from shop_catalog_backups where id = 'pre-source-reset'`;
+  if (existing.length) return;
+  const products = await sql`select * from shop_products`;
+  const catalog = await sql<{ doc: string }>`select doc from shop_catalog where id = 'main'`;
+  const stateRows = await sql<{ doc: string }>`select doc from shop_state where id = 'main'`;
+  let stateProducts: unknown[] = [];
+  let stripped = "";
+  let preservedCounts = { users: 0, orders: 0, txns: 0 };
+  if (stateRows[0]?.doc) {
+    const doc = JSON.parse(stateRows[0].doc) as Data;
+    stateProducts = Array.isArray(doc.products) ? doc.products : [];
+    const users = Array.isArray(doc.users) ? doc.users.length : 0;
+    const orders = Array.isArray(doc.orders) ? doc.orders.length : 0;
+    const txns = Array.isArray(doc.txns) ? doc.txns.length : 0;
+    doc.products = [];
+    doc.providers = (doc.providers || []).map((provider) => ({ ...provider, lastSync: null }));
+    stripped = JSON.stringify(doc);
+    preservedCounts = { users, orders, txns };
+  }
+  const note = "Imported catalogues only. Customer accounts, wallets, orders, deposits and provider keys were not deleted.";
+  const payload = JSON.stringify({
+    shopProducts: products,
+    shopCatalog: catalog[0]?.doc || "[]",
+    stateProducts,
+    preserved: preservedCounts,
+  });
+  try {
+    await sql`insert into shop_catalog_backups (id, note, products_json, product_count) values ('pre-source-reset', ${note}, ${payload}, ${products.length + stateProducts.length})`;
+  } catch {
+    return;
+  }
+  await sql`delete from shop_products`;
+  await sql`update shop_catalog set doc = '[]' where id = 'main'`;
+  if (stripped) await sql`update shop_state set doc = ${stripped}, updated_at = now() where id = 'main'`;
+  catalogCache = [];
+}
+
 async function loadDoc(withCatalog = false): Promise<Data> {
+  await resetImportedCataloguesOnce();
   const sql = await getSql();
   const rows = await sql<{ doc: string }>`select doc from shop_state where id = 'main'`;
   if (!rows[0]) {
@@ -160,6 +201,7 @@ async function loadDoc(withCatalog = false): Promise<Data> {
 }
 
 async function loadLight(): Promise<Data> {
+  await resetImportedCataloguesOnce();
   const sql = await getSql();
   const rows = await sql<{ doc: string }>`select doc from shop_state where id = 'main'`;
   if (!rows[0]) {
@@ -173,7 +215,7 @@ async function loadLight(): Promise<Data> {
 }
 
 function isHeavy(product: Product) {
-  return product.category === "numbers" || product.category === "rent";
+  return product.category === "numbers" || product.category === "rent" || product.category === "number" || product.category === "usa";
 }
 
 let catalogCache: Product[] | null = null;
@@ -289,9 +331,8 @@ function result(doc: Data, userId: string | null, draft: Draft | null, error: st
 
 const LIGHT = new Set(["login", "register", "logout", "resetPassword", "completeGoogle"]);
 
-let sweptBoost = false;
 let lightSyncedAt = 0;
-const LIGHT_CATS = ["airtime", "data", "cable", "electricity", "exam", "giftcard", "betting", "other"];
+const LIGHT_CATS = ["airtime", "data", "logs", "smm", "cable", "exam", "giftcard", "betting"];
 
 export async function currentShop(): Promise<ApplyResult> {
   let doc = await loadLight();
@@ -315,10 +356,6 @@ export async function currentShop(): Promise<ApplyResult> {
       // Table appears after the next deploy migration.
     }
     try {
-      if (!sweptBoost) {
-        await dropMisfiledBoost();
-        sweptBoost = true;
-      }
       const rows = await readShopRows(LIGHT_CATS, 2000);
       const have = new Set(doc.products.map((product) => `${product.providerId}|${product.externalId}`));
       const missing = rows.filter((product) => product.externalId && !have.has(`${product.providerId}|${product.externalId}`));
@@ -445,11 +482,12 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
       error = out.error;
       if (!error) await lockListing(str("id"), { description, price });
     } else if (op === "setProvider") {
-      const patch: { enabled?: boolean; name?: string; usdRate?: number; markup?: number; currency?: "NGN" | "USD"; operatorMarkups?: Record<string, number>; operatorPrices?: Record<string, number> } = {};
+      const patch: { enabled?: boolean; name?: string; usdRate?: number; markup?: number; markupPercent?: number; currency?: "NGN" | "USD"; operatorMarkups?: Record<string, number>; operatorPrices?: Record<string, number> } = {};
       if (typeof payload.enabled === "boolean") patch.enabled = payload.enabled;
       if (str("name")) patch.name = str("name");
       if (Number.isFinite(num("usdRate")) && num("usdRate") > 0) patch.usdRate = num("usdRate");
       if (Number.isFinite(num("markup")) && num("markup") > 0) patch.markup = num("markup");
+      if (Number.isFinite(num("markupPercent")) && num("markupPercent") >= 0) patch.markupPercent = num("markupPercent");
       if (payload.currency === "USD" || payload.currency === "NGN") patch.currency = payload.currency;
       if (payload.operatorMarkups && typeof payload.operatorMarkups === "object") {
         const marks: Record<string, number> = {};
@@ -541,18 +579,14 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
   const quoted = found ? quoteProduct(found, doc) : null;
   const provider = quoted && doc.providers.find((item) => item.id === quoted.providerId && item.enabled);
   if (!quoted?.enabled || !provider) return { error: "That service is not available.", data: doc };
-  let sticker = quoted.price;
-  if (isUsaWhatsapp(quoted.country, quoted.service)) {
-    const siblings = await queryOperators({ providerId: quoted.providerId, category: quoted.category === "rent" ? "rent" : "numbers", country: quoted.country, service: quoted.service, q: "", admin: false, enabledProviderIds: [quoted.providerId] });
-    sticker = rankUsaWhatsapp(siblings).find((row) => row.id === quoted.id)?.price || usaWhatsappPrice(0);
-  }
+  if (quoted.category === "vpn") return { error: "VPN is coming soon.", data: doc };
+  const sticker = quoted.price;
   const ready = { ...doc, products: [quoted, ...doc.products.filter((item) => item.id !== quoted.id)] };
   const user = userId ? ready.users.find((item) => item.id === userId) : null;
   const face = quoted.variable ? Math.round(extra.amount || 0) : sticker;
-  const charge = quoted.variable && quoted.category === "electricity" ? withMargin(face, markupFor(provider, quoted.operator)) : face;
+  const charge = face;
   if (!user) return { error: "Sign in first.", data: doc };
   if (quoted.category === "airtime" && (face < 50 || face > 50000)) return { error: "Airtime must be between ₦50 and ₦50,000.", data: doc };
-  if (quoted.category === "electricity" && (face < 1000 || face > 200000)) return { error: "Electricity must be between ₦1,000 and ₦200,000.", data: doc };
   if (!quoted.variable && charge <= 0) return { error: "This item has no price yet.", data: doc };
   if (user.balance < charge) return { error: "Insufficient balance. Top up your balance to make this purchase.", data: doc };
   const placed = await placeOnProvider({ product: quoted, provider, apiKey: await readProviderKey(provider.id), phone: extra.phone || "", amount: quoted.variable ? face : charge });
@@ -709,9 +743,11 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
   if (url.protocol !== "https:" && url.protocol !== "http:") return { ok: false as const, error: "Only http and https catalogues can be pulled." };
   const key = input.apiKey?.trim() || (input.providerId ? await readProviderKey(input.providerId) : "");
   const headers: Record<string, string> = { Accept: "application/json" };
-  if (key) {
-    const tokenAuth = /smeapi\.com\.ng$/i.test(url.hostname);
-    headers.Authorization = (tokenAuth ? "Token " : "Bearer ") + key;
+  const host = url.hostname.replace(/^www\./, "");
+  if (key && /(^|\.)getatext\.com$/i.test(host)) headers.Auth = key;
+  else if (key && /smeapi\.com\.ng$/i.test(host)) headers.Authorization = `Token ${key}`;
+  else if (key) {
+    headers.Authorization = `Bearer ${key}`;
     headers["X-API-KEY"] = key;
     headers["api-key"] = key;
   }
@@ -731,6 +767,7 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
   };
   try {
     const allow = [...new Set([...(input.allow || []), routed.product].filter(Boolean))];
+    if (key && /(^|\.)getatext\.com$/i.test(host) && !url.searchParams.has("api_key")) url.searchParams.set("api_key", key);
     const barePrices = url.hostname.endsWith("5sim.net") && /\/v1\/guest\/prices\/?$/.test(url.pathname) && !url.searchParams.get("product") && !routed.product;
     if (barePrices) {
       if (!allow.length) return { ok: false as const, error: "Save the service names first." };
@@ -765,9 +802,10 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     const res = await fetch(url, { headers, signal: ctrl.signal });
     const text = await res.text();
     if (text.length > tooBig) return { ok: false as const, error: "That catalogue is larger than 32MB." };
-    const both = input.kind === "vtu" || input.kind === "random";
+    const both = (input.kind === "vtu" || input.kind === "vtu-airtime" || input.kind === "vtu-data" || input.kind === "random") && !/(^|\.)getatext\.com$/i.test(host) && !/smeapi\.com\.ng$/i.test(host) && !host.endsWith("5sim.net");
     if (!res.ok && !both) {
       const detail = text.replace(/\s+/g, " ").trim().slice(0, 160);
+      if (detail === "BAD_KEY") return { ok: false as const, error: "GetaText rejected the API key." };
       return { ok: false as const, error: detail ? `The API replied ${res.status}. ${detail}` : `The API replied ${res.status}.` };
     }
     let payload: unknown = null;
@@ -835,6 +873,10 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     const at = parts.findIndex((part) => part === "products");
     const place = at >= 0 ? { country: parts[at + 1] || "", operator: parts[at + 2] || "any" } : {};
     const ready = url.hostname.endsWith("5sim.net") ? slimFiveSim(payload, hint, allow, place) : payload;
+    if (/(^|\.)getatext\.com$/i.test(host)) {
+      const flat = flattenGetaText(ready);
+      if (flat) return { ok: true as const, payload: flat };
+    }
     return { ok: true as const, payload: ready };
   } catch {
     return { ok: false as const, error: "Could not reach that API. Check the URL and key." };
@@ -1008,16 +1050,21 @@ function emptyImport(error: string | null) {
   return { error, jobId: "", total: 0, saved: 0, batch: 0, batches: 0, batchSize: IMPORT_BATCH, done: false, report: null as SyncReport | null, state: null as Data | null };
 }
 
-const KIND_EMPTY: Record<ImportKind, string> = {
+const KIND_EMPTY: Record<string, string> = {
   numbers: "No virtual numbers in that catalogue matched the names you saved.",
-  vtu: "No airtime or data plans were in that catalogue.",
-  vpn: "No VPN plans were in that catalogue.",
-  smm: "No social boost services were in that catalogue.",
+  server2: "No virtual numbers in that catalogue matched the names you saved.",
+  server3: "No virtual numbers in that catalogue matched the names you saved.",
+  usa: "GetaText did not return any USA services.",
+  "vtu-airtime": "No airtime networks were in that catalogue.",
+  "vtu-data": "No data plans were in that catalogue.",
+  vtu: "Choose Airtime import or Data import.",
+  vpn: "VPN is coming soon.",
+  smm: "No SMM services were in that catalogue.",
   random: "That catalogue had no services.",
 };
 
 function importKindOf(value: string | undefined): ImportKind {
-  return value === "vtu" || value === "vpn" || value === "smm" || value === "random" ? value : "numbers";
+  return sourceKindOf(value) || "numbers";
 }
 
 export async function beginCatalogImport(input: { url?: string; payload?: unknown; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean; kind?: string; selective?: boolean }) {
@@ -1027,6 +1074,8 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
   if (me?.role !== "admin") return emptyImport("Only an admin can pull an API.");
   const selective = !!input.selective;
   const kind = importKindOf(input.kind);
+  if (kind === "vpn") return emptyImport("VPN is coming soon. No products were imported.");
+  if (kind === "vtu") return emptyImport("Choose Airtime import or Data import. Electricity and TV are not imported.");
   const wanted = doc.settings.wantedServices?.length ? doc.settings.wantedServices : [...MAJOR_SERVICES];
   const routed = input.url ? fiveSimCategoryUrl(input.url) : { url: "", product: "" };
   const wantedForPull = routed.product ? [...wanted, routed.product] : wanted;
@@ -1047,11 +1096,11 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
     if (size > 8_000_000) return emptyImport("That selection is too large. Import fewer products.");
   }
   const extracted = extractCatalog(payload);
-  const airtime = !selective && kind === "vtu" ? airtimeProductsFromPayload(payload) : [];
-  const shaped = selective ? shapeImport(extracted.items, "random", []) : shapeImport(extracted.items, kind, wantedForPull);
-  const have = new Set(shaped.filter((item) => item.category === "airtime").map((item) => item.network.toLowerCase()));
-  const joined = selective ? shaped : [...shaped, ...airtime.filter((item) => !have.has(item.network.toLowerCase()))];
-  const items = selective ? joined.slice(0, 200) : joined;
+  const numberLike = kind === "numbers" || kind === "server2" || kind === "server3" || kind === "usa";
+  const shaped = kind === "vtu-airtime"
+    ? airtimeProductsFromPayload(payload).map((item) => ({ ...item, category: "airtime" as const, importType: "VTU_IMPORT", serverId: "" }))
+    : shapeImport(extracted.items, kind, !selective && numberLike ? wantedForPull : []);
+  const items = selective ? shaped.slice(0, 200) : shaped;
   if (!items.length) return emptyImport(selective ? "None of the ticked products could be read." : KIND_EMPTY[kind]);
   const jobId = crypto.randomUUID();
   const meta: ImportMeta = {
@@ -1085,18 +1134,22 @@ function withProvider(doc: Data, meta: ImportMeta, providerId: string) {
   const now = new Date().toISOString();
   const providers = doc.providers.map((provider) => ({ ...provider }));
   let provider = providerId ? providers.find((item) => item.id === providerId) : undefined;
-  const five = /5sim/i.test(meta.name + meta.baseUrl);
+  const five = /5sim\.net/i.test(meta.baseUrl);
+  const dest = destinationOf(meta.kind);
   if (!provider) {
     provider = {
       id: uid("prov"),
       name: meta.name,
       baseUrl: meta.baseUrl,
       hasKey: meta.hasKey,
-      servesNumbers: false,
+      servesNumbers: dest?.importType === "NUMBER_IMPORT",
       enabled: true,
       currency: meta.currency,
       usdRate: meta.usdRate > 0 ? meta.usdRate : five ? 2646 : doc.settings.usdNgn,
-      markup: meta.markup > 0 ? meta.markup : five ? 1.6 : 1 + doc.settings.margin / 100,
+      markup: 1,
+      markupPercent: meta.markup > 0 ? meta.markup : 0,
+      importType: dest?.importType || "",
+      serverId: dest?.serverId || "",
       operatorMarkups: {},
       operatorPrices: {},
       createdAt: now,
@@ -1108,9 +1161,13 @@ function withProvider(doc: Data, meta: ImportMeta, providerId: string) {
     provider.baseUrl = meta.baseUrl || provider.baseUrl;
     provider.currency = meta.currency;
     if (meta.usdRate > 0) provider.usdRate = meta.usdRate;
-    if (meta.markup > 0) provider.markup = meta.markup;
+    if (meta.markup > 0) provider.markupPercent = meta.markup;
     if (!provider.usdRate) provider.usdRate = five ? 2646 : doc.settings.usdNgn;
-    if (!provider.markup) provider.markup = five ? 1.6 : 1 + doc.settings.margin / 100;
+    if (dest) {
+      provider.importType = dest.importType;
+      provider.serverId = dest.serverId;
+      provider.servesNumbers = dest.importType === "NUMBER_IMPORT";
+    }
     provider.enabled = true;
     if (meta.hasKey) provider.hasKey = true;
   }
@@ -1187,7 +1244,17 @@ async function stepFromMemory(jobId: string) {
         service: item.service,
         country: item.country,
         network: item.network,
-        price: sellPrice(item.price, held.provider.currency, held.provider.usdRate, markupFor(held.provider, item.operator || ""), `${item.externalId}|${item.name}|${item.country}|${item.operator}`, item.category),
+        price: customerPrice({
+          cost: item.price,
+          currency: held.provider.currency,
+          usdRate: held.provider.usdRate || loaded.settings.usdNgn,
+          successRate: successRateOf(item.rate < 0 ? null : item.rate),
+          pricing: pricingOf(loaded.settings.pricing),
+          providerId: held.provider.id,
+          service: item.service,
+          providerPercent: held.provider.markupPercent && held.provider.markupPercent > 0 ? held.provider.markupPercent : null,
+          defaultPercent: loaded.settings.margin,
+        }).price,
         cost: item.price,
         stock: item.stock,
         operator: item.operator || "",
@@ -1197,9 +1264,11 @@ async function stepFromMemory(jobId: string) {
         validity: item.validity,
         variable: item.variable,
         description: item.description,
+        importType: item.importType || "",
+        serverId: item.serverId || "",
       }));
       await upsertProductRows(products, jobId);
-      job.light.push(...products.filter((product) => product.category === "airtime" || product.category === "data" || product.category === "cable" || product.category === "electricity" || product.category === "exam" || product.category === "giftcard" || product.category === "betting"));
+      job.light.push(...products.filter((product) => product.category === "airtime" || product.category === "data" || product.category === "logs" || product.category === "smm"));
       job.tally.created += Math.max(0, slice.length - existing);
       job.tally.updated += existing;
       for (const item of slice) {
@@ -1217,11 +1286,10 @@ async function stepFromMemory(jobId: string) {
         } else {
           const categories = [...new Set(job.items.map((item) => item.category))];
           await pruneSyncedProducts(held.provider.id, jobId, job.touched, categories);
-          if (categories.includes("boost")) await dropMisfiledBoost(held.provider.id);
           held.doc = mergeLight(held.doc, held.provider.id, job.light);
         }
       }
-      if (job.items.some((item) => item.category === "numbers" || item.category === "rent")) held.provider.servesNumbers = true;
+      if (job.items.some((item) => item.category === "number")) held.provider.servesNumbers = true;
       held.provider.enabled = true;
       held.provider.lastSync = {
         at: new Date().toISOString(),
@@ -1386,31 +1454,34 @@ export async function importFromUrl(input: { url: string; apiKey?: string; provi
   });
 }
 
-export async function browseNumbers(input: { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean; list?: string }) {
+export async function browseNumbers(input: { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean; list?: string; serverId?: string }) {
   const doc = await loadLight();
   const session = await readSession();
   const me = doc.users.find((u) => u.id === session.userId);
   const admin = me?.role === "admin";
-  const want = input.category === "rent" ? "rent" : "numbers";
-  const enabledProviderIds = doc.providers.filter((provider) => provider.enabled).map((provider) => provider.id);
+  const want = input.category === "usa" ? "usa" : input.category === "rent" ? "rent" : "number";
+  const provider = doc.providers.find((item) => item.id === input.providerId);
+  const serverId = want === "number" ? input.serverId || provider?.serverId || "" : "";
+  const enabledProviderIds = doc.providers.filter((item) => item.enabled && (want !== "usa" || item.importType === "USA_IMPORT" || item.serverId === "usa")).map((item) => item.id);
   const hidden = admin ? await queryHidden(input.providerId || "", want) : 0;
   const empty = { services: [] as { service: string; price: number }[], countries: [] as Product[], operators: [] as Product[], hidden };
   const query = {
-    providerId: input.providerId || "",
+    providerId: want === "usa" ? "" : input.providerId || "",
     category: want,
+    serverId,
     country: input.country || "",
     service: input.service || "",
     q: (input.q || "").trim(),
     admin,
-    enabledProviderIds,
+    enabledProviderIds: want === "usa" ? enabledProviderIds : doc.providers.filter((item) => item.enabled).map((item) => item.id),
   };
   if (!admin && input.providerId && !enabledProviderIds.includes(input.providerId)) return empty;
   const serviceList = async () => {
     const rows = await queryServices(query);
     const best = new Map<string, number>();
     for (const row of rows) {
-      const price = isUsaWhatsapp(input.country || "", row.service) ? usaWhatsappPrice(0) : quoteProduct(
-        { id: "", providerId: row.providerId, externalId: "", category: want, name: row.service, service: row.service, country: "", network: "", price: row.price, cost: row.cost, stock: 0, operator: "", rate: 0, rates: "", enabled: true, validity: "", variable: false, description: "" },
+      const price = quoteProduct(
+        { id: "", providerId: row.providerId, externalId: "", category: want, name: row.service, service: row.service, country: input.country || "", network: "", price: row.price, cost: row.cost, stock: 0, operator: "", rate: -1, rates: "", enabled: true, validity: "", variable: false, description: "" },
         doc,
       ).price;
       const prev = best.get(row.service);
@@ -1424,7 +1495,7 @@ export async function browseNumbers(input: { providerId?: string; category?: str
   }
   if (input.detail && input.service && input.country) {
     const rows = (await queryOperators(query)).map((row) => quoteProduct(row, doc));
-    const operators = isUsaWhatsapp(input.country, input.service) ? rankUsaWhatsapp(rows).sort((a, b) => a.price - b.price) : rows.sort((a, b) => a.price - b.price);
+    const operators = rows.sort((a, b) => b.rate - a.rate || a.price - b.price);
     return { ...empty, operators };
   }
   if (input.list === "services" || !input.service) return { ...empty, services: await serviceList() };

@@ -79,7 +79,7 @@ export const beginCatalogImport = createServerFn({ method: "POST" })
     usdRate: Number(input?.usdRate) || 0,
     markup: Number(input?.markup) || 0,
     publish: !!input?.publish,
-    kind: input?.kind === "vtu" || input?.kind === "vpn" || input?.kind === "smm" || input?.kind === "random" ? input.kind : "numbers",
+    kind: ["vtu", "vtu-airtime", "vtu-data", "vpn", "smm", "random", "numbers", "server2", "server3", "usa"].includes(String(input?.kind)) ? String(input?.kind) : "numbers",
     selective: !!input?.selective,
   }))
   .handler(async ({ data }): Promise<ImportStep> => {
@@ -125,9 +125,10 @@ export const importUrl = createServerFn({ method: "POST" })
   });
 
 export const browseNumbers = createServerFn({ method: "POST" })
-  .validator((input: { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean; list?: string }) => ({
+  .validator((input: { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean; list?: string; serverId?: string }) => ({
     providerId: String(input?.providerId || ""),
-    category: input?.category === "rent" ? "rent" : "numbers",
+    category: input?.category === "rent" ? "rent" : input?.category === "usa" ? "usa" : input?.category === "number" ? "number" : "numbers",
+    serverId: String(input?.serverId || ""),
     country: String(input?.country || ""),
     service: String(input?.service || ""),
     q: String(input?.q || "").slice(0, 60),

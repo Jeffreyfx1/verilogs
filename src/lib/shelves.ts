@@ -1,8 +1,8 @@
 /** One product category belongs to one shelf. Matching is the category column only. */
 export const SHELF_CATEGORIES = {
   vpn: ["vpn"],
-  smm: ["boost"],
-  random: ["other"],
+  smm: ["smm"],
+  random: ["logs"],
 } as const;
 
 export type Shelf = keyof typeof SHELF_CATEGORIES;

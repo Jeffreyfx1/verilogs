@@ -36,15 +36,14 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
   const userNav: Item[] = [
     { to: "/dashboard", label: "Dashboard", icon: glyph.dashboard, end: true, match: "dash" },
     { to: "/dashboard/wallet", label: "Fund wallet", icon: glyph.wallet },
-    { to: "/dashboard/numbers", label: "All countries", icon: glyph.globe, search: { server: "", country: "", kind: "", service: "" }, match: "all" },
-    { to: "/dashboard/numbers", label: "USA numbers", icon: glyph.flag, search: { server: "", country: "United States", kind: "", service: "" }, match: "usa" },
+    { to: "/dashboard/numbers", label: "Buy Number", icon: glyph.hash, search: { server: "", country: "", kind: "", service: "" }, match: "all" },
+    { to: "/dashboard/numbers", label: "USA", icon: glyph.flag, search: { server: "", country: "", kind: "usa", service: "" }, match: "usa" },
     { to: "/dashboard/numbers", label: "Rent numbers", icon: glyph.crown, search: { server: "", country: "", kind: "rent", service: "" }, match: "rent" },
-    { to: "/dashboard/numbers", label: "Rent USA numbers", icon: glyph.shield, search: { server: "", country: "United States", kind: "rent", service: "" }, match: "rent-usa" },
     { to: "/dashboard/data", label: "Data", icon: glyph.data },
     { to: "/dashboard/airtime", label: "Airtime", icon: glyph.phone },
     { to: "/dashboard/bills", label: "Bills", icon: glyph.receipt },
     { to: "/dashboard/extra", label: "SMM", icon: glyph.megaphone, hash: "smm", match: "smm" },
-    { to: "/dashboard/extra", label: "Random", icon: glyph.grid, hash: "random", match: "random" },
+    { to: "/dashboard/extra", label: "Buy Logs", icon: glyph.grid, hash: "random", match: "random" },
     { to: "/dashboard/vpn", label: "VPN", icon: glyph.shield },
     { to: "/dashboard/announcements", label: "Announcements", icon: glyph.megaphone },
   ];
@@ -74,15 +73,13 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
   };
 
   const ItemLink = ({ item }: { item: Item }) => {
-    const country = String(search.country || "");
     const kind = String(search.kind || "");
     const onNumbers = path.startsWith("/dashboard/numbers");
     let active = false;
     if (item.match === "dash") active = path === "/dashboard";
-    else if (item.match === "usa") active = onNumbers && country === "United States" && kind !== "rent";
-    else if (item.match === "rent") active = onNumbers && kind === "rent" && country !== "United States";
-    else if (item.match === "rent-usa") active = onNumbers && kind === "rent" && country === "United States";
-    else if (item.match === "all") active = onNumbers && kind !== "rent" && country !== "United States";
+    else if (item.match === "usa") active = onNumbers && kind === "usa";
+    else if (item.match === "rent") active = onNumbers && kind === "rent";
+    else if (item.match === "all") active = onNumbers && kind !== "rent" && kind !== "usa";
     else if (item.match === "smm") active = path.startsWith("/dashboard/extra") && hash === "smm";
     else if (item.match === "random") active = path.startsWith("/dashboard/extra") && hash !== "smm";
     else if (item.match === "hist-numbers") active = path.startsWith("/dashboard/history") && (hash === "" || hash === "numbers");

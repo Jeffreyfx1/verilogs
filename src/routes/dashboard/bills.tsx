@@ -10,7 +10,6 @@ export const Route = createFileRoute("/dashboard/bills")({ component: BillsPage 
 
 const TABS = [
   { id: "cable", label: "Cable TV" },
-  { id: "electricity", label: "Electricity" },
   { id: "exam", label: "Exam PINs" },
   { id: "giftcard", label: "Gift cards" },
   { id: "betting", label: "Betting" },
@@ -70,12 +69,9 @@ function BillsPage() {
         </section>
         <section className="space-y-3 rounded-card border border-line bg-card p-4 shadow-card">
           <Field label="Phone"><input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
-          <Field label={tab === "cable" ? "Smartcard / IUC" : tab === "electricity" ? "Meter number" : "Note"}>
+          <Field label={tab === "cable" ? "Smartcard / IUC" : "Note"}>
             <input className={inputClass} value={detail} onChange={(e) => setDetail(e.target.value)} />
           </Field>
-          {tab === "electricity" ? (
-            <Field label="Amount"><input className={inputClass} inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))} /></Field>
-          ) : null}
         </section>
       </div>
     </div>

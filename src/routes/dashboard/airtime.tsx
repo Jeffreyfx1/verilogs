@@ -40,6 +40,7 @@ function AirtimePage() {
     <div className="mx-auto max-w-xl space-y-4">
       <h1 className="text-2xl font-extrabold">Airtime</h1>
       <p className="text-sm text-muted">The SIM receives the amount you type. Your wallet pays that same amount.</p>
+      {!products.length ? <p className="text-sm text-muted">No airtime services are live, so a recharge cannot start.</p> : (
       <div className="grid grid-cols-2 gap-2">
         {products.map((p) => (
           <button key={p.id} type="button" onClick={() => setNet(p.network)} className={`rounded-card border p-4 text-left ${current?.id === p.id ? "border-primary" : "border-line bg-card"}`}>
@@ -48,6 +49,7 @@ function AirtimePage() {
           </button>
         ))}
       </div>
+      )}
       <Field label="Phone number"><input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="080…" /></Field>
       <Field label="Amount" hint="₦50 to ₦50,000"><input className={inputClass} inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))} /></Field>
       <Button className="w-full" busy={busy} disabled={!current} onClick={() => void purchase()}>{busy ? "Sending…" : `Recharge ${current ? naira(face) : ""}`}</Button>

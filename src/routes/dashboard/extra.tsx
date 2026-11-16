@@ -63,9 +63,9 @@ const COPY: Record<Shelf, { title: string; body: string; empty: string }> = {
     empty: "No SMM services yet. Import an SMM catalogue and turn the rows on.",
   },
   random: {
-    title: "Random marketplace",
-    body: "Miscellaneous products stored as category other. They do not mix into VPN, SMM, numbers or VTU.",
-    empty: "No random products yet. Import a Random catalogue and turn the rows on.",
+    title: "Marketplace",
+    body: "Logs and other digital products imported through Random Import. Nothing else is mixed in.",
+    empty: "No logs are live yet.",
   },
 };
 

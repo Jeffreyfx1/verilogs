@@ -65,9 +65,10 @@ export async function placeOnProvider(input: { product: Product; provider: Provi
   })();
   const five = host.endsWith("5sim.net") || /5sim/i.test(provider.name);
   const sme = host.endsWith("smeapi.com.ng");
-  const cost = product.variable ? input.amount : nairaCost(product.cost, provider.currency);
+  const cost = product.variable ? input.amount : nairaCost(product.cost, provider.currency, provider.usdRate);
+  const numberCategory = product.category === "number" || product.category === "numbers" || product.category === "rent";
 
-  if (five && (product.category === "numbers" || product.category === "rent")) {
+  if (five && numberCategory) {
     const country = fiveCountry(product.country);
     const operator = (product.operator || "any").toLowerCase().replace(/[^a-z0-9]/g, "") || "any";
     const service = (product.service || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -86,6 +87,29 @@ export async function placeOnProvider(input: { product: Product; provider: Provi
       if (/balance|funds|money/i.test(raw)) return { ok: false, error: "The API wallet is empty. Top up that API, then try again." };
       return { ok: false, error: raw || "The number API refused the order. The wallet was not charged." };
     }
+    return { ok: true, phone, ref: String(json.id || ""), waiting: true, cost };
+  }
+
+  if (/(^|\.)getatext\.com$/i.test(host) && product.category === "usa") {
+    const service = String(product.service || "").trim().toLowerCase();
+    if (!service) return { ok: false, error: "This USA service has no service id, so it was not sent." };
+    let res: Response;
+    try {
+      res = await fetch("https://getatext.com/api/v1/rent-a-number", {
+        method: "POST",
+        headers: { Auth: apiKey, Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ service }),
+      });
+    } catch {
+      return { ok: false, error: "GetaText could not be reached. The wallet was not charged." };
+    }
+    const { text, json } = await readBody(res);
+    if (!res.ok || json.errors) {
+      const raw = String(json.errors || json.message || text || "GetaText refused the rental.").slice(0, 180);
+      return { ok: false, error: raw || "GetaText refused the rental. The wallet was not charged." };
+    }
+    const phone = String(json.number || "");
+    if (!phone) return { ok: false, error: "GetaText did not return a number. The wallet was not charged." };
     return { ok: true, phone, ref: String(json.id || ""), waiting: true, cost };
   }
 

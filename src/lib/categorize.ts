@@ -1,5 +1,5 @@
-import { parseMoney } from "@/lib/money";
-import { onShelf, shelfOf, type Shelf } from "@/lib/shelves";
+import { parseMoney } from "./money.ts";
+import { destinationOf, type SourceKind } from "./import-source.ts";
 
 export const MAJOR_SERVICES = [
   "WhatsApp",
@@ -28,7 +28,7 @@ export function serviceAllowed(service: string, list: string[]) {
   return keys.some((key) => name === key || name.startsWith(key) || (key.startsWith(name) && name.length >= 4));
 }
 
-export type Category = "numbers" | "rent" | "airtime" | "data" | "cable" | "electricity" | "exam" | "giftcard" | "betting" | "boost" | "vpn" | "other";
+export type Category = "numbers" | "rent" | "airtime" | "data" | "cable" | "electricity" | "exam" | "giftcard" | "betting" | "boost" | "vpn" | "other" | "smm" | "number" | "logs" | "usa";
 
 export type ParsedItem = {
   externalId: string;
@@ -45,6 +45,8 @@ export type ParsedItem = {
   validity: string;
   variable: boolean;
   description: string;
+  importType: string;
+  serverId: string;
 };
 
 export type CatalogExtract = { items: ParsedItem[]; skipped: number };
@@ -342,6 +344,11 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
   const externalId = id ? slug([...path, id]) : slug([...path, hint, display, country, network, operator, String(price ?? "")]);
   const qty = minQ != null || maxQ != null ? `Min ${minQ ?? 0}${maxQ != null ? ` · Max ${maxQ}` : ""}` : "";
   const body = describe(obj);
+  const skip = new Set(["id", "plan_id", "price", "cost", "name", "network", "network_id", "service", "country", "operator", "category"]);
+  const extras = Object.entries(obj)
+    .filter(([key, value]) => (typeof value === "string" || typeof value === "number") && !skip.has(key.toLowerCase()))
+    .map(([key, value]) => `${key}: ${value}`)
+    .join("\n");
   return {
     externalId,
     name: display || ownName || id,
@@ -351,12 +358,14 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
     operator,
     price: price ?? 0,
     stock: stockRaw == null ? 0 : Math.max(0, Math.round(stockRaw)),
-    rate: Math.round(Number(obj.rate) || 0),
+    rate: reportedRate(obj.rate ?? obj.success_rate ?? obj.successRate),
     rates: text(obj.rates),
     validity,
     variable: price == null || price === 0,
-    description: [body, qty].filter(Boolean).join("\n"),
+    description: [body, extras, qty].filter(Boolean).join("\n"),
     hint,
+    importType: "",
+    serverId: "",
   };
 }
 
@@ -405,15 +414,16 @@ function finalize(raw: Omit<ParsedItem, "category"> & { hint: string }): ParsedI
   return { ...raw, category, name, service, country, network, variable, price: variable ? 0 : raw.price };
 }
 
-export type ImportKind = "numbers" | "vtu" | "vpn" | "smm" | "random";
-
-export { onShelf, shelfOf, type Shelf };
-
-function keptGroup(item: ParsedItem) {
-  const group = item.service.trim();
-  if (group && group !== item.name && group.length < 48) return group;
-  return item.service || "General";
+function reportedRate(value: unknown) {
+  if (value == null || value === "") return -1;
+  const rate = Number(value);
+  if (!Number.isFinite(rate)) return -1;
+  return rate;
 }
+
+export type ImportKind = SourceKind;
+
+export { onShelf, shelfOf, type Shelf } from "./shelves.ts";
 
 function networkLabel(name: string) {
   const low = name.trim().toLowerCase();
@@ -457,49 +467,27 @@ export function airtimeProductsFromPayload(payload: unknown): ParsedItem[] {
     validity: "",
     variable: true,
     description: `Network ${id}. The customer chooses the amount.`,
+    importType: "VTU_IMPORT",
+    serverId: "",
   }));
 }
 
 export function shapeImport(items: ParsedItem[], kind: ImportKind, wanted: string[]) {
-  if (kind === "random") {
-    return items
-      .filter((item) => !!(item.name || item.service))
-      .map((item) => ({
-        ...item,
-        category: "other" as const,
-        name: item.name || item.service,
-        service: keptGroup(item) || item.service || "Other",
-        variable: item.variable || !(item.price > 0),
-      }));
+  const dest = destinationOf(kind);
+  if (!dest) return [];
+  let rows = items.filter((item) => !!(item.name || item.service || item.externalId));
+  if ((dest.importType === "NUMBER_IMPORT" || dest.importType === "USA_IMPORT") && wanted.length) {
+    rows = rows.filter((item) => serviceAllowed(item.service || item.name, wanted));
   }
-  const priced = items.filter((item) => !!item.name && (item.price > 0 || item.category === "airtime" || item.variable));
-  if (kind === "numbers") {
-    return priced.filter((item) => (item.category === "numbers" || item.category === "rent") && serviceAllowed(item.service || item.name, wanted));
-  }
-  if (kind === "vtu") {
-    return priced
-      .filter((item) => item.category !== "numbers" && item.category !== "rent" && item.category !== "boost")
-      .map((item) => {
-        if (item.category === "data" || item.category === "airtime" || item.category === "cable" || item.category === "electricity" || item.category === "exam") return item;
-        const blob = `${item.name} ${item.service} ${item.description}`.toLowerCase();
-        const category: Category = /\d+(\.\d+)?\s?(gb|mb)|bundle|\bdata\b/.test(blob) ? "data" : "airtime";
-        return { ...item, category };
-      });
-  }
-  if (kind === "vpn") {
-    return priced
-      .filter((item) => item.category !== "numbers" && item.category !== "rent")
-      .map((item) => ({ ...item, category: "vpn" as const, service: keptGroup(item) || "VPN" }));
-  }
-  if (kind === "smm") {
-    return priced
-      .filter((item) => item.category !== "numbers" && item.category !== "rent")
-      .map((item) => ({ ...item, category: "boost" as const, service: keptGroup(item) || "SMM" }));
-  }
-  return priced.map((item) => {
-    if (item.category !== "other") return item;
-    return { ...item, service: keptGroup(item) || item.service || "Other" };
-  });
+  return rows.map((item) => ({
+    ...item,
+    category: dest.category,
+    importType: dest.importType,
+    serverId: dest.serverId,
+    name: item.name || item.service,
+    service: item.service || item.name,
+    variable: dest.category === "airtime" ? !(item.price > 0) : item.price > 0 ? false : item.variable,
+  }));
 }
 
 function isOperatorQuote(row: unknown): row is Record<string, unknown> {
@@ -537,7 +525,7 @@ function pushQuote(rows: Array<Record<string, unknown>>, service: string, countr
     operator,
     cost,
     count: Math.round(count),
-    rate: Math.round(Number(rec.rate ?? rec.rate1) || 0),
+    rate: rec.rate == null || rec.rate === "" ? -1 : Math.round(Number(rec.rate) || 0),
     rates: windows.filter(([, n]) => Number(n) > 0).map(([label, n]) => `${label} ${Math.round(Number(n))}%`).join(" · "),
     category: String(rec.Category || rec.category || hint || "activation"),
   });
@@ -622,6 +610,8 @@ export function extractCatalog(payload: unknown): CatalogExtract {
         variable: false,
         description: "",
         hint: next.section || "activation",
+        importType: "",
+        serverId: "",
       };
       const priced = finalize(raw);
       const pricedKey = [priced.externalId, priced.category, priced.country, priced.network, priced.operator].join("|");
