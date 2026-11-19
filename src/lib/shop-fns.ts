@@ -206,3 +206,103 @@ export const supportAsk = createServerFn({ method: "POST" })
     const { askSupport } = await core();
     return askSupport(data.question);
   });
+
+async function adminOnly() {
+  const { adminContext } = await core();
+  const admin = await adminContext();
+  if (!admin) throw new Error("Only an admin can do that.");
+  return admin;
+}
+
+export const profitReport = createServerFn({ method: "GET" }).handler(async () => {
+  const { businessProfit } = await core();
+  return businessProfit();
+});
+
+export const logProviders = createServerFn({ method: "GET" }).handler(async () => {
+  await adminOnly();
+  const { listLogProviders } = await import("@/lib/logs-import.server");
+  return listLogProviders();
+});
+
+export const saveLogProvider = createServerFn({ method: "POST" })
+  .validator((input: Record<string, unknown>) => input)
+  .handler(async ({ data }) => {
+    await adminOnly();
+    const { saveLogProvider: save } = await import("@/lib/logs-import.server");
+    return save({
+      id: String(data.id || ""),
+      name: String(data.name || ""),
+      baseUrl: String(data.baseUrl || ""),
+      apiKey: String(data.apiKey || ""),
+      productsPath: String(data.productsPath || "/listings"),
+      method: String(data.method || "GET"),
+      authMethod: String(data.authMethod || "header"),
+      apiKeyHeader: String(data.apiKeyHeader || "X-API-Key"),
+      extraHeaders: String(data.extraHeaders || "{}"),
+      queryJson: String(data.queryJson || "{}"),
+      bodyJson: String(data.bodyJson || "{}"),
+      paginationJson: String(data.paginationJson || "{}"),
+      fieldMap: String(data.fieldMap || "{}"),
+      enabled: data.enabled !== false,
+      currency: String(data.currency || "USD"),
+      usdRate: Number(data.usdRate) || 0,
+    });
+  });
+
+export const removeLogProvider = createServerFn({ method: "POST" })
+  .validator((input: { id?: string }) => ({ id: String(input?.id || "") }))
+  .handler(async ({ data }) => {
+    await adminOnly();
+    const { deleteLogProvider } = await import("@/lib/logs-import.server");
+    return deleteLogProvider(data.id);
+  });
+
+export const testLogProvider = createServerFn({ method: "POST" })
+  .validator((input: { id?: string }) => ({ id: String(input?.id || "") }))
+  .handler(async ({ data }) => {
+    await adminOnly();
+    const { testLogProvider: test } = await import("@/lib/logs-import.server");
+    return test(data.id);
+  });
+
+export const previewLogProvider = createServerFn({ method: "POST" })
+  .validator((input: { id?: string }) => ({ id: String(input?.id || "") }))
+  .handler(async ({ data }) => {
+    await adminOnly();
+    const { previewLogProvider: preview } = await import("@/lib/logs-import.server");
+    return preview(data.id);
+  });
+
+export const runLogImport = createServerFn({ method: "POST" })
+  .validator((input: { id?: string; resume?: boolean }) => ({ id: String(input?.id || ""), resume: !!input?.resume }))
+  .handler(async ({ data }) => {
+    await adminOnly();
+    const { importLogProvider } = await import("@/lib/logs-import.server");
+    return importLogProvider(data.id, data.resume);
+  });
+
+export const myReferrals = createServerFn({ method: "GET" }).handler(async () => {
+  const { sessionCustomer } = await core();
+  const me = await sessionCustomer();
+  if (!me) return { error: "Sign in first." };
+  const { referralSummary } = await import("@/lib/referral.server");
+  return { error: null, summary: await referralSummary(me.id, me.referralCode || "") };
+});
+
+export const moveReferral = createServerFn({ method: "POST" })
+  .validator((input: { amount?: number }) => ({ amount: Number(input?.amount) || 0 }))
+  .handler(async ({ data }) => {
+    const { sessionCustomer } = await core();
+    const me = await sessionCustomer();
+    if (!me) return { error: "Sign in first.", balance: 0 };
+    const { transferReferral } = await import("@/lib/referral.server");
+    return transferReferral(me.id, data.amount);
+  });
+
+export const referralDesk = createServerFn({ method: "GET" }).handler(async () => {
+  await adminOnly();
+  const { referralAdmin } = await import("@/lib/referral.server");
+  return referralAdmin();
+});
+

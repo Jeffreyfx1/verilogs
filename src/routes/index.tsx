@@ -13,10 +13,10 @@ const fallbackArt = [hero, sim, bills];
 const why: { icon: GlyphIcon; title: string; body: string }[] = [
   { icon: glyph.shield, title: "Wallet stays in naira", body: "Fund once. Spend on numbers, data, airtime and bills." },
   { icon: glyph.bolt, title: "Instant delivery", body: "A number shows on the order. The SMS code lands on that same card." },
-  { icon: glyph.lock, title: "Servers stay apart", body: "Server 1 is the first number API. Server 2 is the next. Prices are never merged." },
-  { icon: glyph.headset, title: "Support on the page", body: "FAQ, tickets and the Telegram channel sit with the shop, not in a separate app." },
-  { icon: glyph.check, title: "You publish what you sell", body: "Imports arrive switched off until you turn a service on." },
-  { icon: glyph.globe, title: "One catalogue, filed properly", body: "Numbers, data, airtime and bills from one provider land on the right shelf." },
+  { icon: glyph.lock, title: "Servers stay apart", body: "Choose Server 1, Server 2 or Server 3. Each one keeps its own prices and stock." },
+  { icon: glyph.headset, title: "Support on the page", body: "FAQ, tickets and the Telegram channel sit with the shop." },
+  { icon: glyph.check, title: "Pay from your wallet", body: "Fund once in naira, then buy a number, data, airtime or a bill." },
+  { icon: glyph.globe, title: "Services in one place", body: "Numbers, data, airtime, bills, logs and social services from your dashboard." },
 ];
 
 function Home() {

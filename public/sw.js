@@ -1,8 +1,8 @@
-const CACHE = "verilogs-shell-v1";
+const CACHE = "verilogs-shell-v2";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(["/", "/favicon.svg", "/icon-192.png"]).catch(() => undefined)).then(() => self.skipWaiting()),
+    caches.open(CACHE).then((cache) => cache.addAll(["/", "/favicon.svg", "/icon-180.png", "/icon-192.png", "/icon-512.png"]).catch(() => undefined)).then(() => self.skipWaiting()),
   );
 });
 

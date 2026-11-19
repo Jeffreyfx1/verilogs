@@ -46,6 +46,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
     { to: "/dashboard/extra", label: "Buy Logs", icon: glyph.grid, hash: "random", match: "random" },
     { to: "/dashboard/vpn", label: "VPN", icon: glyph.shield },
     { to: "/dashboard/announcements", label: "Announcements", icon: glyph.megaphone },
+    { to: "/dashboard/refer", label: "Refer & earn", icon: glyph.users },
   ];
   const historyNav: Item[] = [
     { to: "/dashboard/history", label: "Numbers history", icon: glyph.history, hash: "numbers", match: "hist-numbers" },
@@ -59,6 +60,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
     { to: "/admin/catalog", label: "Catalogue", icon: glyph.package },
     { to: "/admin/orders", label: "Orders", icon: glyph.scroll },
     { to: "/admin/customers", label: "Customers", icon: glyph.users },
+    { to: "/admin/referrals", label: "Referrals", icon: glyph.users },
     { to: "/admin/content", label: "Content & settings", icon: glyph.settings },
     { to: "/admin/brand", label: "Homepage & logo", icon: glyph.store },
     { to: "/admin/hosting", label: "Hosting & payments", icon: glyph.settings },

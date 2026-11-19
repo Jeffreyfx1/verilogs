@@ -2,7 +2,7 @@ import type { Product } from "@/lib/catalog";
 import { getSql } from "@/lib/db";
 import { SHELF_CATEGORIES, shelfOf } from "@/lib/shelves";
 
-const COLS = 26;
+const COLS = 27;
 
 export function encodeCursor(row: { service: string; name: string; id: string }) {
   return `${row.service}\u001f${row.name}\u001f${row.id}`;
@@ -11,6 +11,18 @@ export function encodeCursor(row: { service: string; name: string; id: string })
 export function decodeCursor(cursor: string) {
   const [service = "", name = "", id = ""] = String(cursor || "").split("\u001f");
   return { service, name, id };
+}
+
+function pushTextSearch(parts: string[], values: unknown[], q: string | undefined) {
+  const raw = String(q || "").trim().toLowerCase();
+  if (!raw) return;
+  const terms = raw.split(/[^0-9a-z]+/).filter(Boolean).slice(0, 8).map((term) => term.slice(0, 40));
+  if (!terms.length) {
+    parts.push("false");
+    return;
+  }
+  values.push(terms.map((term) => `${term}:*`).join(" & "));
+  parts.push(`search_vec @@ to_tsquery('simple', $${values.length})`);
 }
 
 function rowOf(row: Record<string, unknown>): Product {
@@ -40,6 +52,7 @@ function rowOf(row: Record<string, unknown>): Product {
     smmMax: Number(row.smm_max) || 0,
     smmType: String(row.smm_type || ""),
     smmRefill: !!row.smm_refill,
+    imageUrl: String(row.image_url || "").startsWith("https://") ? String(row.image_url) : "",
   };
 }
 
@@ -77,12 +90,13 @@ export async function upsertProductRows(products: Product[], sync: string) {
         Math.max(0, Math.round(Number(product.smmMax) || 0)),
         product.smmType || "",
         !!product.smmRefill,
+        product.imageUrl && product.imageUrl.startsWith("https://") ? product.imageUrl : "",
         sync,
       );
       return `(${Array.from({ length: COLS }, (_, n) => `$${at + n + 1}`).join(",")})`;
     });
     await sql.query(
-      `insert into shop_products (id, provider_id, external_id, category, name, service, country, network, price, cost, stock, operator, rate, rates, enabled, validity, variable, description, import_type, server_id, marketplace_subcategory, smm_min, smm_max, smm_type, smm_refill, sync)
+      `insert into shop_products (id, provider_id, external_id, category, name, service, country, network, price, cost, stock, operator, rate, rates, enabled, validity, variable, description, import_type, server_id, marketplace_subcategory, smm_min, smm_max, smm_type, smm_refill, image_url, sync)
        values ${groups.join(",")}
        on conflict (provider_id, external_id) do update set
          name = excluded.name, service = excluded.service, country = excluded.country, network = excluded.network,
@@ -90,6 +104,7 @@ export async function upsertProductRows(products: Product[], sync: string) {
          rate = excluded.rate, rates = excluded.rates, category = excluded.category,
          import_type = excluded.import_type, server_id = excluded.server_id, validity = excluded.validity,
          smm_min = excluded.smm_min, smm_max = excluded.smm_max, smm_type = excluded.smm_type, smm_refill = excluded.smm_refill,
+         image_url = case when excluded.image_url <> '' then excluded.image_url else shop_products.image_url end,
          marketplace_subcategory = case when shop_products.marketplace_subcategory <> '' then shop_products.marketplace_subcategory else excluded.marketplace_subcategory end,
          variable = case when shop_products.price_locked then shop_products.variable else excluded.variable end,
          description = case when shop_products.description_locked then shop_products.description else excluded.description end,
@@ -154,10 +169,7 @@ export async function queryShelf(category: string, providerIds: string[], q = ""
   const sql = await getSql();
   const values: unknown[] = [category, providerIds];
   const parts = ["enabled = true", "category = $1", "provider_id = any($2::text[])"];
-  if (q) {
-    values.push(`%${q.replace(/[%_]/g, "")}%`);
-    parts.push(`(name ilike $${values.length} or service ilike $${values.length} or network ilike $${values.length})`);
-  }
+  pushTextSearch(parts, values, q);
   values.push(Math.max(1, Math.min(400, limit)));
   const rows = await sql.query<Record<string, unknown>>(
     `select * from shop_products where ${parts.join(" and ")} order by network, name limit $${values.length}`,
@@ -207,10 +219,7 @@ export async function queryExtras(input: { q?: string; providerIds: string[]; ki
   const categories = [...SHELF_CATEGORIES[shelf]];
   const values: unknown[] = [input.providerIds, categories];
   const parts = ["enabled = true", "provider_id = any($1::text[])", "category = any($2::text[])"];
-  if (input.q) {
-    values.push(`%${input.q.replace(/[%_]/g, "")}%`);
-    parts.push(`(name ilike $${values.length} or service ilike $${values.length} or description ilike $${values.length} or category ilike $${values.length})`);
-  }
+  pushTextSearch(parts, values, input.q);
   if (input.subcategory) {
     values.push(input.subcategory);
     parts.push(`marketplace_subcategory = $${values.length}`);
@@ -303,17 +312,19 @@ function filters(input: BrowseInput, values: unknown[]) {
   }
   if (!input.admin) parts.push("enabled = true");
   if (input.country) {
-    values.push(input.country);
-    parts.push(`country = $${values.length}`);
+    const country = String(input.country).trim().toLowerCase();
+    if (country === "usa" || country === "us" || country === "united states") {
+      parts.push(`lower(country) in ('usa', 'us', 'united states', 'united states of america')`);
+    } else {
+      values.push(input.country);
+      parts.push(`country = $${values.length}`);
+    }
   }
   if (input.service) {
     values.push(input.service);
     parts.push(`service = $${values.length}`);
   }
-  if (input.q) {
-    values.push(`%${input.q.replace(/[%_]/g, "")}%`);
-    parts.push(`service ilike $${values.length}`);
-  }
+  pushTextSearch(parts, values, input.q);
   return parts.join(" and ");
 }
 
@@ -378,10 +389,7 @@ export async function queryCatalogPage(input: { q?: string; category?: string; p
     values.push(input.subcategory);
     parts.push(`marketplace_subcategory = $${values.length}`);
   }
-  if (input.q) {
-    values.push(`%${input.q.replace(/[%_]/g, "")}%`);
-    parts.push(`(name ilike $${values.length} or service ilike $${values.length} or country ilike $${values.length} or network ilike $${values.length} or description ilike $${values.length})`);
-  }
+  pushTextSearch(parts, values, input.q);
   const filterValues = [...values];
   const filterWhere = parts.length ? `where ${parts.join(" and ")}` : "";
   const cursor = input.after ? decodeCursor(input.after) : null;

@@ -140,13 +140,13 @@ export const IMPORT_CARDS = [
   },
   {
     kind: "random" as const,
-    title: "AcctGlobe · Random",
-    providerName: "AcctGlobe",
-    blurb: "Random import. Customers see these as Logs in Marketplace.",
+    title: "Logs import",
+    providerName: "Logs",
+    blurb: "Products imported here appear only in Buy Logs. Add each API in the Logs API providers section.",
     url: "",
-    currency: "NGN" as const,
+    currency: "USD" as const,
     usdRate: 0,
-    auth: "No public catalogue URL is hardcoded. Paste AcctGlobe's catalogue URL.",
+    auth: "AccsZone is the documented logs catalogue. Configure it below. Credentials are not stored on the product.",
   },
   {
     kind: "vtu-airtime" as const,

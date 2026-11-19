@@ -6,6 +6,7 @@ import { BtnSpinner } from "@/components/ui";
 import { toast } from "sonner";
 import { isLive, type Product } from "@/lib/catalog";
 import { naira } from "@/lib/money";
+import { profitsOf, sellQuote } from "@/lib/pricing";
 import { beginPaystack, browseExtras } from "@/lib/shop-fns";
 import { onShelf, type Shelf } from "@/lib/shelves";
 import { withTimeout } from "@/lib/with-timeout";
@@ -13,7 +14,6 @@ import { useStore, useUser } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/extra")({ component: ExtraPage });
 
-const LOG_GROUPS = ["TikTok", "Facebook", "Instagram", "YouTube", "X (Twitter)", "Telegram", "Other"];
 const SMM_GROUPS = ["Instagram", "TikTok", "YouTube", "Facebook", "X (Twitter)", "Telegram", "Snapchat", "Twitch", "Audiomack", "Other"];
 const DELAYS = [0, 5, 10, 15, 30, 60, 90];
 
@@ -21,9 +21,13 @@ function facts(row: Product) {
   return [row.subcategory, row.category, row.service, row.country, row.network, row.operator, row.validity, row.stock > 0 ? `${row.stock} in stock` : ""].filter(Boolean).join(" · ");
 }
 
-function groupsFor(kind: Shelf, extra: string[]) {
-  const base = kind === "smm" ? SMM_GROUPS : LOG_GROUPS;
-  const more = extra.filter((name) => name && !base.includes(name));
+function groupsFor(kind: Shelf, extra: string[], discovered: string[]) {
+  if (kind !== "smm") {
+    const names = [...new Set([...extra, ...discovered].map((name) => name.trim()).filter(Boolean))];
+    return ["All", ...names];
+  }
+  const base = SMM_GROUPS;
+  const more = [...extra, ...discovered].filter((name) => name && !base.includes(name));
   return ["All", ...base, ...more];
 }
 
@@ -35,20 +39,22 @@ function commentLines(text: string) {
   return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).length;
 }
 
-function orderTotal(row: Product, qty: number, comments: string, span: number, posts: number) {
-  const unit = Math.round(row.price);
+function orderTotal(row: Product, qty: number, comments: string, span: number, posts: number, settings: { usdNgn: number; generalProfit?: number; airtimeProfit?: number; dataProfit?: number }, currency: "NGN" | "USD", usdRate: number) {
   const kind = smmKind(row);
-  if (row.category !== "smm") return { units: qty, price: unit * qty };
-  if (kind === "package") return { units: 1, price: unit };
-  if (kind === "custom comments") {
-    const lines = commentLines(comments);
-    return { units: lines, price: unit * lines };
-  }
-  if (kind.includes("subscription")) {
-    const units = Math.max(0, span) * Math.max(0, posts);
-    return { units, price: unit * units };
-  }
-  return { units: qty, price: unit * qty };
+  if (row.category !== "smm") return { units: qty, price: Math.round(row.price) * Math.max(1, qty) };
+  let units = qty;
+  if (kind === "package") units = 1;
+  else if (kind === "custom comments") units = commentLines(comments);
+  else if (kind.includes("subscription")) units = Math.max(0, span) * Math.max(0, posts);
+  const quote = sellQuote({
+    category: "smm",
+    unitCost: row.cost,
+    currency,
+    usdRate: usdRate || settings.usdNgn,
+    quantity: Math.max(1, units),
+    profits: profitsOf({ general: settings.generalProfit, airtime: settings.airtimeProfit, data: settings.dataProfit }),
+  });
+  return { units, price: quote.ok ? quote.charge : 0 };
 }
 
 const COPY: Record<Shelf, { title: string; body: string; empty: string }> = {
@@ -59,12 +65,12 @@ const COPY: Record<Shelf, { title: string; body: string; empty: string }> = {
   },
   smm: {
     title: "SMM services",
-    body: "Social and marketing services.",
+    body: "Browse available social media services.",
     empty: "No products available yet. Please check back later.",
   },
   random: {
     title: "Buy logs",
-    body: "Logs grouped by platform.",
+    body: "Browse available digital products and services.",
     empty: "No products available yet. Please check back later.",
   },
 };
@@ -98,7 +104,12 @@ export function Marketplace({ kind }: { kind: Shelf }) {
   const [nextAfter, setNextAfter] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [waiting, setWaiting] = useState(false);
-  const options = groupsFor(kind, settings.marketplaceSubcategories || []);
+  const discovered = (remote || []).flatMap((row) => [row.subcategory || "", row.network || ""]);
+  const options = groupsFor(kind, settings.marketplaceSubcategories || [], discovered);
+  const rateFor = (row: Product) => {
+    const provider = providers.find((item) => item.id === row.providerId);
+    return { currency: (provider?.currency || "NGN") as "NGN" | "USD", usdRate: provider?.usdRate || settings.usdNgn };
+  };
 
   useEffect(() => {
     setAfter("");
@@ -194,7 +205,7 @@ export function Marketplace({ kind }: { kind: Shelf }) {
         quantity: qty,
       })
       : "";
-    const total = orderTotal(row, qty, comments, Number(smax) || 0, Number(posts) || 0).price;
+    const total = orderTotal(row, qty, comments, Number(smax) || 0, Number(posts) || 0, settings, rateFor(row).currency, rateFor(row).usdRate).price;
     if ((user?.balance || 0) < total) return;
     setBuying(row.id);
     let err: string | null = null;
@@ -215,7 +226,7 @@ export function Marketplace({ kind }: { kind: Shelf }) {
 
   const topUp = async (row: Product) => {
     if (paying || buying) return;
-    const price = orderTotal(row, qty, comments, Number(smax) || 0, Number(posts) || 0).price;
+    const price = orderTotal(row, qty, comments, Number(smax) || 0, Number(posts) || 0, settings, rateFor(row).currency, rateFor(row).usdRate).price;
     if (price < 100) return toast.error("This product price is not ready for Paystack yet.");
     setPaying(true);
     try {
@@ -282,6 +293,9 @@ export function Marketplace({ kind }: { kind: Shelf }) {
             balance={user?.balance || 0}
             buying={buying === open.id}
             paying={paying}
+            settings={settings}
+            currency={rateFor(open).currency}
+            usdRate={rateFor(open).usdRate}
             link={link}
             setLink={setLink}
             comments={comments}
@@ -315,8 +329,13 @@ export function Marketplace({ kind }: { kind: Shelf }) {
           <div className="mt-3 grid grid-cols-1 gap-3">
             {shown.map((row) => (
               <article key={row.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                <p className="text-[11px] font-bold text-[#0c6e8a]">{[row.subcategory, row.category, row.service].filter(Boolean).join(" · ")}</p>
-                <p className="mt-1 text-sm font-extrabold leading-snug break-words text-slate-900">{row.name}</p>
+                <div className="flex items-start gap-3">
+                  {row.imageUrl ? <img src={row.imageUrl} alt="" className="size-12 shrink-0 rounded-xl bg-slate-100 object-contain" /> : <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm font-extrabold text-slate-500">{(row.subcategory || row.name || "?").slice(0, 1)}</span>}
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-bold text-[#0c6e8a]">{[row.subcategory, row.category === "logs" ? "" : row.category, row.service].filter(Boolean).join(" · ")}</p>
+                    <p className="mt-1 text-sm font-extrabold leading-snug break-words text-slate-900">{row.name}</p>
+                  </div>
+                </div>
                 {row.description ? <p className="mt-1 line-clamp-2 text-xs leading-relaxed break-words text-slate-600">{row.description.replace(/\s+/g, " ").trim()}</p> : <p className="mt-1 text-xs leading-relaxed break-words text-slate-600">{facts(row)}</p>}
                 <p className="mt-2 text-xs font-bold text-emerald-700">{row.stock > 0 ? `${row.stock} in stock` : "Availability updates at checkout"}</p>
                 <div className="mt-3 flex items-end justify-between gap-3">
@@ -346,6 +365,9 @@ function Checkout(props: {
   balance: number;
   buying: boolean;
   paying: boolean;
+  settings: { usdNgn: number; generalProfit?: number; airtimeProfit?: number; dataProfit?: number };
+  currency: "NGN" | "USD";
+  usdRate: number;
   link: string;
   setLink: (value: string) => void;
   comments: string;
@@ -368,7 +390,7 @@ function Checkout(props: {
   const { row, qty, setQty, balance, buying, paying, onBuy, onTopUp } = props;
   const smm = row.category === "smm";
   const kind = smmKind(row);
-  const total = orderTotal(row, qty, props.comments, Number(props.smax) || 0, Number(props.posts) || 0);
+  const total = orderTotal(row, qty, props.comments, Number(props.smax) || 0, Number(props.posts) || 0, props.settings, props.currency, props.usdRate);
   const unit = Math.round(row.price);
   const short = total.price - balance;
   const floor = smm && row.smmMin && row.smmMin > 0 ? row.smmMin : 1;

@@ -3,6 +3,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
 import { PricingAdmin } from "@/components/pricing-admin";
+import { LogsApiAdmin } from "@/components/logs-api-admin";
 import { CATEGORY_LABEL } from "@/lib/catalog";
 import { extractCatalog, shapeImport, type ImportKind } from "@/lib/categorize";
 import { IMPORT_CARDS } from "@/lib/import-source";
@@ -234,25 +235,11 @@ function ImportPage() {
         </article>
       </div>
       <PricingAdmin />
+      {kind === "random" ? <LogsApiAdmin /> : null}
       <section className="rounded-card border border-line bg-card p-4 shadow-card">
-        <h2 className="font-extrabold">Services to import</h2>
-        <p className="mt-1 text-sm text-muted">One name per line. The match is the API's service name, so WhatsApp also catches whatsapp.</p>
-        <textarea className={`${inputClass} mt-3 font-mono text-sm`} rows={8} value={names} onChange={(e) => { setNamesDirty(true); setNames(e.target.value); }} />
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button
-            tone="soft"
-            disabled={busy}
-            onClick={() => {
-              const wantedServices = names.split(/\n+/).map((name) => name.trim()).filter(Boolean).slice(0, 200);
-              if (!wantedServices.length) return toast.error("Keep at least one service name.");
-              void saveSettings({ wantedServices }).then((err) => {
-                if (err) toast.error(err);
-                else toast.success("Service list saved.");
-              });
-            }}
-          >
-            Save service list
-          </Button>
+        <h2 className="font-extrabold">Number catalogue</h2>
+        <p className="mt-1 text-sm text-muted">Number import brings in every service the provider returns for the countries in that catalogue. There is no service-name filter.</p>
+        <div className="mt-3">
           <Button
             tone="soft"
             disabled={busy}
@@ -362,7 +349,7 @@ function ImportPage() {
           </Field>
           <div className="flex flex-wrap gap-2">
             <Button tone="soft" busy={busy} disabled={!apiUrl.trim()} onClick={() => void runJob(undefined, apiUrl)}>{busy ? "Importing…" : "Pull and import this API"}</Button>
-            <Button tone="soft" busy={busy} onClick={() => void runJob(undefined, "https://5sim.net/v1/guest/prices", "numbers")}>{busy ? "Importing…" : "Import saved services for every country"}</Button>
+            <Button tone="soft" busy={busy} onClick={() => void runJob(undefined, "https://5sim.net/v1/guest/prices", "numbers")}>{busy ? "Importing…" : "Import every country from 5sim"}</Button>
           </div>
           <Field label="Price currency">
             <select className={inputClass} value={currency} onChange={(e) => setCurrency(e.target.value as "NGN" | "USD")}>
@@ -370,13 +357,10 @@ function ImportPage() {
               <option value="USD">USD, convert with this API's rate</option>
             </select>
           </Field>
-          <Field label="Naira per 1 USD" hint="5sim uses 2,646. Each API keeps its own rate.">
+          <Field label="Naira per 1 USD" hint="Used only to convert a dollar provider cost. The naira profit is added afterwards.">
             <input className={inputClass} inputMode="decimal" value={usdRate} onChange={(e) => setUsdRate(Number(e.target.value))} />
           </Field>
-          <Field label="Markup percent" hint="Used only when this provider has no success rate. 35 means +35%, not ×1.35 stored as 1.35.">
-            <input className={inputClass} inputMode="decimal" value={markup} onChange={(e) => setMarkup(Number(e.target.value))} />
-          </Field>
-          <p className="text-xs text-muted">Selling prices use the success-rate tiers in the pricing panel. A missing rate uses the default percent.</p>
+          <p className="text-xs text-muted">Selling prices use Product pricing settings. Percent markups are not applied.</p>
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} className="mt-1" />
             <span>Put new services live immediately. Leave this off if you want to review first. Already-enabled rows stay as they are.</span>

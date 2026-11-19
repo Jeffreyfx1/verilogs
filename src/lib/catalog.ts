@@ -1,5 +1,5 @@
 import { extractCatalog, MAJOR_SERVICES, serviceAllowed, type ParsedItem } from "@/lib/categorize";
-import { customerPrice, pricingOf, successRateOf, type PricingSettings } from "@/lib/pricing";
+import { customerPrice, pricingOf, profitsOf, type PricingSettings } from "@/lib/pricing";
 import { uid } from "@/lib/money";
 import type { Category } from "@/lib/categorize";
 
@@ -16,6 +16,8 @@ export type User = {
   balance: number;
   createdAt: string;
   hasPassword?: boolean;
+  referralCode?: string;
+  referredBy?: string;
 };
 
 export type Provider = {
@@ -71,6 +73,7 @@ export type Product = {
   smmMax?: number;
   smmType?: string;
   smmRefill?: boolean;
+  imageUrl?: string;
 };
 
 export type Order = {
@@ -175,6 +178,12 @@ export type Settings = {
   wantedServices: string[];
   pricing: PricingSettings;
   marketplaceSubcategories: string[];
+  generalProfit: number;
+  airtimeProfit: number;
+  dataProfit: number;
+  referralEnabled: boolean;
+  referralReward: number;
+  referralMinPurchase: number;
 };
 
 export type Data = {
@@ -211,19 +220,25 @@ export function defaultSettings(): Settings {
       body: "Get virtual numbers, airtime, data and bill payment from one naira wallet. Pick a server, fund the wallet, and the code or recharge shows up in your dashboard.",
       image: "",
       cards: [
-        { id: "c1", title: "Virtual numbers", body: "SMS codes for WhatsApp, Telegram, Google and the other services you connect. Each API stays on its own server.", image: "" },
-        { id: "c2", title: "Data and airtime", body: "MTN, Airtel, Glo, 9mobile and Smile stay as separate catalogues, with the price you set.", image: "" },
+        { id: "c1", title: "Virtual numbers", body: "SMS codes for the apps you use. Pick a server, a country and a service.", image: "" },
+        { id: "c2", title: "Data and airtime", body: "MTN, Airtel, Glo, 9mobile and Smile, each with its own plans.", image: "" },
         { id: "c3", title: "Bills", body: "Cable, electricity and exam PINs from the same naira wallet.", image: "" },
       ],
     },
     banners: [
-      { id: "b1", title: "Servers stay separate", body: "Each SMS API you connect becomes the next server. Prices and stock are never merged.", href: "/register" },
+      { id: "b1", title: "Numbers on separate servers", body: "Choose Server 1, Server 2 or Server 3. Prices and stock stay separate.", href: "/register" },
       { id: "b2", title: "SIMs stay apart", body: "MTN, Airtel, Glo, 9mobile and Smile are their own catalogues.", href: "/register" },
     ],
     popup: defaultPopup(),
     wantedServices: [...MAJOR_SERVICES],
     pricing: pricingOf(null),
     marketplaceSubcategories: [],
+    generalProfit: 1500,
+    airtimeProfit: 300,
+    dataProfit: 300,
+    referralEnabled: true,
+    referralReward: 100,
+    referralMinPurchase: 0,
   };
 }
 
@@ -289,6 +304,7 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
       smmMax: Math.max(0, Math.round(Number(product.smmMax) || 0)),
       smmType: product.smmType || "",
       smmRefill: !!product.smmRefill,
+      imageUrl: typeof product.imageUrl === "string" && product.imageUrl.startsWith("https://") ? product.imageUrl.slice(0, 400) : "",
     })),
     orders: src.orders ?? [],
     txns: src.txns ?? [],
@@ -317,6 +333,12 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
       marketplaceSubcategories: Array.isArray(incoming?.marketplaceSubcategories)
         ? [...new Set(incoming.marketplaceSubcategories.map((name) => String(name || "").trim()).filter((name) => name && name.length <= 40))].slice(0, 30)
         : base.marketplaceSubcategories,
+      generalProfit: moneySetting(incoming?.generalProfit, base.generalProfit),
+      airtimeProfit: moneySetting(incoming?.airtimeProfit, base.airtimeProfit),
+      dataProfit: moneySetting(incoming?.dataProfit, base.dataProfit),
+      referralEnabled: incoming?.referralEnabled !== false,
+      referralReward: moneySetting(incoming?.referralReward, base.referralReward),
+      referralMinPurchase: moneySetting(incoming?.referralMinPurchase, base.referralMinPurchase),
     },
   };
 }
@@ -421,6 +443,13 @@ export function operatorMarkupsOf(input: unknown): Record<string, number> {
 
 export const USD_NGN = 1343;
 
+function moneySetting(value: unknown, fallback: number) {
+  if (value == null || value === "") return fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return Math.round(n);
+}
+
 export function nairaCost(cost: number, currency: "NGN" | "USD", usdRate = USD_NGN) {
   if (!(cost > 0)) return 0;
   const rate = currency === "USD" ? (usdRate > 0 ? usdRate : USD_NGN) : 1;
@@ -434,17 +463,14 @@ export function quoteProduct(product: Product, doc: Pick<Data, "providers" | "se
   const fixed = provider.operatorPrices?.[operator];
   if (fixed && fixed > 0 && !product.variable) return { ...product, price: Math.round(fixed) };
   if (!(product.cost > 0) || product.variable) return product;
-  const pricing = pricingOf(doc.settings?.pricing);
+  const profits = profitsOf({ general: doc.settings.generalProfit, airtime: doc.settings.airtimeProfit, data: doc.settings.dataProfit });
   const quote = customerPrice({
     cost: product.cost,
     currency: provider.currency,
     usdRate: provider.usdRate || doc.settings?.usdNgn || USD_NGN,
-    successRate: successRateOf(product.rate < 0 ? null : product.rate),
-    pricing,
-    providerId: provider.id,
-    service: product.service,
-    providerPercent: provider.markupPercent && provider.markupPercent > 0 ? provider.markupPercent : null,
-    defaultPercent: doc.settings?.margin ?? 12,
+    category: product.category,
+    quantity: 1,
+    profits,
   });
   return quote.price > 0 ? { ...product, price: quote.price } : product;
 }
@@ -556,12 +582,8 @@ export function applyImportSlice(
       cost: item.price,
       currency: provider.currency,
       usdRate: provider.usdRate || data.settings.usdNgn,
-      successRate: successRateOf(item.rate < 0 ? null : item.rate),
-      pricing: pricingOf(data.settings.pricing),
-      providerId: provider.id,
-      service: item.service,
-      providerPercent: provider.markupPercent && provider.markupPercent > 0 ? provider.markupPercent : null,
-      defaultPercent: data.settings.margin,
+      category: item.category,
+      profits: profitsOf({ general: data.settings.generalProfit, airtime: data.settings.airtimeProfit, data: data.settings.dataProfit }),
     }).price;
     const existing = byExternal.get(item.externalId);
     if (existing) {
@@ -771,13 +793,13 @@ export function freshData(): Data {
       { id: "f1", question: "How do I get a verification code?", answer: "Fund your wallet with Paystack, open Virtual numbers, pick a server, choose the service and country, then buy. The number shows up immediately and the SMS code lands on the same card." },
       { id: "f2", question: "What if the SMS never arrives?", answer: "Cancel the waiting order from your active numbers. The naira goes straight back to your wallet." },
       { id: "f3", question: "Why are data plans split by network?", answer: "MTN, Airtel, Glo, 9mobile and Smile are separate SIM catalogues. Pick the network that matches the line you are recharging." },
-      { id: "f4", question: "What is Server 1 and Server 2?", answer: "Each SMS or virtual-number API you connect becomes the next server. Server 1 is the first number API, Server 2 the second, and so on. Prices and stock stay separate." },
+      { id: "f4", question: "What is Server 1, Server 2 and Server 3?", answer: "Buy a number lets you choose Server 1, Server 2 or Server 3. Each server has its own prices and stock." },
       { id: "f5", question: "How do I add money?", answer: "Open Fund wallet and pay with Paystack. The naira is added after Paystack confirms the charge. You also get an in-app notice, and an email when mail is connected." },
       { id: "f6", question: "How do I reach support?", answer: "Use the chat button at the bottom of the screen, or open the Telegram channel linked in Support." },
     ],
     announcements: [
       { id: "a1", title: "Pay with Paystack", body: "Wallet top-ups go through Paystack. The balance updates when the payment is confirmed.", createdAt: "2026-11-11T09:00:00.000Z" },
-      { id: "a2", title: "Servers stay separate", body: "When you connect more than one SMS API, customers pick Server 1, Server 2 or Server 3. Nothing is merged.", createdAt: "2026-11-11T09:05:00.000Z" },
+      { id: "a2", title: "Servers stay separate", body: "Choose Server 1, Server 2 or Server 3 when you buy a number. Prices and stock are not mixed.", createdAt: "2026-11-11T09:05:00.000Z" },
     ],
     notifications: [],
     paidRefs: [],

@@ -263,6 +263,11 @@ async function createSql(): Promise<Sql> {
         "or a server route loader, never from client code.",
     );
   }
+  const hosted = process.env.RENDER === "true" || process.env.VERCEL === "1" || !!process.env.RAILWAY_ENVIRONMENT_NAME;
+  const building = process.argv.includes("build");
+  if (!databaseUrl && !building && (hosted || process.env.NODE_ENV === "production")) {
+    throw new Error("DATABASE_URL is required in production. Refusing to use the in-memory database.");
+  }
   return dbSource === "neon" ? createNeonSql() : createPgliteSql();
 }
 

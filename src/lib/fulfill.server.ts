@@ -54,7 +54,7 @@ async function readBody(res: Response) {
   }
 }
 
-export async function placeOnProvider(input: { product: Product; provider: Provider; apiKey: string; phone: string; amount: number; detail?: string }): Promise<Placement> {
+export async function placeOnProvider(input: { product: Product; provider: Provider; apiKey: string; phone: string; amount: number; detail?: string; clientReference?: string }): Promise<Placement> {
   const { product, provider, apiKey } = input;
   if (!apiKey) return { ok: false, error: "This API has no key saved, so the order was not sent and the wallet was not charged." };
   const host = (() => {
@@ -162,6 +162,30 @@ export async function placeOnProvider(input: { product: Product; provider: Provi
       return { ok: false, error: raw || "The VTU API refused the order. The wallet was not charged." };
     }
     return { ok: true, phone, ref: String(json.ident || json.ref || ref), waiting: false, cost };
+  }
+
+  if (/(^|\.)accszone\.com$/i.test(host) && product.category === "logs") {
+    const adId = Number(product.externalId);
+    if (!Number.isInteger(adId) || adId <= 0) return { ok: false, error: "This listing has no AccsZone id, so it was not sent." };
+    let res: Response;
+    try {
+      res = await fetch("https://accszone.com/api/v1/purchase", {
+        method: "POST",
+        headers: { "X-API-Key": apiKey, Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ ad_id: adId, quantity: 1, client_reference: input.clientReference || undefined }),
+        signal: AbortSignal.timeout(20000),
+      });
+    } catch {
+      return { ok: false, error: "AccsZone could not be reached. The wallet was not charged." };
+    }
+    const { text, json } = await readBody(res);
+    const data = json.data && typeof json.data === "object" ? json.data as Record<string, unknown> : json;
+    const accounts = Array.isArray(data.accounts) ? data.accounts.map((item) => String(item)).filter(Boolean) : [];
+    if (!res.ok || !accounts.length) {
+      const raw = String(json.message || data.message || text || "AccsZone refused the order.").replace(/accounts?/gi, "order").slice(0, 180);
+      return { ok: false, error: raw || "AccsZone refused the order. The wallet was not charged." };
+    }
+    return { ok: true, phone: "", ref: accounts.join("\n"), waiting: false, cost };
   }
 
   return { ok: false, error: "This API is connected for prices, but the buy call is not set yet. The wallet was not charged." };

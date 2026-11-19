@@ -13,7 +13,7 @@ type Actions = {
   ready: boolean;
   bootError: string | null;
   boot: (force?: boolean) => void;
-  register: (input: { name: string; email: string; phone: string; password: string; remember?: boolean }) => Promise<string | null>;
+  register: (input: { name: string; email: string; phone: string; password: string; remember?: boolean; referral?: string }) => Promise<string | null>;
   login: (email: string, password: string, remember?: boolean) => Promise<string | null>;
   logout: () => void;
   completeGoogle: (input: { name: string; phone: string }) => Promise<string | null>;

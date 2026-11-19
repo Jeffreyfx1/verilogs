@@ -1,85 +1,51 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { customerPrice, defaultPricing, successRateOf } from "./pricing.ts";
+import { customerPrice, profitFor, profitsOf, sellQuote, summarizeProfit } from "./pricing.ts";
 
-const pricing = defaultPricing();
-
-test("markup percent is applied after naira conversion", () => {
-  const quote = customerPrice({
-    cost: 1000,
-    currency: "NGN",
-    usdRate: 2646,
-    successRate: null,
-    pricing: { ...pricing, auto: false },
-    defaultPercent: 35,
-  });
-  assert.equal(quote.price, 1350);
-  assert.equal(quote.profit, 350);
-  assert.equal(quote.reason, "default");
+test("general profit is added once after naira conversion", () => {
+  const quote = sellQuote({ category: "logs", unitCost: 10, currency: "USD", usdRate: 500, quantity: 1 });
+  assert.equal(quote.ok && quote.costNgn, 5000);
+  assert.equal(quote.ok && quote.profit, 1500);
+  assert.equal(quote.ok && quote.charge, 6500);
 });
 
-test("a higher success rate uses a higher tier", () => {
-  const high = customerPrice({ cost: 1000, currency: "NGN", usdRate: 1, successRate: 97, pricing, defaultPercent: 12 });
-  const mid = customerPrice({ cost: 1000, currency: "NGN", usdRate: 1, successRate: 82, pricing, defaultPercent: 12 });
-  const low = customerPrice({ cost: 1000, currency: "NGN", usdRate: 1, successRate: 10, pricing, defaultPercent: 12 });
-  assert.equal(high.percent, 35);
-  assert.equal(high.price, 1350);
-  assert.equal(mid.percent, 25);
-  assert.equal(low.percent, 15);
-  assert.ok(high.price > mid.price && mid.price > low.price);
+test("quantity adds provider cost repeatedly and profit once", () => {
+  const quote = sellQuote({ category: "smm", unitCost: 2, currency: "NGN", usdRate: 1, quantity: 1000 });
+  assert.equal(quote.ok && quote.costNgn, 2000);
+  assert.equal(quote.ok && quote.charge, 3500);
 });
 
-test("a missing or invalid success rate does not take the top tier", () => {
-  for (const successRate of [null, successRateOf(undefined), successRateOf(""), successRateOf("nope"), successRateOf(140), successRateOf(-1)]) {
-    const quote = customerPrice({ cost: 1000, currency: "NGN", usdRate: 1, successRate, pricing, defaultPercent: 12 });
-    assert.equal(quote.percent, 12);
-    assert.equal(quote.price, 1120);
-    assert.equal(quote.reason, "default");
-    assert.equal(quote.tierId, null);
-  }
+test("airtime and data profits stay independent", () => {
+  const profits = profitsOf({ general: 1500, airtime: 300, data: 400 });
+  assert.equal(profitFor("airtime", profits), 300);
+  assert.equal(profitFor("data", profits), 400);
+  assert.equal(profitFor("logs", profits), 1500);
+  const airtime = sellQuote({ category: "airtime", unitCost: 0, currency: "NGN", usdRate: 1, variable: true, face: 1000, profits });
+  const data = sellQuote({ category: "data", unitCost: 800, currency: "NGN", usdRate: 1, profits });
+  assert.equal(airtime.ok && airtime.charge, 1300);
+  assert.equal(data.ok && data.charge, 1200);
 });
 
-test("an explicit zero success rate is the low tier, not missing", () => {
-  const quote = customerPrice({ cost: 1000, currency: "NGN", usdRate: 1, successRate: successRateOf(0), pricing, defaultPercent: 12 });
-  assert.equal(quote.percent, 15);
-  assert.equal(quote.reason, "tier");
+test("a missing dollar rate does not invent a price", () => {
+  const quote = customerPrice({ cost: 1, currency: "USD", usdRate: 0, category: "number" });
+  assert.equal(quote.price, 0);
 });
 
-test("dollar prices convert before the markup", () => {
-  const quote = customerPrice({ cost: 0.1, currency: "USD", usdRate: 1000, successRate: 96, pricing, defaultPercent: 12 });
-  assert.equal(quote.purchaseNgn, 100);
-  assert.equal(quote.percent, 35);
-  assert.equal(quote.price, 135);
+test("negative profit settings fall back to the defaults", () => {
+  assert.deepEqual(profitsOf({ general: -5, airtime: 300, data: Number.NaN }), { general: 1500, airtime: 300, data: 300 });
 });
 
-test("a service override beats the success-rate tier", () => {
-  const quote = customerPrice({
-    cost: 1000,
-    currency: "NGN",
-    usdRate: 1,
-    successRate: 99,
-    pricing: {
-      ...pricing,
-      overrides: [{ id: "wa", providerId: "p1", service: "WhatsApp", markupPercent: 10, minProfit: 0, enabled: true }],
-    },
-    providerId: "p1",
-    service: "WhatsApp",
-    defaultPercent: 12,
-  });
-  assert.equal(quote.percent, 10);
-  assert.equal(quote.price, 1100);
-  assert.equal(quote.reason, "override");
-});
-
-test("turning automatic tiers off uses the default percent", () => {
-  const quote = customerPrice({
-    cost: 1000,
-    currency: "NGN",
-    usdRate: 1,
-    successRate: 99,
-    pricing: { ...pricing, auto: false },
-    defaultPercent: 12,
-  });
-  assert.equal(quote.price, 1120);
-  assert.equal(quote.reason, "default");
+test("profit report uses stored cost and skips unverified orders", () => {
+  const report = summarizeProfit([
+    { status: "completed", amount: 6500, cost: 5000, category: "logs", server: "" },
+    { status: "completed", amount: 1800, cost: 1500, category: "airtime", server: "" },
+    { status: "completed", amount: 2000, cost: 0, category: "smm", server: "" },
+    { status: "waiting", amount: 4000, cost: 2500, category: "number", server: "Server 1" },
+    { status: "refunded", amount: 4000, cost: 2500, category: "number", server: "Server 2" },
+    { status: "completed", amount: 3000, cost: 1500, category: "number", server: "Server 3" },
+  ]);
+  assert.equal(report.total, 1500 + 300 + 1500);
+  assert.equal(report.unverified, 1);
+  assert.equal(report.rows.find((row) => row.category === "Number Server 3")?.profit, 1500);
+  assert.equal(report.rows.find((row) => row.category === "Number Server 1")?.profit, 0);
 });

@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { CATEGORY_LABEL, quoteProduct, type Provider } from "@/lib/catalog";
 import { Button, Field, inputClass } from "@/components/ui";
 import { naira, when } from "@/lib/money";
-import { catalogStats } from "@/lib/shop-fns";
+import { profitReport, catalogStats } from "@/lib/shop-fns";
 import { useServers, useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/")({ component: AdminHome });
@@ -17,16 +17,39 @@ function AdminHome() {
   const setProvider = useStore((s) => s.setProvider);
   const servers = useServers();
   const [stats, setStats] = useState({ total: 0, live: 0, byCategory: {} as Record<string, number>, byProvider: {} as Record<string, { count: number; live: number }> });
+  const [profit, setProfit] = useState<{ total: number; unverified: number; rows: Array<{ category: string; profit: number; orders: number }>; updatedAt: string } | null>(null);
   useEffect(() => {
     catalogStats().then((res) => { if (res) setStats(res); }).catch(() => undefined);
-  }, [providers.length]);
+    profitReport().then((res) => { if (res.report) setProfit(res.report); }).catch(() => undefined);
+  }, [providers.length, orders.length]);
   const byCat = stats.byCategory;
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-extrabold">Admin</h1>
-        <p className="text-sm text-muted">Imports land switched off. The shop only shows what you enable, which is why a sync can say “imported” while the site still looks empty.</p>
+        <p className="text-sm text-muted">Catalogue, wallets and orders. Profit below uses completed orders only.</p>
       </div>
+      <section className="rounded-card border border-primary/30 bg-card p-5 shadow-card">
+        <p className="text-xs font-bold tracking-wide text-muted">TOTAL BUSINESS PROFIT</p>
+        <p className="mt-1 text-3xl font-extrabold">{naira(profit?.total || 0)}</p>
+        <p className="mt-1 text-sm text-muted">Profit from completed orders. Deposits, waiting orders and refunds are not included. {profit?.unverified ? `${profit.unverified} completed orders have no provider cost and are not counted.` : "Every counted order had a stored provider cost."}</p>
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-sm">
+            <tbody>
+              {(profit?.rows || []).map((row) => (
+                <tr key={row.category} className="border-t border-line">
+                  <td className="py-1">{row.category}</td>
+                  <td className="py-1 text-right font-bold">{naira(row.profit)}</td>
+                </tr>
+              ))}
+              <tr className="border-t border-line font-extrabold">
+                <td className="py-1">TOTAL BUSINESS PROFIT</td>
+                <td className="py-1 text-right">{naira(profit?.total || 0)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
       <div className="grid gap-3 sm:grid-cols-4">
         {[
           ["Imported", String(stats.total)],
@@ -91,25 +114,22 @@ function ProviderMargin({ provider }: { provider: Provider }) {
   const setProvider = useStore((s) => s.setProvider);
   const settings = useStore((s) => s.settings);
   const [rate, setRate] = useState(provider.usdRate || settings.usdNgn || 1343);
-  const [percent, setPercent] = useState(provider.markupPercent || 0);
   const save = () => {
     setProvider(provider.id, {
       usdRate: Number(rate) || settings.usdNgn,
-      markupPercent: Number(percent) || 0,
       currency: provider.currency === "NGN" ? "NGN" : "USD",
     });
-    toast.success("API margin saved");
+    toast.success("Exchange rate saved");
   };
   const sample = quoteProduct(
     { id: "", providerId: provider.id, externalId: "", category: "number", name: "Sample", service: "Sample", country: "", network: "", price: 0, cost: provider.currency === "USD" ? 0.1 : 1000, stock: 0, operator: "", rate: 96, rates: "", enabled: true, validity: "", variable: false, description: "" },
-    { providers: [{ ...provider, usdRate: Number(rate) || provider.usdRate, markupPercent: Number(percent) || 0 }], settings },
+    { providers: [{ ...provider, usdRate: Number(rate) || provider.usdRate }], settings },
   );
   return (
     <div className="mt-3 grid gap-2 sm:grid-cols-2">
       <Field label="Naira per 1 USD"><input className={inputClass} inputMode="decimal" value={rate} onChange={(e) => setRate(Number(e.target.value))} /></Field>
-      <Field label="Markup % when rate is missing"><input className={inputClass} inputMode="decimal" value={percent} onChange={(e) => setPercent(Number(e.target.value))} /></Field>
-      <p className="text-xs text-muted sm:col-span-2">A reported 96% success rate is priced from the tiers. This sample of {provider.currency === "USD" ? "$0.10" : "₦1,000"} at 96% sells at {naira(sample.price)}. Leave the percent at 0 to use the global default when a rate is missing.</p>
-      <Button tone="soft" onClick={save}>Save this API margin</Button>
+      <p className="text-xs text-muted sm:col-span-2">A {provider.currency === "USD" ? "$0.10" : "₦1,000"} provider cost sells at {naira(sample.price)} after the fixed profit. Success-rate percentages are not used.</p>
+      <Button tone="soft" onClick={save}>Save exchange rate</Button>
     </div>
   );
 }

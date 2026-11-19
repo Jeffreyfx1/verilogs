@@ -44,8 +44,7 @@ function ContentPage() {
         </section>
         <section className="space-y-3 rounded-card border border-line bg-card p-4 shadow-card">
           <h2 className="text-xl font-extrabold">Rates and community</h2>
-          <Field label="Fallback naira per 1 USD" hint="The shop converts every dollar at ₦1,343. Cheap numbers, VPN and boosts are spread from ₦1,850 to ₦2,700. Prices already above ₦2,000 stay on your margin. Airtime, data and bills are not changed."><input className={inputClass} value={draft.usdNgn} onChange={(e) => setDraft({ ...draft, usdNgn: Number(e.target.value) })} /></Field>
-          <Field label="Fallback markup percent" hint="Used when a product has no success rate and no override. 35 means the customer pays 135% of the provider price."><input className={inputClass} value={draft.margin} onChange={(e) => setDraft({ ...draft, margin: Number(e.target.value) })} /></Field>
+          <Field label="Naira per 1 USD" hint="Converts a provider's dollar cost into naira. Profit is a separate fixed amount."><input className={inputClass} value={draft.usdNgn} onChange={(e) => setDraft({ ...draft, usdNgn: Number(e.target.value) })} /></Field>
           <Field label="Paystack site charge percent" hint="Extra percent the customer pays when funding the wallet. The wallet only receives the amount they chose."><input className={inputClass} value={draft.paystackPercent ?? 0} onChange={(e) => setDraft({ ...draft, paystackPercent: Number(e.target.value) })} /></Field>
           <Field label="Paystack flat charge (₦)" hint="Added on top of the percent. Set both to 0 to charge the wallet amount only."><input className={inputClass} value={draft.paystackFlat ?? 0} onChange={(e) => setDraft({ ...draft, paystackFlat: Number(e.target.value) })} /></Field>
           <Field label="Community name"><input className={inputClass} value={draft.community} onChange={(e) => setDraft({ ...draft, community: e.target.value })} /></Field>

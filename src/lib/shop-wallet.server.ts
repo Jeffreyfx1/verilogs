@@ -15,24 +15,38 @@ export function walletDiscrepancies() {
 export async function overlayBalances(doc: Data): Promise<Data> {
   if (!doc.users.length) return doc;
   const sql = await getSql();
-  const balances = new Map<string, number>();
+  const ids = doc.users.map((user) => user.id);
+  const rows = await sql.query<{ user_id: string; balance: number }>(
+    "select user_id, balance from shop_balances where user_id = any($1::text[])",
+    [ids],
+  );
+  const balances = new Map(rows.map((row) => [row.user_id, Number(row.balance) || 0]));
+  const missing = doc.users.filter((user) => !balances.has(user.id));
+  if (missing.length) {
+    const values: unknown[] = [];
+    const groups = missing.map((user, index) => {
+      values.push(user.id, Math.round(Number(user.balance) || 0));
+      return `($${index * 2 + 1}, $${index * 2 + 2})`;
+    });
+    await sql.query(
+      `insert into shop_balances (user_id, balance) values ${groups.join(",")} on conflict (user_id) do nothing`,
+      values,
+    );
+    const seeded = await sql.query<{ user_id: string; balance: number }>(
+      "select user_id, balance from shop_balances where user_id = any($1::text[])",
+      [missing.map((user) => user.id)],
+    );
+    for (const row of seeded) balances.set(row.user_id, Number(row.balance) || 0);
+  }
   for (const user of doc.users) {
     const jsonBalance = Math.round(Number(user.balance) || 0);
-    const existing = await sql.query<{ balance: number }>("select balance from shop_balances where user_id = $1", [user.id]);
-    if (!existing[0]) {
-      await sql`insert into shop_balances (user_id, balance) values (${user.id}, ${jsonBalance}) on conflict (user_id) do nothing`;
-      const seeded = await sql.query<{ balance: number }>("select balance from shop_balances where user_id = $1", [user.id]);
-      balances.set(user.id, Number(seeded[0]?.balance) || 0);
-      continue;
-    }
-    const sqlBalance = Number(existing[0].balance) || 0;
-    if (sqlBalance !== jsonBalance && !diffSeen.has(user.id)) {
+    const sqlBalance = balances.get(user.id) || 0;
+    if (balances.has(user.id) && sqlBalance !== jsonBalance && !diffSeen.has(user.id)) {
       diffSeen.add(user.id);
       diffs.push({ userId: user.id, email: user.email, sql: sqlBalance, json: jsonBalance });
       await sql`insert into shop_catalog_backups (id, note, products_json, product_count) values (${"wallet-diff-" + user.id}, ${"user=" + user.email + " sql=" + sqlBalance + " json=" + jsonBalance + " kept=sql"}, '[]', 0) on conflict (id) do nothing`;
       console.error(`Wallet discrepancy for ${user.email}: SQL kept, JSON differed. They were not added together.`);
     }
-    balances.set(user.id, sqlBalance);
   }
   return {
     ...doc,

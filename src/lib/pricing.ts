@@ -1,4 +1,4 @@
-/** One pricing formula. Markup percent is not the old multiplier (1.6) and not the ₦1,850–₦2,700 spread. */
+/** Fixed naira profit per completed order. Percent tiers are no longer used. */
 
 export type MarginTier = {
   id: string;
@@ -27,73 +27,49 @@ export type PricingSettings = {
   overrides: MarginOverride[];
 };
 
-export const DEFAULT_TIERS: MarginTier[] = [
-  { id: "tier-95", minRate: 95, maxRate: 100, markupPercent: 35, minProfit: 0, enabled: true, providerId: "", service: "" },
-  { id: "tier-90", minRate: 90, maxRate: 94.999, markupPercent: 30, minProfit: 0, enabled: true, providerId: "", service: "" },
-  { id: "tier-80", minRate: 80, maxRate: 89.999, markupPercent: 25, minProfit: 0, enabled: true, providerId: "", service: "" },
-  { id: "tier-70", minRate: 70, maxRate: 79.999, markupPercent: 20, minProfit: 0, enabled: true, providerId: "", service: "" },
-  { id: "tier-low", minRate: 0, maxRate: 69.999, markupPercent: 15, minProfit: 0, enabled: true, providerId: "", service: "" },
-];
+export type FixedProfits = {
+  general: number;
+  airtime: number;
+  data: number;
+};
+
+export const DEFAULT_PROFITS: FixedProfits = { general: 1500, airtime: 300, data: 300 };
+
+export function profitsOf(input: Partial<FixedProfits> | null | undefined): FixedProfits {
+  return {
+    general: moneyOr(input?.general, DEFAULT_PROFITS.general),
+    airtime: moneyOr(input?.airtime, DEFAULT_PROFITS.airtime),
+    data: moneyOr(input?.data, DEFAULT_PROFITS.data),
+  };
+}
+
+function moneyOr(value: unknown, fallback: number) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return Math.round(n);
+}
+
+export function profitFor(category: string, profits: FixedProfits = DEFAULT_PROFITS) {
+  const name = String(category || "").toLowerCase();
+  if (name === "airtime") return profits.airtime;
+  if (name === "data") return profits.data;
+  return profits.general;
+}
 
 export function defaultPricing(): PricingSettings {
-  return { auto: true, roundTo: 1, tiers: DEFAULT_TIERS.map((tier) => ({ ...tier })), overrides: [] };
+  return { auto: false, roundTo: 1, tiers: [], overrides: [] };
 }
 
 export function pricingOf(input: Partial<PricingSettings> | null | undefined): PricingSettings {
-  const base = defaultPricing();
-  if (!input || typeof input !== "object") return base;
-  const tiers = Array.isArray(input.tiers) && input.tiers.length ? input.tiers.map(cleanTier).filter((tier) => tier.markupPercent >= 0) : base.tiers;
-  const overrides = Array.isArray(input.overrides) ? input.overrides.map(cleanOverride).filter((row) => row.markupPercent >= 0) : [];
-  const roundTo = Number(input.roundTo);
-  return {
-    auto: input.auto !== false,
-    roundTo: roundTo === 5 || roundTo === 10 ? roundTo : 1,
-    tiers,
-    overrides,
-  };
+  return defaultPricing();
 }
 
-function cleanTier(row: Partial<MarginTier>): MarginTier {
-  return {
-    id: String(row.id || `tier-${row.minRate}-${row.maxRate}`),
-    minRate: Number(row.minRate) || 0,
-    maxRate: Number(row.maxRate) || 0,
-    markupPercent: Number(row.markupPercent) || 0,
-    minProfit: Math.max(0, Math.round(Number(row.minProfit) || 0)),
-    enabled: row.enabled !== false,
-    providerId: String(row.providerId || ""),
-    service: String(row.service || "").trim(),
-  };
-}
-
-function cleanOverride(row: Partial<MarginOverride>): MarginOverride {
-  return {
-    id: String(row.id || `ovr-${row.providerId}-${row.service}`),
-    providerId: String(row.providerId || ""),
-    service: String(row.service || "").trim(),
-    markupPercent: Number(row.markupPercent) || 0,
-    minProfit: Math.max(0, Math.round(Number(row.minProfit) || 0)),
-    enabled: row.enabled !== false,
-  };
-}
-
-/** Missing or invalid success rates stay null so they never fall into the top tier. */
+/** Kept so older rows still parse. Pricing no longer reads success rate. */
 export function successRateOf(value: unknown): number | null {
   if (value == null || value === "") return null;
   const rate = Number(value);
   if (!Number.isFinite(rate) || rate < 0 || rate > 100) return null;
   return rate;
-}
-
-function same(a: string, b: string) {
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
-}
-
-function tierScore(tier: MarginTier, providerId: string, service: string) {
-  const provider = tier.providerId ? (tier.providerId === providerId ? 2 : -1) : 0;
-  const named = tier.service ? (same(tier.service, service) ? 1 : -1) : 0;
-  if (provider < 0 || named < 0) return -1;
-  return provider + named;
 }
 
 export type PriceQuote = {
@@ -102,54 +78,111 @@ export type PriceQuote = {
   percent: number;
   profit: number;
   tierId: string | null;
-  reason: "override" | "tier" | "default";
+  reason: "fixed";
 };
+
+export type SellQuote =
+  | { ok: true; charge: number; costNgn: number; profit: number; quantity: number }
+  | { ok: false; error: string };
+
+/** Customer total = converted provider cost for the quantity + one fixed profit. */
+export function sellQuote(input: {
+  category: string;
+  unitCost: number;
+  currency: "NGN" | "USD";
+  usdRate: number;
+  quantity?: number;
+  variable?: boolean;
+  face?: number;
+  profits?: Partial<FixedProfits> | null;
+}): SellQuote {
+  const profits = profitsOf(input.profits);
+  const profit = profitFor(input.category, profits);
+  const quantity = Math.max(1, Math.round(Number(input.quantity) || 1));
+  if (input.variable && (input.category === "airtime" || input.category === "data")) {
+    const face = Math.round(Number(input.face) || 0);
+    if (!(face > 0)) return { ok: false, error: "Enter an amount." };
+    return { ok: true, charge: face + profit, costNgn: face, profit, quantity: 1 };
+  }
+  const unitCost = Number(input.unitCost) || 0;
+  const fx = input.currency === "USD" ? Number(input.usdRate) || 0 : 1;
+  if (input.currency === "USD" && !(fx > 0)) return { ok: false, error: "Set the naira exchange rate before this can be priced." };
+  if (!(unitCost > 0)) return { ok: false, error: "This item has no price yet." };
+  const unitNgn = Math.round(unitCost * fx);
+  const costNgn = unitNgn * quantity;
+  return { ok: true, charge: costNgn + profit, costNgn, profit, quantity };
+}
 
 export function customerPrice(input: {
   cost: number;
   currency: "NGN" | "USD";
   usdRate: number;
-  successRate: number | null;
-  pricing: PricingSettings;
+  category?: string;
+  quantity?: number;
+  profits?: Partial<FixedProfits> | null;
+  successRate?: number | null;
+  pricing?: PricingSettings;
   providerId?: string;
   service?: string;
   providerPercent?: number | null;
-  defaultPercent: number;
+  defaultPercent?: number;
 }): PriceQuote {
-  const cost = Number(input.cost) || 0;
-  const rate = input.currency === "USD" ? (input.usdRate > 0 ? input.usdRate : 0) : 1;
-  const purchaseNgn = cost > 0 && rate > 0 ? cost * rate : 0;
-  const providerId = input.providerId || "";
-  const service = input.service || "";
-  const pricing = input.pricing;
-  const fallback = input.providerPercent != null && input.providerPercent >= 0 ? input.providerPercent : Math.max(0, input.defaultPercent || 0);
-  const override = pricing.overrides.find((row) => row.enabled && (!row.providerId || row.providerId === providerId) && (!row.service || same(row.service, service)) && (row.providerId || row.service));
-  let percent = fallback;
-  let tierId: string | null = null;
-  let reason: PriceQuote["reason"] = "default";
-  let minProfit = 0;
-  if (override) {
-    percent = override.markupPercent;
-    minProfit = override.minProfit;
-    reason = "override";
-  } else if (pricing.auto && input.successRate != null) {
-    const ranked = pricing.tiers
-      .filter((tier) => tier.enabled)
-      .map((tier) => ({ tier, score: tierScore(tier, providerId, service) }))
-      .filter((row) => row.score >= 0 && input.successRate != null && input.successRate >= row.tier.minRate && input.successRate <= row.tier.maxRate)
-      .sort((a, b) => b.score - a.score || b.tier.minRate - a.tier.minRate);
-    const hit = ranked[0]?.tier;
-    if (hit) {
-      percent = hit.markupPercent;
-      minProfit = hit.minProfit;
-      tierId = hit.id;
-      reason = "tier";
-    }
+  const quote = sellQuote({
+    category: input.category || "",
+    unitCost: input.cost,
+    currency: input.currency,
+    usdRate: input.usdRate,
+    quantity: input.quantity || 1,
+    profits: input.profits,
+  });
+  if (!quote.ok) return { price: 0, purchaseNgn: 0, percent: 0, profit: 0, tierId: null, reason: "fixed" };
+  return { price: quote.charge, purchaseNgn: quote.costNgn, percent: 0, profit: quote.profit, tierId: null, reason: "fixed" };
+}
+
+export type ProfitRow = { category: string; profit: number; orders: number };
+export type ProfitReport = {
+  total: number;
+  rows: ProfitRow[];
+  unverified: number;
+  updatedAt: string;
+};
+
+const PROFIT_ORDER = ["Logs", "SMM", "USA Services", "Number Server 1", "Number Server 2", "Number Server 3", "Airtime", "Data"];
+
+export function profitBucket(category: string, server: string) {
+  const name = String(category || "").toLowerCase();
+  if (name === "logs") return "Logs";
+  if (name === "smm") return "SMM";
+  if (name === "usa") return "USA Services";
+  if (name === "airtime") return "Airtime";
+  if (name === "data") return "Data";
+  if (name === "number" || name === "numbers" || name === "rent") {
+    if (/server\s*3/i.test(server)) return "Number Server 3";
+    if (/server\s*2/i.test(server)) return "Number Server 2";
+    return "Number Server 1";
   }
-  if (!(purchaseNgn > 0)) return { price: 0, purchaseNgn: 0, percent, profit: 0, tierId, reason };
-  let raw = purchaseNgn * (1 + percent / 100);
-  if (minProfit > 0) raw = Math.max(raw, purchaseNgn + minProfit);
-  const step = pricing.roundTo > 0 ? pricing.roundTo : 1;
-  const price = Math.max(0, Math.round(raw / step) * step);
-  return { price, purchaseNgn: Math.round(purchaseNgn * 100) / 100, percent, profit: price - purchaseNgn, tierId, reason };
+  return "";
+}
+
+/** Uses the amount and provider cost stored on the order. Missing cost is unverified, not zero. */
+export function summarizeProfit(orders: Array<{ status: string; amount: number; cost: number; gain?: number; category: string; server: string }>, now = new Date().toISOString()): ProfitReport {
+  const buckets = new Map<string, ProfitRow>();
+  for (const name of PROFIT_ORDER) buckets.set(name, { category: name, profit: 0, orders: 0 });
+  let unverified = 0;
+  for (const order of orders) {
+    if (order.status !== "completed") continue;
+    const bucket = profitBucket(order.category, order.server);
+    if (!bucket) continue;
+    const cost = Number(order.cost);
+    const amount = Number(order.amount);
+    if (!(cost > 0) || !Number.isFinite(amount)) {
+      unverified += 1;
+      continue;
+    }
+    const row = buckets.get(bucket)!;
+    row.profit += Math.round(amount - cost);
+    row.orders += 1;
+  }
+  const rows = PROFIT_ORDER.map((name) => buckets.get(name)!);
+  return { total: rows.reduce((sum, row) => sum + row.profit, 0), rows, unverified, updatedAt: now };
 }

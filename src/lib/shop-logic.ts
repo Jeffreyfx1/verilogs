@@ -13,6 +13,7 @@ import {
   type Ticket,
   type User,
 } from "@/lib/catalog";
+import { makeReferralCode } from "@/lib/referral";
 import { uid } from "@/lib/money";
 
 export type Draft = { name: string; email: string };
@@ -66,11 +67,14 @@ export function projectShop(doc: Data, userId: string | null, draft: Draft | nul
   };
 }
 
-export async function registerUser(data: Data, input: { name: string; email: string; phone: string; password: string }) {
+export async function registerUser(data: Data, input: { name: string; email: string; phone: string; password: string; referralCode?: string }) {
   const clean = input.email.trim().toLowerCase();
   if (data.users.some((u) => u.email === clean)) return { error: "An account with that email already exists.", data };
   if (input.password.length < 8) return { error: "Use at least 8 characters.", data };
   if (input.phone.trim().length < 8) return { error: "Enter a real phone number.", data };
+  const taken = new Set(data.users.map((user) => String(user.referralCode || "").toUpperCase()).filter(Boolean));
+  const code = String(input.referralCode || "").trim().toUpperCase();
+  const referrer = code ? data.users.find((user) => String(user.referralCode || "").toUpperCase() === code) : undefined;
   const user: User = {
     id: uid("usr"),
     name: input.name.trim(),
@@ -81,12 +85,14 @@ export async function registerUser(data: Data, input: { name: string; email: str
     role: "customer",
     balance: 0,
     createdAt: new Date().toISOString(),
+    referralCode: makeReferralCode(input.name, taken, uid("ref")),
+    referredBy: referrer && referrer.email !== clean ? referrer.id : "",
   };
   let next = { ...data, users: [...data.users, user] };
   next = pushNote(next, user.id, "Welcome to VeriLogs", "Your account is ready. Fund the wallet with Paystack, then buy a number, data or a bill.", "account");
   const admin = data.users.find((u) => u.role === "admin");
   if (admin) next = pushNote(next, admin.id, "New customer", `${user.name} · ${user.email}`, "account");
-  return { error: null, data: next, userId: user.id, mail: { to: user.email, subject: "Welcome to VeriLogs", text: `Hi ${user.name}, your VeriLogs account is ready. Fund your naira wallet, then buy numbers, data or bills.` } };
+  return { error: null, data: next, userId: user.id, referrerId: user.referredBy || "", mail: { to: user.email, subject: "Welcome to VeriLogs", text: `Hi ${user.name}, your VeriLogs account is ready. Fund your naira wallet, then buy numbers, data or bills.` } };
 }
 
 export async function loginUser(data: Data, email: string, password: string) {
@@ -226,6 +232,19 @@ export function refundOrder(data: Data, userId: string | null, orderId: string) 
   return { error: null, data: next };
 }
 
+export function stampReferralCodes(data: Data) {
+  const taken = new Set(data.users.map((user) => String(user.referralCode || "").toUpperCase()).filter(Boolean));
+  let changed = false;
+  const users = data.users.map((user) => {
+    if (user.referralCode) return user;
+    changed = true;
+    const referralCode = makeReferralCode(user.name || user.email, taken, user.id.replace(/[^a-zA-Z0-9]/g, ""));
+    taken.add(referralCode);
+    return { ...user, referralCode };
+  });
+  return { data: changed ? { ...data, users } : data, changed };
+}
+
 export function tickWaiting(data: Data) {
   return data;
 }
@@ -337,7 +356,14 @@ export function saveSettings(data: Data, userId: string | null, patch: Partial<S
     return { error: "Each homepage image must be a PNG, JPG or WebP under 120KB.", data };
   }
   const banners = patch.banners ? patch.banners.slice(0, 6) : data.settings.banners;
-  return { error: null, data: { ...data, settings: { ...data.settings, ...patch, banners, home: { ...data.settings.home, ...patch.home }, popup: { ...data.settings.popup, ...patch.popup } } } };
+  const nextPatch = { ...patch };
+  for (const key of ["generalProfit", "airtimeProfit", "dataProfit", "referralReward", "referralMinPurchase"] as const) {
+    if (nextPatch[key] == null) continue;
+    const amount = Number(nextPatch[key]);
+    if (!Number.isFinite(amount) || amount < 0 || amount > 10_000_000) return { error: "Enter a valid naira amount.", data };
+    nextPatch[key] = Math.round(amount);
+  }
+  return { error: null, data: { ...data, settings: { ...data.settings, ...nextPatch, banners, home: { ...data.settings.home, ...patch.home }, popup: { ...data.settings.popup, ...patch.popup } } } };
 }
 
 export function addAnnouncement(data: Data, userId: string | null, title: string, body: string) {

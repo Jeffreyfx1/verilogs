@@ -29,6 +29,7 @@ import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
 import { Route as AdminHostingRouteImport } from './routes/admin/hosting'
 import { Route as AdminImportRouteImport } from './routes/admin/import'
 import { Route as AdminOrdersRouteImport } from './routes/admin/orders'
+import { Route as AdminReferralsRouteImport } from './routes/admin/referrals'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as DashboardAirtimeRouteImport } from './routes/dashboard/airtime'
 import { Route as DashboardAnnouncementsRouteImport } from './routes/dashboard/announcements'
@@ -38,6 +39,7 @@ import { Route as DashboardExtraRouteImport } from './routes/dashboard/extra'
 import { Route as DashboardHistoryRouteImport } from './routes/dashboard/history'
 import { Route as DashboardNumbersRouteImport } from './routes/dashboard/numbers'
 import { Route as DashboardProfileRouteImport } from './routes/dashboard/profile'
+import { Route as DashboardReferRouteImport } from './routes/dashboard/refer'
 import { Route as DashboardSupportRouteImport } from './routes/dashboard/support'
 import { Route as DashboardVpnRouteImport } from './routes/dashboard/vpn'
 import { Route as DashboardWalletRouteImport } from './routes/dashboard/wallet'
@@ -145,6 +147,11 @@ const AdminOrdersRoute = AdminOrdersRouteImport.update({
   path: '/orders',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminReferralsRoute = AdminReferralsRouteImport.update({
+  id: '/referrals',
+  path: '/referrals',
+  getParentRoute: () => AdminRoute,
+} as any)
 const DashboardIndexRoute = DashboardIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -188,6 +195,11 @@ const DashboardNumbersRoute = DashboardNumbersRouteImport.update({
 const DashboardProfileRoute = DashboardProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardReferRoute = DashboardReferRouteImport.update({
+  id: '/refer',
+  path: '/refer',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardSupportRoute = DashboardSupportRouteImport.update({
@@ -241,6 +253,7 @@ export interface FileRoutesByFullPath {
   '/admin/hosting': typeof AdminHostingRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/orders': typeof AdminOrdersRoute
+  '/admin/referrals': typeof AdminReferralsRoute
   '/dashboard/airtime': typeof DashboardAirtimeRoute
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
   '/dashboard/bills': typeof DashboardBillsRoute
@@ -249,6 +262,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/history': typeof DashboardHistoryRoute
   '/dashboard/numbers': typeof DashboardNumbersRoute
   '/dashboard/profile': typeof DashboardProfileRoute
+  '/dashboard/refer': typeof DashboardReferRoute
   '/dashboard/support': typeof DashboardSupportRoute
   '/dashboard/vpn': typeof DashboardVpnRoute
   '/dashboard/wallet': typeof DashboardWalletRoute
@@ -276,6 +290,7 @@ export interface FileRoutesByTo {
   '/admin/hosting': typeof AdminHostingRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/orders': typeof AdminOrdersRoute
+  '/admin/referrals': typeof AdminReferralsRoute
   '/dashboard/airtime': typeof DashboardAirtimeRoute
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
   '/dashboard/bills': typeof DashboardBillsRoute
@@ -284,6 +299,7 @@ export interface FileRoutesByTo {
   '/dashboard/history': typeof DashboardHistoryRoute
   '/dashboard/numbers': typeof DashboardNumbersRoute
   '/dashboard/profile': typeof DashboardProfileRoute
+  '/dashboard/refer': typeof DashboardReferRoute
   '/dashboard/support': typeof DashboardSupportRoute
   '/dashboard/vpn': typeof DashboardVpnRoute
   '/dashboard/wallet': typeof DashboardWalletRoute
@@ -314,6 +330,7 @@ export interface FileRoutesById {
   '/admin/hosting': typeof AdminHostingRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/orders': typeof AdminOrdersRoute
+  '/admin/referrals': typeof AdminReferralsRoute
   '/dashboard/airtime': typeof DashboardAirtimeRoute
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
   '/dashboard/bills': typeof DashboardBillsRoute
@@ -322,6 +339,7 @@ export interface FileRoutesById {
   '/dashboard/history': typeof DashboardHistoryRoute
   '/dashboard/numbers': typeof DashboardNumbersRoute
   '/dashboard/profile': typeof DashboardProfileRoute
+  '/dashboard/refer': typeof DashboardReferRoute
   '/dashboard/support': typeof DashboardSupportRoute
   '/dashboard/vpn': typeof DashboardVpnRoute
   '/dashboard/wallet': typeof DashboardWalletRoute
@@ -353,6 +371,7 @@ export interface FileRouteTypes {
     | '/admin/hosting'
     | '/admin/import'
     | '/admin/orders'
+    | '/admin/referrals'
     | '/dashboard/airtime'
     | '/dashboard/announcements'
     | '/dashboard/bills'
@@ -361,6 +380,7 @@ export interface FileRouteTypes {
     | '/dashboard/history'
     | '/dashboard/numbers'
     | '/dashboard/profile'
+    | '/dashboard/refer'
     | '/dashboard/support'
     | '/dashboard/vpn'
     | '/dashboard/wallet'
@@ -388,6 +408,7 @@ export interface FileRouteTypes {
     | '/admin/hosting'
     | '/admin/import'
     | '/admin/orders'
+    | '/admin/referrals'
     | '/dashboard/airtime'
     | '/dashboard/announcements'
     | '/dashboard/bills'
@@ -396,6 +417,7 @@ export interface FileRouteTypes {
     | '/dashboard/history'
     | '/dashboard/numbers'
     | '/dashboard/profile'
+    | '/dashboard/refer'
     | '/dashboard/support'
     | '/dashboard/vpn'
     | '/dashboard/wallet'
@@ -425,6 +447,7 @@ export interface FileRouteTypes {
     | '/admin/hosting'
     | '/admin/import'
     | '/admin/orders'
+    | '/admin/referrals'
     | '/dashboard/airtime'
     | '/dashboard/announcements'
     | '/dashboard/bills'
@@ -433,6 +456,7 @@ export interface FileRouteTypes {
     | '/dashboard/history'
     | '/dashboard/numbers'
     | '/dashboard/profile'
+    | '/dashboard/refer'
     | '/dashboard/support'
     | '/dashboard/vpn'
     | '/dashboard/wallet'
@@ -603,6 +627,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminOrdersRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/referrals': {
+      id: '/admin/referrals'
+      path: '/referrals'
+      fullPath: '/admin/referrals'
+      preLoaderRoute: typeof AdminReferralsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/dashboard/': {
       id: '/dashboard/'
       path: '/'
@@ -666,6 +697,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardProfileRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/refer': {
+      id: '/dashboard/refer'
+      path: '/refer'
+      fullPath: '/dashboard/refer'
+      preLoaderRoute: typeof DashboardReferRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/support': {
       id: '/dashboard/support'
       path: '/support'
@@ -719,6 +757,7 @@ interface AdminRouteChildren {
   AdminHostingRoute: typeof AdminHostingRoute
   AdminImportRoute: typeof AdminImportRoute
   AdminOrdersRoute: typeof AdminOrdersRoute
+  AdminReferralsRoute: typeof AdminReferralsRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
@@ -730,6 +769,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminHostingRoute: AdminHostingRoute,
   AdminImportRoute: AdminImportRoute,
   AdminOrdersRoute: AdminOrdersRoute,
+  AdminReferralsRoute: AdminReferralsRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 
@@ -744,6 +784,7 @@ interface DashboardRouteChildren {
   DashboardHistoryRoute: typeof DashboardHistoryRoute
   DashboardNumbersRoute: typeof DashboardNumbersRoute
   DashboardProfileRoute: typeof DashboardProfileRoute
+  DashboardReferRoute: typeof DashboardReferRoute
   DashboardSupportRoute: typeof DashboardSupportRoute
   DashboardVpnRoute: typeof DashboardVpnRoute
   DashboardWalletRoute: typeof DashboardWalletRoute
@@ -759,6 +800,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardHistoryRoute: DashboardHistoryRoute,
   DashboardNumbersRoute: DashboardNumbersRoute,
   DashboardProfileRoute: DashboardProfileRoute,
+  DashboardReferRoute: DashboardReferRoute,
   DashboardSupportRoute: DashboardSupportRoute,
   DashboardVpnRoute: DashboardVpnRoute,
   DashboardWalletRoute: DashboardWalletRoute,

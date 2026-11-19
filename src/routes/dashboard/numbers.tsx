@@ -57,7 +57,7 @@ function NumbersPage() {
   const usa = kind === "usa";
   const activeId = usa ? "" : liveServers.some((s) => s.id === server) ? server : liveServers[0]?.id || "";
   const active = servers.find((s) => s.id === activeId);
-  const [countryName, setCountryName] = useState(lockedCountry);
+  const [countryName, setCountryName] = useState(usa ? "usa" : lockedCountry);
   const [countryQ, setCountryQ] = useState("");
   const [countryOpen, setCountryOpen] = useState(false);
   const [service, setService] = useState(preset);
@@ -72,7 +72,12 @@ function NumbersPage() {
   const want = usa ? "usa" : kind === "rent" ? "rent" : "number";
 
   useEffect(() => {
+    if (usa) setCountryName("usa");
+  }, [usa]);
+
+  useEffect(() => {
     let stop = false;
+    if (usa) return;
     browseNumbers({ data: { providerId: activeId, category: want, list: "countries" } })
       .then((res) => { if (!stop) setCountries(res.countries); })
       .catch(() => { if (!stop) setCountries([]); });
@@ -167,11 +172,13 @@ function NumbersPage() {
           </Link>
         ))}
       </div>
-      {usa ? <p className="text-xs font-extrabold text-muted">USA services stay separate from Server 1, Server 2 and Server 3. A higher reported success rate costs more.</p> : kind === "rent" ? null : <p className="text-xs font-extrabold text-muted">Note: England is the United Kingdom on this list.</p>}
+      {usa ? <p className="text-sm text-muted">Browse available USA services.</p> : kind === "rent" ? null : <p className="text-xs font-extrabold text-muted">England is listed as the United Kingdom.</p>}
 
       <section className="rounded-[1.4rem] border border-line bg-card p-4">
         <h1 className="text-xl font-extrabold">{title} {usa ? null : <span className="text-sm text-primary">[{active?.label || "Server"}]</span>}</h1>
-        {!countries.length ? <p className="mt-3 text-sm text-muted">No products available yet. Please check back later.</p> : null}
+        {usa ? null : !countries.length ? <p className="mt-3 text-sm text-muted">No products available yet. Please check back later.</p> : null}
+        {usa ? null : (
+        <>
         <label className="mt-4 block text-sm font-extrabold">Country</label>
         <div className="relative mt-1">
           <input
@@ -194,6 +201,8 @@ function NumbersPage() {
             </div>
           ) : null}
         </div>
+        </>
+        )}
 
         <label className="mt-4 block text-sm font-extrabold">Service</label>
         <div className="relative mt-1">
@@ -213,7 +222,8 @@ function NumbersPage() {
                   <span className="text-xs">from {naira(s.price)}</span>
                 </button>
               ))}
-              {countryName && !services.length ? <p className="px-3 py-3 text-sm text-muted">No service matches that search.</p> : null}
+              {usa && !services.length ? <p className="px-3 py-3 text-sm text-muted">No USA services available at the moment. Please check back later.</p> : null}
+              {!usa && countryName && !services.length ? <p className="px-3 py-3 text-sm text-muted">No service matches that search.</p> : null}
             </div>
           ) : null}
         </div>

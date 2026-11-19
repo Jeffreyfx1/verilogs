@@ -72,9 +72,15 @@ export function WelcomeModal() {
               </span>
             </a>
           ) : null}
-          <Link to={user ? "/dashboard/numbers" : "/register"} onClick={close} className="btn-gradient flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-extrabold">
-            {popup.button}
-          </Link>
+          {user ? (
+            <Link to="/dashboard/numbers" search={{ server: "", country: "", kind: "", service: "" }} onClick={close} className="btn-gradient flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-extrabold">
+              {popup.button}
+            </Link>
+          ) : (
+            <Link to="/register" onClick={close} className="btn-gradient flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-extrabold">
+              {popup.button}
+            </Link>
+          )}
         </div>
       </div>
     </div>

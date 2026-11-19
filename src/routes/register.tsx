@@ -7,9 +7,16 @@ import { PromoBanners } from "@/components/promos";
 import { Button, Field, inputClass, Logo } from "@/components/ui";
 import { useStore, useUser } from "@/lib/store";
 
-export const Route = createFileRoute("/register")({ component: RegisterPage });
+export const Route = createFileRoute("/register")({
+  validateSearch: (search: Record<string, unknown>): { ref?: string } => {
+    const ref = typeof search.ref === "string" ? search.ref.slice(0, 24) : "";
+    return ref ? { ref } : {};
+  },
+  component: RegisterPage,
+});
 
 function RegisterPage() {
+  const { ref } = Route.useSearch();
   const user = useUser();
   const register = useStore((s) => s.register);
   const nav = useNavigate();
@@ -31,7 +38,7 @@ function RegisterPage() {
     if (form.phone.trim().length < 8) return toast.error("Enter a real phone number.");
     setBusy(true);
     try {
-      const err = await register({ ...form, remember });
+      const err = await register({ ...form, remember, referral: ref });
       if (err) toast.error(err);
       else nav({ to: "/dashboard" });
     } catch {

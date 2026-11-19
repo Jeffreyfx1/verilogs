@@ -2,8 +2,8 @@ import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/rea
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
 import { freshData, normalizeData, quoteProduct, serverLabel, topupQuote, withAdminLogin, type Data, type Product, type SyncReport } from "@/lib/catalog";
-import { customerPrice, pricingOf, successRateOf } from "@/lib/pricing";
-import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, shapeImport, airtimeProductsFromPayload, MAJOR_SERVICES, type ImportKind, type ParsedItem } from "@/lib/categorize";
+import { customerPrice, profitsOf, sellQuote, summarizeProfit } from "@/lib/pricing";
+import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, shapeImport, airtimeProductsFromPayload, type ImportKind, type ParsedItem } from "@/lib/categorize";
 import { destinationOf, flattenGetaText, sourceKindOf } from "@/lib/import-source";
 import { instakingCurrency, instakingPost, isInstakingHost, parseInstakingServices, readSmmDetail } from "@/lib/instaking";
 import { catalogStamp, followCatalogPages, walkBrowse } from "@/lib/catalog-pages";
@@ -32,8 +32,8 @@ import {
   upsertProductRows,
 } from "@/lib/product-rows.server";
 import { catalogSplitVerified, ensureCatalogSplit } from "@/lib/catalog-split.server";
-import { clearImportedProducts } from "@/lib/catalog-reset.server";
 import { beginPurchaseKey, creditBalance, debitBalance, markPurchaseKey, overlayBalances, reconcilePurchases } from "@/lib/shop-wallet.server";
+import { recordReferral, reverseReferral, settleReferral } from "@/lib/referral.server";
 import {
   addAnnouncement,
   addTicket,
@@ -57,6 +57,7 @@ import {
   setEnabled,
   editListing,
   setProvider,
+  stampReferralCodes,
   tickWaiting,
   updateProfile,
   upsertGoogle,
@@ -91,6 +92,14 @@ function cookieOpts(remember = true) {
 
 function touchCookie(token: string, remember = true) {
   setCookie(COOKIE, token, cookieOpts(remember));
+}
+
+async function rotateSession(previous: string | null, userId: string, remember = true) {
+  const token = crypto.randomUUID();
+  const sql = await getSql();
+  if (previous) await sql`delete from shop_sessions where token = ${previous}`;
+  await writeSession(token, userId, null);
+  touchCookie(token, remember);
 }
 
 async function readSession() {
@@ -149,12 +158,9 @@ async function loadLight(): Promise<Data> {
     const doc = freshData();
     const light = { ...doc, products: [] as Data["products"] };
     await sql`insert into shop_state (id, doc) values ('main', ${JSON.stringify(light)})`;
-    try {
-      await clearImportedProducts();
-    } catch (err) {
-      console.error("catalogue reset skipped", err instanceof Error ? err.message : err);
-    }
-    return overlayBalances(light);
+    const seeded = stampReferralCodes(await overlayBalances(light));
+    if (seeded.changed) await writeState(seeded.data);
+    return seeded.data;
   }
   const parsed = normalizeData(JSON.parse(rows[0].doc) as Data);
   const doc = withAdminLogin(withoutSampleCatalog(parsed));
@@ -168,12 +174,10 @@ async function loadLight(): Promise<Data> {
   }
   const light = { ...doc, products: [] as Data["products"] };
   if (clear) await writeState(light);
-  try {
-    await clearImportedProducts();
-  } catch (err) {
-    console.error("catalogue reset skipped", err instanceof Error ? err.message : err);
-  }
-  return overlayBalances(light);
+  const balanced = await overlayBalances(light);
+  const stamped = stampReferralCodes(balanced);
+  if (stamped.changed) await writeState(stamped.data);
+  return stamped.data;
 }
 
 async function clearNumberImports() {
@@ -321,21 +325,23 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
     let error: string | null = null;
     let report: SyncReport | null = null;
     let mail: Mail | Mail[] | undefined;
-    const token = session.token || crypto.randomUUID();
 
     const str = (k: string) => (typeof payload[k] === "string" ? (payload[k] as string) : "");
     const num = (k: string) => (typeof payload[k] === "number" ? (payload[k] as number) : Number(payload[k]));
 
     if (op === "register") {
-      const out = await registerUser(doc, { name: str("name"), email: str("email"), phone: str("phone"), password: str("password") });
+      const out = await registerUser(doc, { name: str("name"), email: str("email"), phone: str("phone"), password: str("password"), referralCode: str("referral") });
       doc = out.data;
       error = out.error;
       mail = "mail" in out ? out.mail : undefined;
       if (!error && out.userId) {
+        if (out.referrerId) {
+          const code = doc.users.find((user) => user.id === out.referrerId)?.referralCode || str("referral");
+          await recordReferral({ referredId: out.userId, referrerId: out.referrerId, code });
+        }
         userId = out.userId;
         draft = null;
-        await writeSession(token, userId, null);
-        touchCookie(token, payload.remember !== false);
+        await rotateSession(session.token, userId, payload.remember !== false);
       }
     } else if (op === "login") {
       const out = await loginUser(doc, str("email"), str("password"));
@@ -343,8 +349,7 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
       if (!error && out.userId) {
         userId = out.userId;
         draft = null;
-        await writeSession(token, userId, null);
-        touchCookie(token, payload.remember !== false);
+        await rotateSession(session.token, userId, payload.remember !== false);
       }
     } else if (op === "logout") {
       userId = null;
@@ -353,7 +358,7 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
         const sql = await getSql();
         await sql`delete from shop_sessions where token = ${session.token}`;
       }
-      deleteCookie(COOKIE, { path: "/" });
+      deleteCookie(COOKIE, cookieOpts(true));
     } else if (op === "completeGoogle") {
       const out = completeGoogle(doc, draft, { name: str("name"), phone: str("phone") });
       doc = out.data;
@@ -362,8 +367,7 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
       if (!error && out.userId) {
         userId = out.userId;
         draft = null;
-        await writeSession(token, userId, null);
-        touchCookie(token);
+        await rotateSession(session.token, userId);
       }
     } else if (op === "resetPassword") {
       const out = await resetPassword(doc, str("email"), str("password"));
@@ -391,6 +395,7 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
       if (!error && before) {
         const moved = await creditBalance(before.userId, before.amount, "refund:" + before.id, "Refund · " + before.title, "refund");
         doc = { ...doc, users: doc.users.map((user) => (user.id === before.userId ? { ...user, balance: moved.balance } : user)) };
+        await reverseReferral(before.userId, before.id);
       }
     } else if (op === "tick") {
       doc = await syncInstakingOrders(doc);
@@ -557,7 +562,7 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
   const sticker = quoted.price;
   const user = userId ? doc.users.find((item) => item.id === userId) : null;
   const face = quoted.variable ? Math.round(extra.amount || 0) : sticker;
-  let charge = face;
+  let quantity = 1;
   if (quoted.category === "smm") {
     const fields = readSmmDetail(extra.detail || "", Math.round(extra.amount || 0));
     const type = quoted.smmType || quoted.operator || "Default";
@@ -565,7 +570,7 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
     const subscription = /subscription/i.test(type);
     const comments = /custom comments/i.test(type);
     const lines = String(fields.comments || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean).length;
-    const quantity = packaged ? 1 : comments ? lines : Math.round(Number(fields.quantity) || 0);
+    quantity = packaged ? 1 : comments ? lines : Math.round(Number(fields.quantity) || 0);
     if (comments && quantity <= 0) return { error: "Add the comments, one per line.", data: doc };
     if (!packaged && !subscription && !comments) {
       if (quantity <= 0) return { error: "Enter the quantity.", data: doc };
@@ -575,8 +580,20 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
     const posts = Math.round(Number(fields.posts) || 0);
     const span = Math.round(Number(fields.max) || quoted.smmMax || 0);
     if (subscription && (span <= 0 || posts <= 0)) return { error: "Set the maximum quantity and how many posts to cover.", data: doc };
-    charge = Math.round(sticker * (packaged ? 1 : subscription ? span * posts : quantity));
+    if (subscription) quantity = span * posts;
   }
+  const priced = sellQuote({
+    category: quoted.category,
+    unitCost: quoted.cost,
+    currency: provider.currency,
+    usdRate: provider.usdRate || doc.settings.usdNgn,
+    quantity,
+    variable: quoted.variable,
+    face,
+    profits: profitsOf({ general: doc.settings.generalProfit, airtime: doc.settings.airtimeProfit, data: doc.settings.dataProfit }),
+  });
+  if (!priced.ok) return { error: priced.error, data: doc };
+  const charge = priced.charge;
   if (!user) return { error: "Sign in first.", data: doc };
   if (quoted.category === "airtime" && (face < 50 || face > 50000)) return { error: "Airtime must be between ₦50 and ₦50,000.", data: doc };
   if (!quoted.variable && charge <= 0) return { error: "This item has no price yet.", data: doc };
@@ -590,12 +607,14 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
     if (key) await markPurchaseKey(key, "failed");
     return { error: "Insufficient balance. Top up your balance to make this purchase.", data: doc };
   }
-  const placed = await placeOnProvider({ product: quoted, provider, apiKey: await readProviderKey(provider.id), phone: extra.phone || "", amount: quoted.variable ? face : charge, detail: extra.detail || "" });
+  const providerAmount = quoted.category === "airtime" || quoted.variable ? face : quantity;
+  const placed = await placeOnProvider({ product: quoted, provider, apiKey: await readProviderKey(provider.id), phone: extra.phone || "", amount: providerAmount, detail: extra.detail || "", clientReference: key });
   if (!placed.ok) {
     if (key) await markPurchaseKey(key, "failed");
     return { error: placed.error, data: doc };
   }
-  const cost = placed.cost;
+  const cost = placed.cost > 0 ? placed.cost : priced.costNgn;
+  const gain = charge - cost;
   const ledgerRef = "purchase:" + (key || uid("ord"));
   const debited = await debitBalance(user.id, charge, ledgerRef, quoted.name);
   const reconcileDetail = JSON.stringify({
@@ -641,12 +660,16 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
   };
   if (key) await markPurchaseKey(key, "completed", { orderId: data.orders[0]?.id || "", providerOrderId: placed.ref, amount: charge, detail: reconcileDetail });
   await decrementStock(quoted.id);
+  const order = data.orders[0];
+  if (order && order.status === "completed") {
+    await settleReferral({ buyerId: user.id, orderId: order.id, amount: charge, profit: gain, orderStatus: order.status });
+  }
   return { error: null, data };
 }
 
-async function finishPaidNumber(doc: Data, userId: string, productId: string) {
+async function finishPaidNumber(doc: Data, userId: string, productId: string, reference = "") {
   if (!productId) return { data: doc, bought: false, error: null as string | null };
-  const bought = await completePurchase(doc, userId, productId, {});
+  const bought = await completePurchase(doc, userId, productId, { idempotencyKey: reference ? `paystack:${reference}` : "" });
   if (bought.error) return { data: doc, bought: false, error: `Payment is in your wallet. ${bought.error}` };
   return { data: bought.data, bought: true, error: null };
 }
@@ -678,6 +701,16 @@ export async function purchasePreview(productId: string) {
   };
 }
 
+function nairaCredit(data: { currency?: string; amount?: number; metadata?: { credit?: number } }) {
+  const currency = String(data.currency || "").toUpperCase();
+  if (currency !== "NGN") return { error: "Only a naira payment can fund the wallet." };
+  const charged = Math.round(Number(data.amount || 0) / 100);
+  const credit = Math.round(Number(data.metadata?.credit || 0));
+  if (charged < 100) return { error: "Paystack amount is too small." };
+  if (credit > charged) return { error: "Payment amount does not match the wallet credit." };
+  return { amount: credit > 0 ? credit : charged };
+}
+
 export async function creditPaystack(reference: string, expectedUserId?: string | null) {
   const secret = process.env.PAYSTACK_SECRET_KEY;
   if (!secret) return { error: "Paystack is not connected yet. Add PAYSTACK_SECRET_KEY on the host." };
@@ -690,14 +723,14 @@ export async function creditPaystack(reference: string, expectedUserId?: string 
   const res = await fetch("https://api.paystack.co/transaction/verify/" + encodeURIComponent(reference), {
     headers: { Authorization: `Bearer ${secret}` },
   });
-  const body = (await res.json()) as { status?: boolean; data?: { status?: string; amount?: number; metadata?: { userId?: string; credit?: number; productId?: string } } };
+  const body = (await res.json()) as { status?: boolean; data?: { status?: string; currency?: string; amount?: number; metadata?: { userId?: string; credit?: number; productId?: string } } };
   if (!body.status || body.data?.status !== "success") return { error: "Paystack has not confirmed this payment." };
   const userId = body.data.metadata?.userId;
   if (!userId) return { error: "Payment is missing the account it belongs to." };
   if (expect && expect !== userId) return { error: "This payment belongs to another account." };
-  const charged = Math.round(Number(body.data.amount || 0) / 100);
-  const credit = Math.round(Number(body.data.metadata?.credit || charged));
-  const amount = credit > 0 && credit <= charged ? credit : charged;
+  const priced = nairaCredit(body.data);
+  if ("error" in priced) return { error: priced.error };
+  const amount = priced.amount;
   return locked(async () => {
     const doc = await loadLight();
     const out = creditVerified(doc, userId, amount, reference);
@@ -707,7 +740,7 @@ export async function creditPaystack(reference: string, expectedUserId?: string 
       const moved = await creditBalance(userId, amount, "paystack:" + reference, "Paystack · " + reference, "topup");
       funded = { ...out.data, users: out.data.users.map((user) => (user.id === userId ? { ...user, balance: moved.balance } : user)) };
     }
-    const finished = await finishPaidNumber(funded, userId, body.data?.metadata?.productId || "");
+    const finished = await finishPaidNumber(funded, userId, body.data?.metadata?.productId || "", reference);
     await saveDoc(finished.data);
     await sendMail(out.mail);
     const session = await readSession();
@@ -722,22 +755,32 @@ export async function creditFromWebhook(raw: string, signature: string | null) {
   const a = Buffer.from(digest);
   const b = Buffer.from(signature);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return false;
-  const event = JSON.parse(raw) as { event?: string; data?: { reference?: string; status?: string; amount?: number; metadata?: { userId?: string; credit?: number; productId?: string } } };
+  let event: { event?: string; data?: { reference?: string; status?: string; currency?: string; amount?: number; metadata?: { userId?: string; credit?: number; productId?: string } } };
+  try {
+    event = JSON.parse(raw) as typeof event;
+  } catch {
+    return false;
+  }
   if (event.event !== "charge.success" || event.data?.status !== "success" || !event.data.reference || !event.data.metadata?.userId) return true;
-  const charged = Math.round(Number(event.data.amount || 0) / 100);
-  const credit = Math.round(Number(event.data.metadata.credit || charged));
-  const amount = credit > 0 && credit <= charged ? credit : charged;
+  const priced = nairaCredit(event.data);
+  if ("error" in priced) {
+    console.error("Paystack webhook was signed but not credited:", priced.error);
+    return true;
+  }
+  const amount = priced.amount;
+  const reference = event.data.reference;
+  const paidUser = event.data.metadata.userId;
+  const productId = event.data.metadata.productId || "";
   await locked(async () => {
     const doc = await loadLight();
-    const paidUser = event.data!.metadata!.userId!;
-    const out = creditVerified(doc, paidUser, amount, event.data!.reference!);
+    const out = creditVerified(doc, paidUser, amount, reference);
     if (!out.error) {
       let funded = out.data;
       if (!("already" in out) || !out.already) {
-        const moved = await creditBalance(paidUser, amount, "paystack:" + event.data!.reference!, "Paystack · " + event.data!.reference!, "topup");
+        const moved = await creditBalance(paidUser, amount, "paystack:" + reference, "Paystack · " + reference, "topup");
         funded = { ...out.data, users: out.data.users.map((user) => (user.id === paidUser ? { ...user, balance: moved.balance } : user)) };
       }
-      const finished = await finishPaidNumber(funded, paidUser, event.data!.metadata!.productId || "");
+      const finished = await finishPaidNumber(funded, paidUser, productId, reference);
       await saveDoc(finished.data);
       await sendMail(out.mail);
     }
@@ -1108,9 +1151,9 @@ function emptyImport(error: string | null) {
 }
 
 const KIND_EMPTY: Record<string, string> = {
-  numbers: "No virtual numbers in that catalogue matched the names you saved.",
-  server2: "No virtual numbers in that catalogue matched the names you saved.",
-  server3: "No virtual numbers in that catalogue matched the names you saved.",
+  numbers: "No virtual numbers were in that catalogue.",
+  server2: "No virtual numbers were in that catalogue.",
+  server3: "No virtual numbers were in that catalogue.",
   usa: "GetaText did not return any USA services.",
   "vtu-airtime": "No airtime networks were in that catalogue.",
   "vtu-data": "No data plans were in that catalogue.",
@@ -1133,9 +1176,8 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
   const kind = importKindOf(input.kind);
   if (kind === "vpn") return emptyImport("VPN is coming soon. No products were imported.");
   if (kind === "vtu") return emptyImport("Choose Airtime import or Data import. Electricity and TV are not imported.");
-  const wanted = doc.settings.wantedServices?.length ? doc.settings.wantedServices : [...MAJOR_SERVICES];
+  const wantedForPull: string[] = [];
   const routed = input.url ? fiveSimCategoryUrl(input.url) : { url: "", product: "" };
-  const wantedForPull = routed.product ? [...wanted, routed.product] : wanted;
   let payload = input.payload;
   let reportedCurrency: "NGN" | "USD" | "" = "";
   if (!selective && input.url) {
@@ -1303,12 +1345,8 @@ export async function stepCatalogImport(jobId: string) {
         cost: item.price,
         currency: held.provider.currency,
         usdRate: held.provider.usdRate || held.doc.settings.usdNgn,
-        successRate: successRateOf(item.rate < 0 ? null : item.rate),
-        pricing: pricingOf(held.doc.settings.pricing),
-        providerId,
-        service: item.service,
-        providerPercent: held.provider.markupPercent && held.provider.markupPercent > 0 ? held.provider.markupPercent : null,
-        defaultPercent: held.doc.settings.margin,
+        category: item.category,
+        profits: profitsOf({ general: held.doc.settings.generalProfit, airtime: held.doc.settings.airtimeProfit, data: held.doc.settings.dataProfit }),
       }).price,
       cost: item.price,
       stock: item.stock,
@@ -1442,7 +1480,7 @@ export async function browseNumbers(input: { providerId?: string; category?: str
       const prev = best.get(row.service);
       if (price > 0 && (prev == null || price < prev)) best.set(row.service, price);
     }
-    return [...best.entries()].map(([service, price]) => ({ service, price })).sort((a, b) => a.service.localeCompare(b.service)).slice(0, 100);
+    return [...best.entries()].map(([service, price]) => ({ service, price })).sort((a, b) => a.service.localeCompare(b.service)).slice(0, want === "usa" ? 400 : 100);
   };
   if (input.list === "countries") {
     const countries = (await queryCountries({ ...query, service: "", q: "" })).map((row) => quoteProduct(row, doc)).sort((a, b) => a.price - b.price || a.country.localeCompare(b.country));
@@ -1581,6 +1619,12 @@ async function syncInstakingOrders(doc: Data): Promise<Data> {
     if (!status) continue;
     orders = orders.map((item) => item.id === order.id ? { ...item, providerStatus: `Refill ${status}` } : item);
   }
+  for (const order of orders) {
+    const prev = doc.orders.find((item) => item.id === order.id);
+    if (prev && prev.status !== "completed" && order.status === "completed") {
+      await settleReferral({ buyerId: order.userId, orderId: order.id, amount: order.amount, profit: order.amount - (order.cost || 0), orderStatus: "completed" });
+    }
+  }
   return orders === doc.orders ? doc : { ...doc, orders };
 }
 
@@ -1654,7 +1698,7 @@ function localAnswer(q: string, doc: Data) {
   if (hit) return hit.answer;
   if (/refund|cancel|sms|code/.test(s)) return "If a number is still waiting, open Virtual numbers and cancel it. The naira returns to your wallet. Codes show on that same card.";
   if (/wallet|pay|fund|paystack/.test(s)) return "Open Fund wallet, pick an amount, and pay with Paystack. The balance updates after Paystack confirms it.";
-  if (/server|whatsapp|number/.test(s)) return "Each SMS API is its own server. Pick Server 1 or Server 2, then the service and country. They are not merged.";
+  if (/server|whatsapp|number/.test(s)) return "Open Buy a number, choose Server 1, Server 2 or Server 3, then the country and service.";
   if (/mtn|airtel|glo|data|9mobile|smile/.test(s)) return "Open Data and pick the SIM first. MTN, Airtel, Glo, 9mobile and Smile are separate lists.";
   if (/telegram|human|complaint|agent/.test(s)) return `A person can help on Telegram: ${doc.settings.telegram}`;
   return `${doc.settings.supportWelcome} You can also open ${doc.settings.telegram}.`;
@@ -1679,6 +1723,26 @@ export function googleRedirect(origin: string) {
 
 export function googleConfigured() {
   return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+}
+
+export async function adminContext() {
+  const session = await readSession();
+  const doc = await loadLight();
+  const me = doc.users.find((user) => user.id === session.userId);
+  if (me?.role !== "admin") return null;
+  return { doc, userId: me.id };
+}
+
+export async function sessionCustomer() {
+  const session = await readSession();
+  const doc = await loadLight();
+  return doc.users.find((user) => user.id === session.userId) || null;
+}
+
+export async function businessProfit() {
+  const admin = await adminContext();
+  if (!admin) return { error: "Only an admin can see profit.", report: null };
+  return { error: null as string | null, report: summarizeProfit(admin.doc.orders) };
 }
 
 export function googleStartUrl(redirect: string) {
