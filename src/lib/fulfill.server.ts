@@ -17,7 +17,8 @@ const FIVE: Record<string, string> = {
   czechia: "czech",
 };
 
-const SME_NET: Record<string, number> = { mtn: 1, glo: 2, "9mobile": 3, airtel: 4 };
+const SME_NET: Record<string, number> = { mtn: 1, glo: 2, airtel: 4 };
+const NETWORK_BRANDS = new Set(["mtn", "glo", "airtel", "9mobile", "9 mobile", "etisalat", "t2", "t2mobile", "smile"]);
 
 function originOf(base: string) {
   try {
@@ -32,17 +33,25 @@ function fiveCountry(label: string) {
   return FIVE[key] || key.replace(/[^a-z]/g, "");
 }
 
-function planId(product: Product) {
-  const last = product.externalId.split("|").pop() || "";
+export function planValue(externalId: string): string | number {
+  const last = String(externalId || "").split("|").pop() || "";
   if (/^\d+$/.test(last)) return Number(last);
-  const match = product.externalId.match(/(\d+)/);
-  return match ? Number(match[1]) : 0;
+  return last;
 }
 
-function networkId(product: Product) {
+export function networkValue(product: { operator?: string; network?: string }, host: string): string | number {
   const operator = String(product.operator || "").trim();
   if (/^\d+$/.test(operator)) return Number(operator);
-  return SME_NET[String(product.network || "").trim().toLowerCase()] || 0;
+  const low = operator.toLowerCase();
+  if (operator && !NETWORK_BRANDS.has(low)) return operator;
+  const bare = host.trim().toLowerCase().replace(/^www\./, "");
+  if (!operator && bare.endsWith("smeapi.com.ng")) return SME_NET[String(product.network || "").trim().toLowerCase()] || 0;
+  return 0;
+}
+
+function purchaseRef(clientReference?: string) {
+  const safe = String(clientReference || "").replace(/[^A-Za-z0-9]/g, "").slice(0, 40);
+  return safe ? `VL${safe}` : `VL${Date.now().toString(36)}`;
 }
 
 async function readBody(res: Response) {
@@ -136,13 +145,14 @@ export async function placeOnProvider(input: { product: Product; provider: Provi
   if (sme && (product.category === "airtime" || product.category === "data")) {
     const phone = input.phone.trim();
     if (phone.length < 8) return { ok: false, error: "Enter the phone number." };
-    const network = networkId(product);
-    if (!network) return { ok: false, error: "This plan has no network id, so it was not sent." };
-    const ref = "VL" + Date.now().toString(36);
+    const network = networkValue(product, host);
+    if (network === "" || network === 0) return { ok: false, error: "This plan has no network id, so it was not sent." };
+    const ref = purchaseRef(input.clientReference);
+    const plan = planValue(product.externalId);
     const body = product.category === "airtime"
       ? { network, phone, amount: input.amount, ref, ported_number: "false" }
-      : { network, phone, data_plan: planId(product), ref, ported_number: "false" };
-    if (product.category === "data" && !body.data_plan) return { ok: false, error: "This data plan has no plan id, so it was not sent." };
+      : { network, phone, data_plan: plan, ref, ported_number: "false" };
+    if (product.category === "data" && (plan === "" || plan === 0)) return { ok: false, error: "This data plan has no plan id, so it was not sent." };
     const url = originOf(provider.baseUrl) + (product.category === "airtime" ? "/api/airtime/" : "/api/data/");
     let res: Response;
     try {

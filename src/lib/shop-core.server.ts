@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
 import { freshData, normalizeData, quoteProduct, serverLabel, topupQuote, withAdminLogin, type Data, type Product, type SyncReport } from "@/lib/catalog";
 import { customerPrice, profitsOf, sellQuote, summarizeProfit } from "@/lib/pricing";
-import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, fiveSimImportPlan, shapeImport, airtimeProductsFromPayload, discoverServiceNames, mergeServiceNames, type ImportKind, type ParsedItem } from "@/lib/categorize";
+import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, fiveSimImportPlan, shapeImport, airtimeProductsFromPayload, attachVtuIds, vtuCatalogueUrl, discoverServiceNames, mergeServiceNames, type ImportKind, type ParsedItem } from "@/lib/categorize";
 import { destinationOf, flattenGetaText, sourceKindOf } from "@/lib/import-source";
 import { instakingCurrency, instakingPost, isInstakingHost, parseInstakingServices, readSmmDetail } from "@/lib/instaking";
 import { catalogStamp, followCatalogPages, walkBrowse } from "@/lib/catalog-pages";
@@ -890,15 +890,24 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
       if (!Object.keys(merged).length) return { ok: false as const, error: "None of the saved services came back from 5sim." };
       return { ok: true as const, payload: slimFiveSim(merged, "", allow, {}), services: discoverServiceNames(merged) };
     }
-    if (input.kind === "vtu" && /\/airtime\/?$/i.test(url.pathname)) {
-      const plans = new URL("/api/dataplans/?format=json", url.origin);
-      const listed = await fetch(plans, { headers, signal: ctrl.signal });
-      const listedText = await listed.text();
-      if (!listed.ok || !listedText) return { ok: false as const, error: "That airtime address only places a purchase. The network list could not be read from the data plans." };
-      try {
-        return { ok: true as const, payload: JSON.parse(listedText) as unknown };
-      } catch {
-        return { ok: false as const, error: "The data plans did not come back as JSON, so the airtime networks could not be built." };
+    if (input.kind === "vtu" || input.kind === "vtu-airtime" || input.kind === "vtu-data") {
+      const catalogue = vtuCatalogueUrl(url.toString());
+      if (catalogue) {
+        try {
+          const listed = await fetch(catalogue, { method: "GET", headers, signal: ctrl.signal });
+          const listedText = await listed.text();
+          if (!listed.ok || !listedText) return { ok: false as const, error: "That address places an order. The plan list could not be read, so nothing was imported." };
+          try {
+            return { ok: true as const, payload: JSON.parse(listedText) as unknown };
+          } catch {
+            return { ok: false as const, error: "The plan list did not come back as JSON, so nothing was imported." };
+          }
+        } catch {
+          return { ok: false as const, error: "The plan list could not be reached, so nothing was imported." };
+        }
+      }
+      if (/\/(airtime|data)\/?$/i.test(url.pathname) || looksLikePurchase(url.toString())) {
+        return { ok: false as const, error: "That address places an order. Catalogue import will not call it." };
       }
     }
     const probe = await probeProviderCatalogue({
@@ -1200,9 +1209,14 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
     : null;
   const extracted = instakingBundle ? { items: instakingBundle.items, skipped: 0 } : extractCatalog(payload);
   const numberLike = kind === "numbers" || kind === "server2" || kind === "server3" || kind === "usa";
+  let source = extracted.items;
+  if (kind === "vtu-data") {
+    const attached = attachVtuIds(payload, extracted.items);
+    if (attached !== extracted.items) source = attached;
+  }
   const shaped = kind === "vtu-airtime"
     ? airtimeProductsFromPayload(payload).map((item) => ({ ...item, category: "airtime" as const, importType: "VTU_IMPORT", serverId: "" }))
-    : shapeImport(extracted.items, instakingBundle ? "smm" : kind, !selective && numberLike ? wantedForPull : []);
+    : shapeImport(source, instakingBundle ? "smm" : kind, !selective && numberLike ? wantedForPull : []);
   const items = (selective ? shaped.slice(0, 200) : shaped) as ParsedItem[];
   if (!items.length) {
     if (services.length) await rememberDiscoveredServices(services);
@@ -1553,12 +1567,12 @@ export async function browseCatalog(input: { q?: string; category?: string; prov
 
 const SHELF_OK = new Set(["airtime", "data", "cable", "exam", "giftcard", "betting"]);
 
-export async function listShelf(category: string, q = "") {
+export async function listShelf(category: string, q = "", network = "") {
   const doc = await loadLight();
   const session = await readSession();
   if (!session.userId || !SHELF_OK.has(category)) return [];
   const providerIds = doc.providers.filter((provider) => provider.enabled).map((provider) => provider.id);
-  const rows = await queryShelf(category, providerIds, q, 400);
+  const rows = await queryShelf(category, providerIds, q, 2000, network);
   return rows.map((row) => quoteProduct(row, doc));
 }
 

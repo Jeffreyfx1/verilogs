@@ -66,13 +66,14 @@ type Ctx = {
 
 const NAME_KEYS = ["name", "plan_name", "plan", "service_name", "title", "package", "bundle_name", "product_name", "variation", "dataplan"];
 const PRICE_KEYS = ["price", "plan_amount", "amount", "cost", "selling_price", "plan_price", "Price", "retail_price"];
-const ID_KEYS = ["id", "plan_id", "dataplan_id", "service_id", "code", "external_id", "product_id", "slug", "variation_code", "plan_code"];
+const ID_KEYS = ["id", "plan_id", "planId", "dataplan_id", "data_plan", "service_id", "code", "external_id", "product_id", "slug", "variation_code", "package_code", "plan_code"];
 const STOCK_KEYS = ["count", "stock", "qty", "Qty", "available", "quantity"];
 const VALID_KEYS = ["month_validate", "validity", "duration", "days"];
 const METRIC_KEYS = new Set([
   "price", "cost", "count", "qty", "quantity", "rate", "id", "stock", "amount", "category", "pos", "retail_price",
   "min", "max", "min_qty", "max_qty", "minimum", "maximum", "refill", "cancel", "dripfeed", "runs", "interval", "service",
   "rate1", "rate3", "rate24", "rate72", "rate168", "rate720",
+  "networkid", "network_id", "planid", "plan_id", "dataplan_id", "data_plan", "package_code", "variation_code",
 ]);
 const META_KEYS = new Set([
   "status", "data", "message", "success", "result", "response", "payload", "items", "list",
@@ -432,16 +433,46 @@ export type ImportKind = SourceKind;
 export { onShelf, shelfOf, type Shelf } from "./shelves.ts";
 
 function networkLabel(name: string) {
-  const low = name.trim().toLowerCase();
+  const low = name.trim().toLowerCase().replace(/[_-]+/g, " ");
   if (low === "mtn") return "MTN";
   if (low === "airtel") return "Airtel";
   if (low === "glo") return "Glo";
-  if (low === "9mobile" || low === "9 mobile" || low === "etisalat") return "9mobile";
+  if (low === "9mobile" || low === "9 mobile" || low === "etisalat" || low === "t2" || low === "t2mobile") return "9mobile";
   return name.trim();
 }
 
-export function airtimeProductsFromPayload(payload: unknown): ParsedItem[] {
-  const nets = new Map<string, string>();
+function firstText(rec: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = rec[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return "";
+}
+
+/** Catalogue URL for a known purchase address. Never the purchase address itself. */
+export function vtuCatalogueUrl(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  const host = url.hostname.replace(/^www\./, "");
+  if (!/smeapi\.com\.ng$/i.test(host)) return null;
+  if (/dataplans/i.test(url.pathname)) return null;
+  if (!/\/(airtime|data)\/?$/i.test(url.pathname)) return null;
+  return new URL("/api/dataplans/?format=json", url.origin).toString();
+}
+
+export function attachVtuIds(payload: unknown, items: ParsedItem[]): ParsedItem[] {
+  const byId = new Map<string, { networkId: string; network: string; type: string }>();
+  const remember = (id: string, info: { networkId: string; network: string; type: string }) => {
+    byId.set(id, info);
+    byId.set(id.toLowerCase(), info);
+    const dashed = id.toLowerCase().replace(/\s+/g, "-");
+    if (dashed !== id.toLowerCase()) byId.set(dashed, info);
+  };
   const walk = (node: unknown) => {
     if (Array.isArray(node)) {
       node.forEach(walk);
@@ -449,30 +480,77 @@ export function airtimeProductsFromPayload(payload: unknown): ParsedItem[] {
     }
     if (!node || typeof node !== "object") return;
     const rec = node as Record<string, unknown>;
-    const rawId = rec.network_id ?? rec.networkId;
-    const rawName = rec.network_name ?? rec.networkName ?? rec.network;
-    const id = typeof rawId === "number" || (typeof rawId === "string" && /^\d+$/.test(rawId)) ? String(rawId) : "";
-    const name = typeof rawName === "string" ? rawName.trim() : "";
-    if (id && name && !/^\d+$/.test(name)) nets.set(id, networkLabel(name));
+    const id = firstText(rec, ["id", "plan_id", "planId", "dataplan_id", "data_plan", "package_code", "variation_code"]);
+    const networkId = firstText(rec, ["network_id", "networkId", "networkid"]);
+    const network = networkLabel(firstText(rec, ["network", "network_name", "networkName"]));
+    const type = firstText(rec, ["type", "plan_type", "planType"]);
+    if (id && (networkId || network)) remember(id, { networkId, network, type });
     for (const value of Object.values(rec)) if (value && typeof value === "object") walk(value);
   };
   walk(payload);
-  if (nets.has("1") && nets.has("2") && nets.has("4") && !nets.has("3") && ![...nets.values()].some((name) => name === "9mobile")) nets.set("3", "9mobile");
-  return [...nets.entries()].map(([id, network]) => ({
-    externalId: `airtime|${id}|${network.toLowerCase()}`,
+  if (!byId.size) return items;
+  const next: ParsedItem[] = [];
+  for (const item of items) {
+    const parts = item.externalId.split("|").filter(Boolean);
+    const token = parts[parts.length - 1] || "";
+    const found = byId.get(token) || byId.get(token.toLowerCase()) || byId.get(item.externalId) || byId.get(item.externalId.toLowerCase());
+    if (!found) continue;
+    const pricedTail = parts.length >= 4 && token === String(item.price);
+    if (pricedTail) continue;
+    next.push({
+      ...item,
+      operator: found.networkId || item.operator,
+      network: found.network || item.network,
+      service: found.type || item.service,
+    });
+  }
+  return next;
+}
+
+export function airtimeProductsFromPayload(payload: unknown): ParsedItem[] {
+  const nets = new Map<string, { id: string; network: string; type: string }>();
+  const walk = (node: unknown) => {
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (!node || typeof node !== "object") return;
+    const rec = node as Record<string, unknown>;
+    const rawId = rec.network_id ?? rec.networkId ?? rec.networkid;
+    const rawName = rec.network_name ?? rec.networkName ?? rec.network;
+    const id = typeof rawId === "number" || (typeof rawId === "string" && /^\d+$/.test(rawId.trim())) ? String(rawId).trim() : "";
+    const name = typeof rawName === "string" ? rawName.trim() : "";
+    if (id && name && !/^\d+$/.test(name)) {
+      const network = networkLabel(name);
+      const price = Number(rec.price ?? rec.plan_amount ?? rec.plan_price ?? rec.cost ?? rec.amount);
+      const priced = Number.isFinite(price) && price > 0;
+      const typeName = priced ? "" : firstText(rec, ["airtime_type", "airtimeType", "type", "plan_type", "planType"]);
+      const type = typeName && !/\d+(?:\.\d+)?\s?(?:gb|mb|tb)\b/i.test(typeName) && !/^\d+$/.test(typeName) ? typeName : "";
+      if (type) {
+        const slug = type.toLowerCase().replace(/[^a-z0-9]+/g, "");
+        if (slug) nets.set(`${id}|${slug}`, { id, network, type });
+      } else if (!nets.has(id)) {
+        nets.set(id, { id, network, type: "" });
+      }
+    }
+    for (const value of Object.values(rec)) if (value && typeof value === "object") walk(value);
+  };
+  walk(payload);
+  return [...nets.values()].map((value) => ({
+    externalId: value.type ? `airtime|${value.id}|${value.type.toLowerCase().replace(/[^a-z0-9]+/g, "")}` : `airtime|${value.id}|${value.network.toLowerCase()}`,
     category: "airtime" as const,
-    name: `${network} Airtime`,
-    service: "Airtime",
+    name: value.type ? `${value.network} ${value.type} Airtime` : `${value.network} Airtime`,
+    service: value.type || "Airtime",
     country: "Nigeria",
-    network,
-    operator: id,
+    network: value.network,
+    operator: value.id,
     price: 0,
     stock: 0,
     rate: 0,
     rates: "",
     validity: "",
     variable: true,
-    description: `Network ${id}. The customer chooses the amount.`,
+    description: `Network ${value.id}${value.type ? `. ${value.type}` : ""}. The customer chooses the amount.`,
     importType: "VTU_IMPORT",
     serverId: "",
   }));

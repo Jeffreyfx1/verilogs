@@ -232,13 +232,14 @@ export const browseCatalog = createServerFn({ method: "POST" })
   });
 
 export const listShelf = createServerFn({ method: "POST" })
-  .validator((input: { category?: string; q?: string }) => ({
+  .validator((input: { category?: string; q?: string; network?: string }) => ({
     category: String(input?.category || ""),
     q: String(input?.q || "").slice(0, 60),
+    network: String(input?.network || "").slice(0, 40),
   }))
   .handler(async ({ data }) => {
     const { listShelf } = await core();
-    return listShelf(data.category, data.q);
+    return listShelf(data.category, data.q, data.network);
   });
 
 export const catalogStats = createServerFn({ method: "GET" }).handler(async () => {

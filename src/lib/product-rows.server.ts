@@ -165,13 +165,17 @@ export async function readShopRows(categories: string[], limit = 2000) {
   return rows.map(rowOf);
 }
 
-export async function queryShelf(category: string, providerIds: string[], q = "", limit = 400) {
+export async function queryShelf(category: string, providerIds: string[], q = "", limit = 2000, network = "") {
   if (!providerIds.length || !category) return [];
   const sql = await getSql();
   const values: unknown[] = [category, providerIds];
   const parts = ["enabled = true", "category = $1", "provider_id = any($2::text[])"];
   pushTextSearch(parts, values, q);
-  values.push(Math.max(1, Math.min(400, limit)));
+  if (network) {
+    values.push(network);
+    parts.push(`network = $${values.length}`);
+  }
+  values.push(Math.max(1, Math.min(2000, limit)));
   const rows = await sql.query<Record<string, unknown>>(
     `select * from shop_products where ${parts.join(" and ")} order by network, name limit $${values.length}`,
     values,
