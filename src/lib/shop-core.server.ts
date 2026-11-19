@@ -7,6 +7,8 @@ import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, shapeImport, airtimePr
 import { destinationOf, flattenGetaText, sourceKindOf } from "@/lib/import-source";
 import { instakingCurrency, instakingPost, isInstakingHost, parseInstakingServices, readSmmDetail } from "@/lib/instaking";
 import { catalogStamp, followCatalogPages, walkBrowse } from "@/lib/catalog-pages";
+import { applyFieldMap, looksLikePurchase, setupView, type CatalogMethod, type CatalogSetup } from "@/lib/catalog-request";
+import { fetchNote, probeProviderCatalogue, readCataloguePage, reportOf, saveProviderFetch, loadProviderFetch, type FetchReport } from "@/lib/catalog-fetch.server";
 import { IMPORT_BATCH, importBatchCount, sliceImport } from "@/lib/import-batch";
 import { uid } from "@/lib/money";
 import { placeOnProvider } from "@/lib/fulfill.server";
@@ -831,7 +833,7 @@ export function integrationStatus() {
   };
 }
 
-export async function pullRemote(input: { url: string; apiKey?: string; providerId?: string; allow?: string[]; kind?: ImportKind }) {
+export async function pullRemote(input: { url: string; apiKey?: string; providerId?: string; allow?: string[]; kind?: ImportKind; setup?: CatalogSetup | null }) {
   const session = await readSession();
   const doc = await loadLight();
   const me = doc.users.find((u) => u.id === session.userId);
@@ -856,18 +858,6 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
   }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 180000);
-  const tooBig = 32_000_000;
-  const readJson = async (target: URL) => {
-    const res = await fetch(target, { headers, signal: ctrl.signal });
-    if (!res.ok) return null;
-    const text = await res.text();
-    if (!text || text.length > tooBig) return null;
-    try {
-      return JSON.parse(text) as unknown;
-    } catch {
-      return null;
-    }
-  };
   try {
     const allow = [...new Set([...(input.allow || []), routed.product].filter(Boolean))];
     if (isInstakingHost(host)) {
@@ -912,71 +902,25 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
         return { ok: false as const, error: "The data plans did not come back as JSON, so the airtime networks could not be built." };
       }
     }
-    const res = await fetch(url, { headers, signal: ctrl.signal });
-    const text = await res.text();
-    if (text.length > tooBig) return { ok: false as const, error: "That catalogue is larger than 32MB." };
-    const both = (input.kind === "vtu" || input.kind === "vtu-airtime" || input.kind === "vtu-data" || input.kind === "random") && !/(^|\.)getatext\.com$/i.test(host) && !/smeapi\.com\.ng$/i.test(host) && !host.endsWith("5sim.net");
-    if (!res.ok && !both) {
-      const detail = text.replace(/\s+/g, " ").trim().slice(0, 160);
-      if (detail === "BAD_KEY") return { ok: false as const, error: "GetaText rejected the API key." };
-      return { ok: false as const, error: detail ? `The API replied ${res.status}. ${detail}` : `The API replied ${res.status}.` };
-    }
-    let payload: unknown = null;
-    if (res.ok && text) {
-      try {
-        payload = JSON.parse(text) as unknown;
-      } catch {
-        if (!both) return { ok: false as const, error: "The API did not return JSON." };
-      }
-    }
-    if (both || (!url.hostname.endsWith("5sim.net") && key && payload && !Array.isArray(payload) && typeof payload === "object" && Object.keys(payload as object).length < 3)) {
-      const actions = input.kind === "vtu" ? ["", "plans", "data", "airtime"] : input.kind === "random" ? ["", "services", "plans", "products"] : ["services"];
-      const found: unknown[] = [];
-      if (payload != null && extractCatalog(payload).items.length) found.push(payload);
-      const keyed = new URL(url);
-      if (key && !keyed.searchParams.has("api_key") && !keyed.searchParams.has("apikey")) keyed.searchParams.set("api_key", key);
-      if (keyed.toString() !== url.toString()) {
-        try {
-          const extra = await fetch(keyed, { headers, signal: ctrl.signal });
-          const extraText = await extra.text();
-          if (extra.ok && extraText && extraText.length <= tooBig) {
-            const parsed = JSON.parse(extraText) as unknown;
-            if (extractCatalog(parsed).items.length) found.push(parsed);
-          }
-        } catch {
-          // The plain GET is still usable.
-        }
-      }
-      for (const action of actions) {
-        const form = new URLSearchParams();
-        if (key) {
-          form.set("key", key);
-          form.set("api_key", key);
-          form.set("apiKey", key);
-        }
-        if (action) form.set("action", action);
-        const attempts: RequestInit[] = [
-          { method: "POST", headers: { ...headers, "Content-Type": "application/x-www-form-urlencoded" }, body: form, signal: ctrl.signal },
-          { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries(form)), signal: ctrl.signal },
-        ];
-        for (const init of attempts) {
-          try {
-            const posted = await fetch(url, init);
-            const postedText = await posted.text();
-            if (!posted.ok || !postedText || postedText.length > tooBig) continue;
-            const parsed = JSON.parse(postedText) as unknown;
-            if (extractCatalog(parsed).items.length) found.push(parsed);
-          } catch {
-            // Try the next method.
-          }
-        }
-      }
-      if (found.length) payload = found.length === 1 ? found[0] : found;
-    }
-    if (payload == null) return { ok: false as const, error: both ? "The API did not return a catalogue. Tried GET and POST." : "The API did not return JSON." };
+    const probe = await probeProviderCatalogue({
+      url: url.toString(),
+      apiKey: key,
+      providerId: input.providerId,
+      draft: input.setup,
+      timeoutMs: 45000,
+    });
+    const providerName = doc.providers.find((item) => item.id === input.providerId)?.name || "";
+    const fetchReport = reportOf(probe, url.toString(), providerName);
+    if (!probe.ok || probe.payload == null) return { ok: false as const, error: probe.error || "The API did not return a catalogue.", fetch: fetchReport };
+    let payload: unknown = applyFieldMap(probe.payload, probe.setup.fieldMap);
+    const method = (probe.method || "GET") as CatalogMethod;
     if (!url.hostname.endsWith("5sim.net")) {
       try {
-        payload = await followCatalogPages(url, payload, readJson);
+        payload = await followCatalogPages(url, payload, async (target) => {
+          if (target.hostname !== url.hostname) return null;
+          if (looksLikePurchase(target.toString())) return null;
+          return readCataloguePage(target.toString(), method, probe.setup, key, 20000);
+        });
       } catch {
         // A later page can fail. The pages already read stay in the payload.
       }
@@ -988,9 +932,9 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     const ready = url.hostname.endsWith("5sim.net") ? slimFiveSim(payload, hint, allow, place) : payload;
     if (/(^|\.)getatext\.com$/i.test(host)) {
       const flat = flattenGetaText(ready);
-      if (flat) return { ok: true as const, payload: flat };
+      if (flat) return { ok: true as const, payload: flat, fetch: fetchReport, setup: probe.setup };
     }
-    return { ok: true as const, payload: ready };
+    return { ok: true as const, payload: ready, fetch: fetchReport, setup: probe.setup };
   } catch {
     return { ok: false as const, error: "Could not reach that API. Check the URL and key." };
   } finally {
@@ -1040,7 +984,7 @@ function emptyBrowse(error: string | null) {
   return { error, items: [] as RemoteCard[], total: null as number | null, page: null as number | null, lastPage: null as number | null, nextCursor: "" };
 }
 
-export async function browseRemoteCatalog(input: { url: string; apiKey?: string; providerId?: string; cursor?: string; q?: string }) {
+export async function browseRemoteCatalog(input: { url: string; apiKey?: string; providerId?: string; cursor?: string; q?: string; setup?: CatalogSetup | null }) {
   const session = await readSession();
   const doc = await loadLight();
   const me = doc.users.find((u) => u.id === session.userId);
@@ -1065,33 +1009,25 @@ export async function browseRemoteCatalog(input: { url: string; apiKey?: string;
   }
   pageUrl.searchParams.delete("vl_from");
   const key = input.apiKey?.trim() || (input.providerId ? await readProviderKey(input.providerId) : "");
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (key) {
-    const tokenAuth = /smeapi\.com\.ng$/i.test(pageUrl.hostname);
-    headers.Authorization = (tokenAuth ? "Token " : "Bearer ") + key;
-    headers["X-API-KEY"] = key;
-    headers["api-key"] = key;
-  }
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 45000);
-  const tooBig = 32_000_000;
-  const readJson = async (target: URL) => {
-    if (target.hostname !== start.hostname) return null;
-    const clean = new URL(target);
-    clean.searchParams.delete("vl_from");
-    try {
-      const res = await fetch(clean, { headers, signal: ctrl.signal });
-      if (!res.ok) return null;
-      const text = await res.text();
-      if (!text || text.length > tooBig) return null;
-      return JSON.parse(text) as unknown;
-    } catch {
-      return null;
-    }
-  };
+  if (looksLikePurchase(pageUrl.toString())) return emptyBrowse("That address places an order. Catalogue browse will not call it.");
   try {
-    const first = await readJson(pageUrl);
-    if (first == null) return emptyBrowse("That page did not come back as JSON.");
+    const probe = await probeProviderCatalogue({
+      url: pageUrl.toString(),
+      apiKey: key,
+      providerId: input.providerId,
+      draft: input.setup,
+      timeoutMs: 20000,
+    });
+    if (!probe.ok || probe.payload == null) return emptyBrowse(probe.error || "That page did not come back as JSON.");
+    const method = (probe.method || "GET") as CatalogMethod;
+    const first = applyFieldMap(probe.payload, probe.setup.fieldMap);
+    const readJson = async (target: URL) => {
+      if (target.hostname !== start.hostname) return null;
+      if (looksLikePurchase(target.toString())) return null;
+      const clean = new URL(target);
+      clean.searchParams.delete("vl_from");
+      return readCataloguePage(clean.toString(), method, probe.setup, key, 15000);
+    };
     const walked = await walkBrowse({
       start: pageUrl,
       first,
@@ -1138,12 +1074,51 @@ export async function browseRemoteCatalog(input: { url: string; apiKey?: string;
     return { error: null, items, total: walked.total, page: walked.page, lastPage: walked.lastPage, nextCursor: walked.nextCursor };
   } catch {
     return emptyBrowse("Could not reach that API. Check the URL and key.");
-  } finally {
-    clearTimeout(timer);
   }
 }
 
-type ImportMeta = { name: string; baseUrl: string; currency: "NGN" | "USD"; usdRate: number; markup: number; publish: boolean; hasKey: boolean; apiKey: string; kind: ImportKind; keepOthers?: boolean; categories?: string[] };
+export async function openCatalogSetup(providerId: string) {
+  const session = await readSession();
+  const doc = await loadLight();
+  const me = doc.users.find((u) => u.id === session.userId);
+  if (me?.role !== "admin") return { error: "Only an admin can read a provider setup.", setup: null };
+  return { error: null as string | null, setup: setupView(await loadProviderFetch(providerId)) };
+}
+
+export async function testCatalogConnection(input: { url: string; apiKey?: string; providerId?: string; setup?: CatalogSetup | null }) {
+  const session = await readSession();
+  const doc = await loadLight();
+  const me = doc.users.find((u) => u.id === session.userId);
+  if (me?.role !== "admin") return { error: "Only an admin can test an API.", report: null as FetchReport | null };
+  let url: URL;
+  try {
+    url = new URL(input.url);
+  } catch {
+    return { error: "Enter a full https address.", report: null };
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return { error: "Only http and https catalogues can be tested.", report: null };
+  const key = input.apiKey?.trim() || (input.providerId ? await readProviderKey(input.providerId) : "");
+  const probe = await probeProviderCatalogue({ url: url.toString(), apiKey: key, providerId: input.providerId, draft: input.setup, timeoutMs: 20000 });
+  const name = doc.providers.find((item) => item.id === input.providerId)?.name || "";
+  return { error: probe.ok ? null : probe.error, report: reportOf(probe, url.toString(), name) };
+}
+
+type ImportMeta = {
+  name: string;
+  baseUrl: string;
+  currency: "NGN" | "USD";
+  usdRate: number;
+  markup: number;
+  publish: boolean;
+  hasKey: boolean;
+  apiKey: string;
+  kind: ImportKind;
+  keepOthers?: boolean;
+  categories?: string[];
+  fetchSetup?: CatalogSetup;
+  fetchStatus?: number;
+  fetchDiscovered?: number;
+};
 
 
 function emptyImport(error: string | null) {
@@ -1167,7 +1142,7 @@ function importKindOf(value: string | undefined): ImportKind {
   return sourceKindOf(value) || "numbers";
 }
 
-export async function beginCatalogImport(input: { url?: string; payload?: unknown; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean; kind?: string; selective?: boolean }) {
+export async function beginCatalogImport(input: { url?: string; payload?: unknown; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean; kind?: string; selective?: boolean; setup?: CatalogSetup | null }) {
   const session = await readSession();
   const doc = await loadLight();
   const me = doc.users.find((u) => u.id === session.userId);
@@ -1180,11 +1155,21 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
   const routed = input.url ? fiveSimCategoryUrl(input.url) : { url: "", product: "" };
   let payload = input.payload;
   let reportedCurrency: "NGN" | "USD" | "" = "";
+  let fetchSetup: CatalogSetup | undefined;
+  let fetchStatus = 0;
+  let fetchDiscovered = 0;
+  let noted = "";
   if (!selective && input.url) {
-    const fetched = await pullRemote({ url: input.url, apiKey: input.apiKey, providerId: input.providerId, allow: kind === "numbers" ? wantedForPull : [], kind });
+    const fetched = await pullRemote({ url: input.url, apiKey: input.apiKey, providerId: input.providerId, allow: kind === "numbers" ? wantedForPull : [], kind, setup: input.setup });
     if (!fetched.ok) return emptyImport(fetched.error);
     payload = fetched.payload;
     if ("currency" in fetched && (fetched.currency === "NGN" || fetched.currency === "USD")) reportedCurrency = fetched.currency;
+    if ("setup" in fetched && fetched.setup?.confirmed) {
+      fetchSetup = fetched.setup;
+      fetchStatus = "fetch" in fetched && fetched.fetch ? fetched.fetch.status : 200;
+      fetchDiscovered = "fetch" in fetched && fetched.fetch ? fetched.fetch.discovered : 0;
+      noted = "fetch" in fetched && fetched.fetch ? fetchNote(fetched.fetch) : "";
+    }
   }
   if (payload == null) return emptyImport(selective ? "Tick products before importing." : "Add a catalogue URL or paste JSON.");
   if (selective) {
@@ -1221,6 +1206,9 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
     kind,
     keepOthers: selective,
     categories,
+    fetchSetup,
+    fetchStatus,
+    fetchDiscovered,
   };
   const sql = await getSql();
   const skipped = extracted.skipped + (extracted.items.length - items.length);
@@ -1229,7 +1217,7 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
   for (let seq = 0; seq < batches.length; seq += 1) {
     await sql`insert into shop_import_batches (job_id, seq, items) values (${jobId}, ${seq}, ${JSON.stringify(batches[seq])})`;
   }
-  return { error: null, jobId, total: items.length, saved: 0, batch: 0, batches: batches.length, batchSize: IMPORT_BATCH, done: false, report: null, state: null };
+  return { error: null, jobId, total: items.length, saved: 0, batch: 0, batches: batches.length, batchSize: IMPORT_BATCH, done: false, report: null, state: null, fetchNote: noted };
 }
 
 function withProvider(doc: Data, meta: ImportMeta, providerId: string) {
@@ -1331,6 +1319,24 @@ export async function stepCatalogImport(jobId: string) {
       return next;
     });
     const providerId = held.provider.id;
+    if (meta.fetchSetup?.confirmed) {
+      await saveProviderFetch(providerId, {
+        ok: true,
+        error: "",
+        method: meta.fetchSetup.method || "GET",
+        auth: meta.fetchSetup.auth,
+        status: meta.fetchStatus || 200,
+        payload: null,
+        attempts: [],
+        setup: meta.fetchSetup,
+        discovered: meta.fetchDiscovered || 0,
+        skipped: 0,
+        failed: 0,
+        shape: "",
+        pages: false,
+        note: "",
+      });
+    }
     const existing = await countExistingProducts(providerId, items.map((item) => item.externalId));
     const products: Product[] = items.map((item) => ({
       id: uid("prd"),

@@ -12,9 +12,35 @@ export type ImportStep = {
   done: boolean;
   report: SyncReport | null;
   state: Data | null;
+  fetchNote?: string;
 };
 
 type ShopPayload = { error: string | null; state: Data; report: SyncReport | null };
+
+type SetupDraft = {
+  method?: string;
+  auth?: string;
+  headerName?: string;
+  contentType?: string;
+  query?: string;
+  headers?: string;
+  body?: string;
+  fieldMap?: string;
+};
+
+function setupDraft(input: SetupDraft | null | undefined): SetupDraft {
+  const cut = (value: unknown, max: number) => String(value || "").slice(0, max);
+  return {
+    method: cut(input?.method, 10),
+    auth: cut(input?.auth, 20),
+    headerName: cut(input?.headerName, 40),
+    contentType: cut(input?.contentType, 10),
+    query: cut(input?.query, 2000),
+    headers: cut(input?.headers, 2000),
+    body: cut(input?.body, 2000),
+    fieldMap: cut(input?.fieldMap, 2000),
+  };
+}
 
 async function core() {
   return import("./shop-core.server");
@@ -68,7 +94,7 @@ export const clearNumberCatalog = createServerFn({ method: "POST" }).handler(asy
 });
 
 export const beginCatalogImport = createServerFn({ method: "POST" })
-  .validator((input: { url?: string; payload?: unknown; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean; kind?: string; selective?: boolean }) => ({
+  .validator((input: { url?: string; payload?: unknown; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean; kind?: string; selective?: boolean; setup?: SetupDraft }) => ({
     url: String(input?.url || ""),
     payload: input?.payload,
     apiKey: input?.apiKey ? String(input.apiKey) : "",
@@ -81,23 +107,53 @@ export const beginCatalogImport = createServerFn({ method: "POST" })
     publish: !!input?.publish,
     kind: ["vtu", "vtu-airtime", "vtu-data", "vpn", "smm", "random", "numbers", "server2", "server3", "usa"].includes(String(input?.kind)) ? String(input?.kind) : "numbers",
     selective: !!input?.selective,
+    setup: setupDraft(input?.setup),
   }))
   .handler(async ({ data }): Promise<ImportStep> => {
+    const { parseSetupDraft } = await import("@/lib/catalog-request");
+    const parsed = parseSetupDraft(data.setup);
+    if (!parsed.ok) return { error: parsed.error, jobId: "", total: 0, saved: 0, batch: 0, batches: 0, batchSize: 0, done: false, report: null, state: null };
     const { beginCatalogImport } = await core();
-    return beginCatalogImport(data);
+    return beginCatalogImport({ ...data, setup: parsed.setup });
   });
 
 export const browseRemoteCatalog = createServerFn({ method: "POST" })
-  .validator((input: { url?: string; apiKey?: string; providerId?: string; cursor?: string; q?: string }) => ({
+  .validator((input: { url?: string; apiKey?: string; providerId?: string; cursor?: string; q?: string; setup?: SetupDraft }) => ({
     url: String(input?.url || "").slice(0, 2000),
     apiKey: input?.apiKey ? String(input.apiKey).slice(0, 500) : "",
     providerId: input?.providerId ? String(input.providerId).slice(0, 80) : "",
     cursor: input?.cursor ? String(input.cursor).slice(0, 2000) : "",
     q: String(input?.q || "").slice(0, 80),
+    setup: setupDraft(input?.setup),
   }))
   .handler(async ({ data }) => {
+    const { parseSetupDraft } = await import("@/lib/catalog-request");
+    const parsed = parseSetupDraft(data.setup);
+    if (!parsed.ok) return { error: parsed.error, items: [], total: null, page: null, lastPage: null, nextCursor: "" };
     const { browseRemoteCatalog } = await core();
-    return browseRemoteCatalog(data);
+    return browseRemoteCatalog({ ...data, setup: parsed.setup });
+  });
+
+export const openCatalogSetup = createServerFn({ method: "POST" })
+  .validator((input: { providerId?: string }) => ({ providerId: String(input?.providerId || "").slice(0, 80) }))
+  .handler(async ({ data }) => {
+    const { openCatalogSetup } = await core();
+    return openCatalogSetup(data.providerId);
+  });
+
+export const testCatalogConnection = createServerFn({ method: "POST" })
+  .validator((input: { url?: string; apiKey?: string; providerId?: string; setup?: SetupDraft }) => ({
+    url: String(input?.url || "").slice(0, 2000),
+    apiKey: input?.apiKey ? String(input.apiKey).slice(0, 500) : "",
+    providerId: input?.providerId ? String(input.providerId).slice(0, 80) : "",
+    setup: setupDraft(input?.setup),
+  }))
+  .handler(async ({ data }) => {
+    const { parseSetupDraft } = await import("@/lib/catalog-request");
+    const parsed = parseSetupDraft(data.setup);
+    if (!parsed.ok) return { error: parsed.error, report: null };
+    const { testCatalogConnection } = await core();
+    return testCatalogConnection({ ...data, setup: parsed.setup });
   });
 
 export const stepCatalogImport = createServerFn({ method: "POST" })

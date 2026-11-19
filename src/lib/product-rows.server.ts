@@ -106,6 +106,7 @@ export async function upsertProductRows(products: Product[], sync: string) {
          smm_min = excluded.smm_min, smm_max = excluded.smm_max, smm_type = excluded.smm_type, smm_refill = excluded.smm_refill,
          image_url = case when excluded.image_url <> '' then excluded.image_url else shop_products.image_url end,
          marketplace_subcategory = case when shop_products.marketplace_subcategory <> '' then shop_products.marketplace_subcategory else excluded.marketplace_subcategory end,
+         enabled = shop_products.enabled,
          variable = case when shop_products.price_locked then shop_products.variable else excluded.variable end,
          description = case when shop_products.description_locked then shop_products.description else excluded.description end,
          price = case when shop_products.price_locked then shop_products.price else excluded.price end,

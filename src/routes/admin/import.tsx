@@ -10,7 +10,8 @@ import { IMPORT_CARDS } from "@/lib/import-source";
 import { batchWindow } from "@/lib/import-batch";
 import { resumeCatalogRun, startCatalogRun, useImportRun } from "@/lib/import-run";
 import { naira } from "@/lib/money";
-import { browseRemoteCatalog, clearNumberCatalog, openImportJobs, testInstaking } from "@/lib/shop-fns";
+import { browseRemoteCatalog, clearNumberCatalog, openCatalogSetup, openImportJobs, testCatalogConnection, testInstaking } from "@/lib/shop-fns";
+import { suggestedSetup } from "@/lib/catalog-request";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/import")({ component: ImportPage });
@@ -56,8 +57,18 @@ function ImportPage() {
   const [browsing, setBrowsing] = useState(false);
   const [browseNote, setBrowseNote] = useState("");
   const [testing, setTesting] = useState(false);
+  const [method, setMethod] = useState("");
+  const [authKind, setAuthKind] = useState("");
+  const [headerName, setHeaderName] = useState("");
+  const [contentType, setContentType] = useState("");
+  const [queryJson, setQueryJson] = useState("{}");
+  const [headersJson, setHeadersJson] = useState("{}");
+  const [bodyJson, setBodyJson] = useState("{}");
+  const [fieldMap, setFieldMap] = useState("{}");
+  const [diag, setDiag] = useState<string>("");
   const [savedJob, setSavedJob] = useState<{ id: string; status: string; total: number; cursor: number; batchSize: number; error: string } | null>(null);
   const busy = phase === "fetch" || phase === "save";
+  const requestSetup = () => ({ method, auth: authKind, headerName, contentType, query: queryJson, headers: headersJson, body: bodyJson, fieldMap });
   useEffect(() => {
     if (phase === "done" && run.selective && jobId && cleared.current !== jobId) {
       cleared.current = jobId;
@@ -72,6 +83,24 @@ function ImportPage() {
       .catch(() => { if (!stop) setSavedJob(null); });
     return () => { stop = true; };
   }, [phase]);
+  useEffect(() => {
+    if (!providerId) return;
+    let stop = false;
+    openCatalogSetup({ data: { providerId } })
+      .then((res) => {
+        if (stop || !res.setup) return;
+        setMethod(res.setup.method || "");
+        setAuthKind(res.setup.auth || "");
+        setHeaderName(res.setup.headerName || "");
+        setContentType(res.setup.contentType || "");
+        setQueryJson(JSON.stringify(res.setup.query || {}, null, 2));
+        setHeadersJson(JSON.stringify(res.setup.headers || {}, null, 2));
+        setBodyJson(res.setup.body || "{}");
+        setFieldMap(JSON.stringify(res.setup.fieldMap || {}, null, 2));
+      })
+      .catch(() => undefined);
+    return () => { stop = true; };
+  }, [providerId]);
   useEffect(() => {
     if (namesDirty) return;
     setNames((settings.wantedServices || []).join("\n"));
@@ -119,6 +148,7 @@ function ImportPage() {
       publish,
       kind: forced || kind,
       selective,
+      setup: requestSetup(),
     });
   };
 
@@ -131,7 +161,7 @@ function ImportPage() {
     setBrowsing(true);
     setBrowseNote("");
     try {
-      const res = await browseRemoteCatalog({ data: { url: apiUrl.trim(), apiKey, providerId, cursor, q } });
+      const res = await browseRemoteCatalog({ data: { url: apiUrl.trim(), apiKey, providerId, cursor, q, setup: requestSetup() } });
       setRows(res.items);
       setNextCursor(res.nextCursor || "");
       setRemoteTotal(res.total);
@@ -177,6 +207,46 @@ function ImportPage() {
   const resume = () => {
     if (!jobId || busy) return;
     resumeCatalogRun();
+  };
+
+  const probeConnection = async () => {
+    if (testing || busy) return;
+    if (!apiUrl.trim()) {
+      toast.error("Add the catalogue URL first.");
+      return;
+    }
+    setTesting(true);
+    setDiag("");
+    try {
+      const res = await testCatalogConnection({ data: { url: apiUrl.trim(), apiKey, providerId, setup: requestSetup() } });
+      const report = res.report;
+      if (!report) {
+        setDiag(res.error || "The test did not run.");
+        toast.error(res.error || "The test did not run.");
+        return;
+      }
+      const lines = [
+        report.provider ? `Provider: ${report.provider}` : "",
+        `Endpoint: ${report.endpoint}`,
+        `Method: ${report.method || "not identified"}`,
+        `Authentication: ${report.auth || "none"}`,
+        `Status: ${report.status || "—"}`,
+        `Discovered: ${report.discovered}`,
+        `Skipped: ${report.skipped}`,
+        `Failed: ${report.failed}`,
+        report.note ? `Attempts: ${report.note}` : "",
+        report.shape ? `Shape: ${report.shape}${report.pages ? ", paged" : ""}` : "",
+        report.error || (report.confirmed ? "Connection succeeded. Nothing was imported." : ""),
+      ].filter(Boolean);
+      setDiag(lines.join("\n"));
+      if (res.error) toast.error(res.error);
+      else toast.success("API connection succeeded. Nothing was imported.");
+    } catch {
+      setDiag("Could not reach that API.");
+      toast.error("Could not reach that API.");
+    } finally {
+      setTesting(false);
+    }
   };
 
   const probeInstaking = async () => {
@@ -344,13 +414,55 @@ function ImportPage() {
             </div>
           </Field>
           <p className="text-xs text-muted">VPN is not an import. Electricity and TV are not part of VTU. A selected import only saves the products you tick.</p>
-          <Field label="Catalogue URL" hint="The saved name list only filters a Numbers import.">
+          <Field label="Catalogue URL" hint="Leave the method on Auto unless you already know it. A saved provider reuses the last working setup.">
             <input className={inputClass} value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="https://provider.example/api/services" />
           </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="HTTP method">
+              <select className={inputClass} value={method} onChange={(e) => setMethod(e.target.value)}>
+                <option value="">Auto</option>
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+                <option value="PATCH">PATCH</option>
+              </select>
+            </Field>
+            <Field label="Authentication">
+              <select className={inputClass} value={authKind} onChange={(e) => setAuthKind(e.target.value)}>
+                <option value="">Auto</option>
+                <option value="bearer">Bearer token</option>
+                <option value="token">Authorization: Token</option>
+                <option value="api-key">API key header</option>
+                <option value="basic">Basic</option>
+                <option value="custom">Custom header</option>
+                <option value="none">None</option>
+              </select>
+            </Field>
+            <Field label="Header name" hint="Used for API key and custom authentication.">
+              <input className={inputClass} value={headerName} onChange={(e) => setHeaderName(e.target.value)} placeholder="X-API-Key" />
+            </Field>
+            <Field label="Body type">
+              <select className={inputClass} value={contentType} onChange={(e) => setContentType(e.target.value)}>
+                <option value="">JSON</option>
+                <option value="json">JSON</option>
+                <option value="form">Form</option>
+              </select>
+            </Field>
+          </div>
+          <p className="text-xs text-muted">Known hosts: SMEAPI uses GET and Authorization: Token. GetaText uses GET and an Auth header. 5sim guest prices use GET. Auto tries GET, then POST only after a 405 on a catalogue address. Purchase addresses are never posted.</p>
+          <Field label="Query JSON"><textarea className={`${inputClass} font-mono text-xs`} rows={2} value={queryJson} onChange={(e) => setQueryJson(e.target.value)} /></Field>
+          <Field label="Headers JSON"><textarea className={`${inputClass} font-mono text-xs`} rows={2} value={headersJson} onChange={(e) => setHeadersJson(e.target.value)} /></Field>
+          <Field label="Request body JSON" hint="Sent only with POST, PUT, or PATCH."><textarea className={`${inputClass} font-mono text-xs`} rows={2} value={bodyJson} onChange={(e) => setBodyJson(e.target.value)} /></Field>
+          <Field label="Response field map" hint='Example: {"id":"plan_code","name":"plan","price":"amount"}. Leave {} to detect fields.'>
+            <textarea className={`${inputClass} font-mono text-xs`} rows={2} value={fieldMap} onChange={(e) => setFieldMap(e.target.value)} />
+          </Field>
           <div className="flex flex-wrap gap-2">
+            <Button tone="soft" busy={testing} disabled={busy || !apiUrl.trim()} onClick={() => void probeConnection()}>{testing ? "Testing…" : "Test API connection"}</Button>
             <Button tone="soft" busy={busy} disabled={!apiUrl.trim()} onClick={() => void runJob(undefined, apiUrl)}>{busy ? "Importing…" : "Pull and import this API"}</Button>
             <Button tone="soft" busy={busy} onClick={() => void runJob(undefined, "https://5sim.net/v1/guest/prices", "numbers")}>{busy ? "Importing…" : "Import every country from 5sim"}</Button>
           </div>
+          {diag ? <pre className="whitespace-pre-wrap rounded-xl bg-paper p-3 text-xs">{diag}</pre> : null}
+          {apiUrl.trim() && !method ? <p className="text-xs text-muted">Suggested for this host: {suggestedSetup(apiUrl).method || "GET"}{suggestedSetup(apiUrl).auth ? ` · ${suggestedSetup(apiUrl).auth}` : ""}.</p> : null}
           <Field label="Price currency">
             <select className={inputClass} value={currency} onChange={(e) => setCurrency(e.target.value as "NGN" | "USD")}>
               <option value="NGN">NGN, already in naira</option>

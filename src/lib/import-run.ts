@@ -69,6 +69,16 @@ type StartInput = {
   publish: boolean;
   kind: string;
   selective?: boolean;
+  setup?: {
+    method?: string;
+    auth?: string;
+    headerName?: string;
+    contentType?: string;
+    query?: string;
+    headers?: string;
+    body?: string;
+    fieldMap?: string;
+  };
 };
 
 async function drain(jobId: string, batches: number) {
@@ -164,7 +174,7 @@ export function startCatalogRun(input: StartInput) {
         batches: started.batches,
         batchSize: started.batchSize,
         phase: "save",
-        status: `Saving batch 1 of ${started.batches}.`,
+        status: started.fetchNote ? `${started.fetchNote}. Saving batch 1 of ${started.batches}.` : `Saving batch 1 of ${started.batches}.`,
       });
       await drain(started.jobId, started.batches);
     } catch {
