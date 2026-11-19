@@ -1453,8 +1453,7 @@ export async function browseNumbers(input: { providerId?: string; category?: str
   const me = doc.users.find((u) => u.id === session.userId);
   const admin = me?.role === "admin";
   const want = input.category === "usa" ? "usa" : input.category === "rent" ? "rent" : "number";
-  const provider = doc.providers.find((item) => item.id === input.providerId);
-  const serverId = want === "number" ? input.serverId || provider?.serverId || "" : "";
+  const serverId = want === "number" && !input.providerId ? input.serverId || "" : "";
   const enabledProviderIds = doc.providers.filter((item) => item.enabled && (want !== "usa" || item.importType === "USA_IMPORT" || item.serverId === "usa")).map((item) => item.id);
   const hidden = admin ? await queryHidden(input.providerId || "", want) : 0;
   const empty = { services: [] as { service: string; price: number }[], countries: [] as Product[], operators: [] as Product[], hidden };

@@ -494,15 +494,76 @@ export type SyncReport = {
   serverLabel: string | null;
 };
 
+function cleanServerId(value: string | undefined) {
+  const id = String(value || "").trim();
+  if (id === "1" || id === "2" || id === "3" || id === "usa") return id;
+  return "";
+}
+
+function namedServerSlot(name: string) {
+  const match = String(name || "").match(/\bserver\s*([123])\b/i);
+  return match ? Number(match[1]) : 0;
+}
+
+/** Number providers that should appear as their own marketplace server. USA is separate. */
+export function numberServerProviders(providers: Provider[]) {
+  return providers.filter((provider) => {
+    if (provider.enabled === false) return false;
+    const serverId = cleanServerId(provider.serverId);
+    if (serverId === "usa" || provider.importType === "USA_IMPORT") return false;
+    return provider.servesNumbers || provider.importType === "NUMBER_IMPORT" || serverId === "1" || serverId === "2" || serverId === "3";
+  });
+}
+
+/**
+ * One slot per number provider. A unique stored server id is kept.
+ * A repeated id (every provider saved as Server 1) is not reused:
+ * a name such as "Server 2" wins, then the next free slot in creation order.
+ * A single provider stays one server. Nothing here invents extra buttons.
+ */
+export function serverSlots(providers: Provider[]) {
+  const list = numberServerProviders(providers)
+    .slice()
+    .sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || "") || a.id.localeCompare(b.id));
+  const explicit = list.map((provider) => cleanServerId(provider.serverId));
+  const uniqueExplicit = explicit.length > 0 && explicit.every((id) => id === "1" || id === "2" || id === "3") && new Set(explicit).size === explicit.length;
+  const slotOf = new Map<string, string>();
+  if (uniqueExplicit) {
+    list.forEach((provider, index) => slotOf.set(provider.id, explicit[index]));
+    return slotOf;
+  }
+  const used = new Set<number>();
+  const pending: Provider[] = [];
+  for (const provider of list) {
+    const named = namedServerSlot(provider.name);
+    const stored = cleanServerId(provider.serverId);
+    const hint = named || (stored === "1" || stored === "2" || stored === "3" ? Number(stored) : 0);
+    if (hint && !used.has(hint) && !slotOf.has(provider.id)) {
+      slotOf.set(provider.id, String(hint));
+      used.add(hint);
+    } else pending.push(provider);
+  }
+  let next = 1;
+  for (const provider of pending) {
+    if (slotOf.has(provider.id)) continue;
+    while (used.has(next)) next += 1;
+    slotOf.set(provider.id, String(next));
+    used.add(next);
+  }
+  return slotOf;
+}
+
 export function serverLabel(providers: Provider[], id: string) {
+  const slot = serverSlots(providers).get(id);
+  if (slot) return `Server ${slot}`;
   const provider = providers.find((item) => item.id === id);
-  if (provider?.serverId === "1" || provider?.serverId === "2" || provider?.serverId === "3") return `Server ${provider.serverId}`;
-  if (provider?.serverId === "usa") return "USA";
-  const list = providers
-    .filter((p) => p.servesNumbers && p.serverId !== "usa")
-    .sort((a, b) => (a.serverId || "9").localeCompare(b.serverId || "9") || a.createdAt.localeCompare(b.createdAt));
-  const i = list.findIndex((p) => p.id === id);
-  return i === -1 ? null : "Server " + (i + 1);
+  if (!provider) return null;
+  if (cleanServerId(provider.serverId) === "usa" || provider.importType === "USA_IMPORT") return "USA";
+  const named = namedServerSlot(provider.name);
+  if (named) return `Server ${named}`;
+  const stored = cleanServerId(provider.serverId);
+  if (stored === "1" || stored === "2" || stored === "3") return `Server ${stored}`;
+  return null;
 }
 
 export type ImportTally = {

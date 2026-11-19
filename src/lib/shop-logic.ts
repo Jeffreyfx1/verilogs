@@ -4,6 +4,7 @@ import {
   normalizeData,
   quoteProduct,
   serverLabel,
+  serverSlots,
   type Announcement,
   type Data,
   type Faq,
@@ -63,7 +64,14 @@ export function projectShop(doc: Data, userId: string | null, draft: Draft | nul
     tickets: admin ? clean.tickets : clean.tickets.filter((t) => t.userId === userId),
     notifications: (clean.notifications || []).filter((n) => n.userId === userId),
     products: [],
-    providers: clean.providers.map((provider) => (admin ? provider : { ...provider, name: provider.servesNumbers ? "" : provider.name, baseUrl: "" })),
+    providers: (() => {
+      const slots = serverSlots(clean.providers);
+      return clean.providers.map((provider) => {
+        const slot = slots.get(provider.id);
+        const named = slot ? { ...provider, serverId: slot } : provider;
+        return admin ? named : { ...named, name: provider.servesNumbers ? "" : provider.name, baseUrl: "" };
+      });
+    })(),
   };
 }
 

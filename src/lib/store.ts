@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { create } from "zustand";
-import { normalizeData, defaultSettings, type Announcement, type Data, type Faq, type Provider, type SyncReport } from "@/lib/catalog";
+import { normalizeData, defaultSettings, serverSlots, type Announcement, type Data, type Faq, type Provider, type SyncReport } from "@/lib/catalog";
 import { pullShop, shopAct } from "@/lib/shop-fns";
 
 type ShopState = { error: string | null; state: Data; report: SyncReport | null };
@@ -131,14 +131,21 @@ export function useUser() {
 
 export function useServers() {
   const providers = useStore((s) => s.providers);
-  return useMemo(
-    () =>
-      providers
-        .filter((p) => p.enabled !== false && p.serverId !== "usa" && (p.servesNumbers || p.serverId === "1" || p.serverId === "2" || p.serverId === "3"))
-        .sort((a, b) => (a.serverId || "9").localeCompare(b.serverId || "9") || a.createdAt.localeCompare(b.createdAt))
-        .map((p) => ({ ...p, label: p.serverId === "1" || p.serverId === "2" || p.serverId === "3" ? `Server ${p.serverId}` : p.name })),
-    [providers],
-  );
+  return useMemo(() => {
+    const slots = serverSlots(providers);
+    const seen = new Set<string>();
+    return providers
+      .filter((provider) => {
+        if (!slots.has(provider.id) || seen.has(provider.id)) return false;
+        seen.add(provider.id);
+        return provider.enabled !== false;
+      })
+      .sort((a, b) => Number(slots.get(a.id)) - Number(slots.get(b.id)) || (a.createdAt || "").localeCompare(b.createdAt || ""))
+      .map((provider) => {
+        const serverId = slots.get(provider.id) || provider.serverId;
+        return { ...provider, serverId, label: `Server ${serverId}` };
+      });
+  }, [providers]);
 }
 
 export type { Product, Provider, Order, User } from "@/lib/catalog";

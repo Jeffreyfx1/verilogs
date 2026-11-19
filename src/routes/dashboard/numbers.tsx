@@ -76,6 +76,14 @@ function NumbersPage() {
   }, [usa]);
 
   useEffect(() => {
+    setOperators([]);
+    setCountries([]);
+    setServices([]);
+    setPicked(false);
+    setOpsError("");
+  }, [activeId]);
+
+  useEffect(() => {
     let stop = false;
     if (usa) return;
     browseNumbers({ data: { providerId: activeId, category: want, list: "countries" } })
