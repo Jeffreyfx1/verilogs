@@ -363,3 +363,74 @@ export const referralDesk = createServerFn({ method: "GET" }).handler(async () =
   return referralAdmin();
 });
 
+export const listAirtimeOffers = createServerFn({ method: "GET" }).handler(async () => {
+  const { listPublicAirtime } = await core();
+  return listPublicAirtime();
+});
+
+export const listAirtimeAdmin = createServerFn({ method: "GET" }).handler(async () => {
+  const { listAdminAirtime } = await core();
+  return listAdminAirtime();
+});
+
+export const saveAirtimeNetwork = createServerFn({ method: "POST" })
+  .validator((input: { id?: string; name?: string; imageUrl?: string; enabled?: boolean; minAmount?: number; maxAmount?: number; profitNaira?: number | null }) => ({
+    id: String(input?.id || "").slice(0, 40),
+    name: String(input?.name || "").slice(0, 40),
+    imageUrl: String(input?.imageUrl || "").slice(0, 400),
+    enabled: !!input?.enabled,
+    minAmount: Math.round(Number(input?.minAmount) || 0),
+    maxAmount: Math.round(Number(input?.maxAmount) || 0),
+    profitNaira: input?.profitNaira == null || Number.isNaN(Number(input.profitNaira)) ? null : Math.round(Number(input.profitNaira)),
+  }))
+  .handler(async ({ data }) => {
+    const { saveAdminAirtimeNetwork } = await core();
+    return saveAdminAirtimeNetwork(data);
+  });
+
+export const saveAirtimeRoute = createServerFn({ method: "POST" })
+  .validator((input: Record<string, unknown>) => {
+    let extra: Record<string, string> = {};
+    try {
+      const parsed = JSON.parse(String(input?.extraJson || "{}")) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        extra = Object.fromEntries(Object.entries(parsed).slice(0, 8).map(([key, value]) => [String(key).slice(0, 40), String(value ?? "").slice(0, 40)]));
+      }
+    } catch {
+      extra = {};
+    }
+    return {
+      id: String(input?.id || "").slice(0, 40),
+      networkId: String(input?.networkId || "").slice(0, 40),
+      providerId: String(input?.providerId || "").slice(0, 80),
+      providerNetworkId: String(input?.providerNetworkId || "").slice(0, 40),
+      purchasePath: String(input?.purchasePath || "").slice(0, 200),
+      authHeader: String(input?.authHeader || "Authorization").slice(0, 40),
+      authPrefix: String(input?.authPrefix || "").slice(0, 20),
+      networkField: String(input?.networkField || "network").slice(0, 40),
+      phoneField: String(input?.phoneField || "phone").slice(0, 40),
+      amountField: String(input?.amountField || "amount").slice(0, 40),
+      refField: String(input?.refField || "ref").slice(0, 40),
+      extra,
+      enabled: !!input?.enabled,
+    };
+  })
+  .handler(async ({ data }) => {
+    const { saveAdminAirtimeRoute } = await core();
+    return saveAdminAirtimeRoute(data);
+  });
+
+export const deleteAirtimeRoute = createServerFn({ method: "POST" })
+  .validator((input: { id?: string }) => ({ id: String(input?.id || "").slice(0, 40) }))
+  .handler(async ({ data }) => {
+    const { removeAdminAirtimeRoute } = await core();
+    return removeAdminAirtimeRoute(data.id);
+  });
+
+export const deleteAirtimeNetwork = createServerFn({ method: "POST" })
+  .validator((input: { id?: string }) => ({ id: String(input?.id || "").slice(0, 40) }))
+  .handler(async ({ data }) => {
+    const { removeAdminAirtimeNetwork } = await core();
+    return removeAdminAirtimeNetwork(data.id);
+  });
+

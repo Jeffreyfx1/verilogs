@@ -69,12 +69,48 @@ export function emptySetup(): CatalogSetup {
 export function looksLikePurchase(url: string) {
   try {
     const path = new URL(url).pathname.toLowerCase();
-    return /\/(purchase|buy|order|orders|checkout|recharge|top-?up|payment|airtime)(\/|$)/.test(path);
+    return /\/(purchase|buy|order|orders|checkout|recharge|top-?up|payment|airtime|rent-a-number|rent-multiple-services|cancel-rental|re-rent|prices-info-stock|long-rentals|service-long-rentals)(\/|$)/.test(path)
+      || /\/auctions\/[^/]+\/bid(\/|$)/.test(path);
   } catch {
     return false;
   }
 }
 
+export function isGetaTextHost(url: string) {
+  try {
+    return /(^|\.)getatext\.com$/i.test(new URL(url).hostname.replace(/^www\./, ""));
+  } catch {
+    return false;
+  }
+}
+
+/** Documented catalogue. Legacy price URLs are rewritten. Purchase URLs are not. */
+export function getatextCatalogueUrl(raw: string): string | null {
+  if (!isGetaTextHost(raw) || looksLikePurchase(raw)) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  const path = url.pathname.replace(/\/+$/, "") || "/";
+  const prices = path === "/api/v1/prices-info";
+  const legacy = /\/stubs\/handler_api\.php$/i.test(path) || path === "/api/prices" || path === "/api/v1/prices" || path === "/api/v1/get-services";
+  if (!prices && !legacy) return null;
+  return "https://getatext.com/api/v1/prices-info";
+}
+
+export function publicEndpoint(endpoint: string) {
+  try {
+    const url = new URL(endpoint);
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(api[_-]?key|token|access_token|secret|auth)$/i.test(key)) url.searchParams.delete(key);
+    }
+    return url.toString();
+  } catch {
+    return String(endpoint || "").replace(/([?&](?:api[_-]?key|token|access_token|secret|auth)=)[^&]*/gi, "$1");
+  }
+}
 export function hostHint(url: string): Partial<CatalogSetup> {
   let host = "";
   try {
@@ -199,12 +235,13 @@ export function mergeSetup(url: string, saved: CatalogSetup | null, draft: Catal
 
 export function planAttempts(setup: CatalogSetup, url: string): { error: string; methods: CatalogMethod[] } {
   if (looksLikePurchase(url)) return { error: "That address places an order. Catalogue import will not call it.", methods: [] };
+  if (isGetaTextHost(url)) return { error: "", methods: ["GET"] };
   if (setup.method === "PUT" || setup.method === "PATCH" || setup.method === "POST" || setup.method === "GET") return { error: "", methods: [setup.method] };
   return { error: "", methods: ["GET"] };
 }
 
 export function fallbackMethod(tried: CatalogMethod, url: string): CatalogMethod | "" {
-  if (looksLikePurchase(url)) return "";
+  if (looksLikePurchase(url) || isGetaTextHost(url)) return "";
   if (tried === "GET") return "POST";
   if (tried === "POST" || tried === "PUT" || tried === "PATCH") return "GET";
   return "";
@@ -232,30 +269,48 @@ function headerName(value: string, fallback: string) {
   return clean || fallback;
 }
 
+function stripSecretQuery(query: Record<string, string>) {
+  const next: Record<string, string> = {};
+  for (const [key, value] of Object.entries(query)) {
+    if (/^(api[_-]?key|token|access_token|secret|auth)$/i.test(key)) continue;
+    next[key] = value;
+  }
+  return next;
+}
+
 function basicToken(key: string) {
   if (typeof btoa === "function") return btoa(key);
   return Buffer.from(key).toString("base64");
 }
 
 export function buildCatalogRequest(url: string, method: CatalogMethod, setup: CatalogSetup, apiKey: string) {
-  const target = new URL(url);
+  const forced = isGetaTextHost(url);
+  const catalogue = forced ? getatextCatalogueUrl(url) : null;
+  const target = new URL(catalogue || url);
+  if (forced) {
+    target.searchParams.delete("api_key");
+    target.searchParams.delete("apiKey");
+  }
   for (const [key, value] of Object.entries(setup.query)) {
     if (!/^[A-Za-z0-9_-]{1,40}$/.test(key)) continue;
+    if (forced && /^(api[_-]?key|token|access_token|secret|auth)$/i.test(key)) continue;
     target.searchParams.set(key, value.slice(0, 200));
   }
   const headers: Record<string, string> = { Accept: "application/json" };
   for (const [key, value] of Object.entries(setup.headers)) {
-    if (!/^[A-Za-z0-9-]{1,40}$/.test(key)) continue;
+    if (!/^[\w-]{1,40}$/.test(key)) continue;
+    if (forced && /^(authorization|x-api-key|api-key)$/i.test(key)) continue;
     headers[key] = value.slice(0, 300);
   }
-  const auth = setup.auth || hostHint(url).auth || (apiKey ? "bearer" : "none");
-  const name = headerName(setup.headerName, auth === "custom" ? "Authorization" : "X-API-Key");
+  const auth = forced ? "custom" : setup.auth || hostHint(url).auth || (apiKey ? "bearer" : "none");
+  const sentMethod: CatalogMethod = forced ? "GET" : method;
+  const name = headerName(forced ? "Auth" : setup.headerName, auth === "custom" ? "Authorization" : "X-API-Key");
   if (apiKey && auth === "bearer") headers.Authorization = `Bearer ${apiKey}`;
   else if (apiKey && auth === "token") headers.Authorization = `Token ${apiKey}`;
   else if (apiKey && auth === "basic") headers.Authorization = `Basic ${basicToken(apiKey)}`;
   else if (apiKey && (auth === "api-key" || auth === "custom")) headers[name] = apiKey;
   let body: string | undefined;
-  if (method !== "GET") {
+  if (sentMethod !== "GET") {
     if ((setup.contentType || "json") === "form") {
       headers["Content-Type"] = "application/x-www-form-urlencoded";
       const form = new URLSearchParams();
@@ -266,7 +321,7 @@ export function buildCatalogRequest(url: string, method: CatalogMethod, setup: C
       body = JSON.stringify(setup.body || {});
     }
   }
-  return { url: target.toString(), method, headers, body, auth };
+  return { url: target.toString(), method: sentMethod, headers, body, auth, headerName: name, forced };
 }
 
 const FIELD_TARGETS = new Set(["id", "name", "price", "stock", "count", "network", "service", "validity", "country", "operator"]);
@@ -325,20 +380,8 @@ export function liveTransport(timeoutMs: number): CatalogTransport {
   return async (input) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), Math.max(1000, timeoutMs));
-    let url = input.url;
     try {
-      const parsed = new URL(input.url);
-      const host = parsed.hostname.replace(/^www\./, "");
-      const documented = input.headers.Auth || "";
-      if (documented && /(^|\.)getatext\.com$/i.test(host) && !parsed.searchParams.has("api_key")) {
-        parsed.searchParams.set("api_key", documented);
-        url = parsed.toString();
-      }
-    } catch {
-      url = input.url;
-    }
-    try {
-      const res = await fetch(url, {
+      const res = await fetch(input.url, {
         method: input.method,
         headers: input.headers,
         body: input.method === "GET" ? undefined : input.body,
@@ -384,7 +427,7 @@ export async function runCatalogProbe(url: string, setup: CatalogSetup, apiKey: 
     const built = buildCatalogRequest(url, method, setup, apiKey);
     let response: { status: number; text: string; timedOut?: boolean; network?: boolean };
     try {
-      response = await transport({ url: built.url, method, headers: built.headers, body: built.body });
+      response = await transport({ url: built.url, method: built.method, headers: built.headers, body: built.body });
     } catch {
       response = { status: 0, text: "", network: true };
     }
@@ -417,14 +460,22 @@ export async function runCatalogProbe(url: string, setup: CatalogSetup, apiKey: 
       unmapped: json && seen.discovered === 0 && !payloadEmpty(payload),
       large,
     });
-    attempts.push({ method, status: response.status, kind, note: explainAttempt(kind, response.status, method) });
+    attempts.push({ method: built.method, status: response.status, kind, note: explainAttempt(kind, response.status, built.method) });
     if (kind === "ok" || kind === "empty" || kind === "unmap") {
-      const confirmed = { ...setup, method, auth: (setup.auth || built.auth) as CatalogSetup["auth"], confirmed: true };
-      const error = kind === "ok" ? "" : explainAttempt(kind, response.status, method);
+      const confirmed = {
+        ...setup,
+        method: built.method,
+        auth: built.auth as CatalogSetup["auth"],
+        headerName: built.forced ? built.headerName : setup.headerName,
+        body: built.forced ? {} : setup.body,
+        query: built.forced ? stripSecretQuery(setup.query) : setup.query,
+        confirmed: true,
+      };
+      const error = kind === "ok" ? "" : explainAttempt(kind, response.status, built.method);
       return {
         ok: kind === "ok",
         error,
-        method,
+        method: built.method,
         auth: confirmed.auth,
         status: response.status,
         payload: kind === "ok" ? mapped : mapped,

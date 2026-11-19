@@ -4,6 +4,7 @@ import {
   emptySetup,
   liveTransport,
   mergeSetup,
+  publicEndpoint,
   runCatalogProbe,
   type CatalogMethod,
   type CatalogProbe,
@@ -80,7 +81,7 @@ function setupFromRow(row: FetchRow): CatalogSetup {
 export function reportOf(probe: CatalogProbe, endpoint: string, provider: string): FetchReport {
   return {
     provider,
-    endpoint,
+    endpoint: publicEndpoint(endpoint),
     method: probe.method,
     auth: probe.auth,
     status: probe.status,

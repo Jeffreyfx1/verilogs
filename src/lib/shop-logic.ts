@@ -221,6 +221,50 @@ export function buyProduct(data: Data, userId: string | null, productId: string,
   return { error: null, data: next };
 }
 
+export function recordAirtimeOrder(data: Data, userId: string | null, input: { networkId: string; title: string; providerId: string; network: string; phone: string; charge: number; cost: number; gain: number; ref: string }) {
+  const user = actor(data, userId);
+  if (!user) return { error: "Sign in first.", data };
+  const provider = data.providers.find((item) => item.id === input.providerId && item.enabled);
+  if (!provider) return { error: "That network is not available.", data };
+  const amount = Math.round(input.charge);
+  if (amount <= 0) return { error: "Enter an amount.", data };
+  if (user.balance < amount) return { error: "Insufficient balance. Top up your balance to make this purchase.", data };
+  const createdAt = new Date().toISOString();
+  const order: Order = {
+    id: uid("ord"),
+    userId: user.id,
+    productId: input.networkId,
+    category: "airtime",
+    title: input.title,
+    server: serverLabel(data.providers, provider.id) || provider.name,
+    network: input.network,
+    amount,
+    phone: input.phone.trim(),
+    code: input.ref,
+    status: "completed",
+    detail: `${input.network} airtime`,
+    cost: Math.max(0, Math.round(input.cost)),
+    gain: Math.round(input.gain),
+    createdAt,
+    providerOrderId: "",
+    providerStatus: "",
+    refillAvailable: false,
+  };
+  const next = pushNote(
+    {
+      ...data,
+      users: data.users.map((item) => (item.id === user.id ? { ...item, balance: item.balance - amount } : item)),
+      orders: [order, ...data.orders],
+      txns: [{ id: uid("txn"), userId: user.id, kind: "purchase" as const, amount: -amount, note: input.title, createdAt }, ...data.txns],
+    },
+    user.id,
+    "Order placed",
+    `${input.title} · ₦${amount.toLocaleString("en-NG")}`,
+    "order",
+  );
+  return { error: null, data: next, order };
+}
+
 export function refundOrder(data: Data, userId: string | null, orderId: string) {
   const user = actor(data, userId);
   const order = data.orders.find((o) => o.id === orderId && (user?.role === "admin" || o.userId === user?.id));

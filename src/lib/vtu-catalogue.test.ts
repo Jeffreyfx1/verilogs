@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { airtimeProductsFromPayload, attachVtuIds, extractCatalog, shapeImport, vtuCatalogueUrl } from "./categorize.ts";
+import { attachVtuIds, extractCatalog, shapeImport, vtuCatalogueUrl } from "./categorize.ts";
 import { networkValue, planValue } from "./fulfill.server.ts";
 
 const sme = {
@@ -14,16 +14,12 @@ const sme = {
   ],
 };
 
-test("SME airtime uses real network ids and does not invent 9mobile", () => {
-  const rows = airtimeProductsFromPayload(sme);
-  const ids = rows.map((row) => row.operator).sort();
-  assert.deepEqual(ids, ["1", "2", "4"]);
-  assert.equal(rows.some((row) => row.operator === "3" || row.network === "9mobile"), false);
-  assert.equal(rows.find((row) => row.operator === "1")?.externalId, "airtime|1|mtn");
-  assert.equal(rows.find((row) => row.operator === "2")?.network, "Glo");
-  assert.equal(rows.find((row) => row.operator === "4")?.network, "Airtel");
-  assert.ok(rows.every((row) => row.service === "Airtime" && row.price === 0));
-  assert.equal(rows.some((row) => row.externalId.includes("sme")), false);
+test("a data catalogue is not turned into airtime products", () => {
+  const shaped = shapeImport(attachVtuIds(sme, extractCatalog(sme).items), "vtu-data", []);
+  assert.ok(shaped.length > 0);
+  assert.equal(shaped.every((row) => row.category === "data"), true);
+  assert.equal(shaped.some((row) => row.externalId.startsWith("airtime|")), false);
+  assert.equal(shaped.some((row) => row.operator === "3" || row.network === "9mobile"), false);
 });
 
 test("SME data keeps the provider plan id, network id and price", () => {
@@ -87,17 +83,17 @@ test("a mailbox is not turned into a data plan", () => {
   assert.equal(shaped[0]?.price, 2500);
 });
 
-test("airtime types are recorded only when the row is not a priced data plan", () => {
-  const rows = airtimeProductsFromPayload([
+test("unpriced type labels are not saved as airtime products", () => {
+  const payload = [
     { network_id: 1, network: "MTN", type: "VTU" },
     { network_id: 1, network: "MTN", type: "Share" },
-  ]);
-  assert.deepEqual(rows.map((row) => row.externalId).sort(), ["airtime|1|share", "airtime|1|vtu"]);
-  assert.equal(rows.every((row) => row.operator === "1"), true);
+  ];
+  const shaped = shapeImport(attachVtuIds(payload, extractCatalog(payload).items), "vtu-data", []);
+  assert.equal(shaped.some((row) => row.category === "airtime" || row.externalId.startsWith("airtime|")), false);
 });
 
 test("purchase urls are not used as catalogue urls", () => {
-  assert.equal(vtuCatalogueUrl("https://smeapi.com.ng/api/airtime/"), "https://smeapi.com.ng/api/dataplans/?format=json");
+  assert.equal(vtuCatalogueUrl("https://smeapi.com.ng/api/airtime/"), null);
   assert.equal(vtuCatalogueUrl("https://smeapi.com.ng/api/data"), "https://smeapi.com.ng/api/dataplans/?format=json");
   assert.equal(vtuCatalogueUrl("https://smeapi.com.ng/api/dataplans/"), null);
   assert.equal(vtuCatalogueUrl("https://example.com/api/airtime/"), null);
@@ -110,6 +106,6 @@ test("purchase ids are the saved provider ids", () => {
   assert.equal(planValue("data|mtn_sme_500mb"), "mtn_sme_500mb");
   assert.equal(networkValue({ operator: "", network: "MTN" }, "api.other.test"), 0);
   assert.equal(networkValue({ operator: "", network: "9mobile" }, "smeapi.com.ng"), 0);
-  assert.equal(networkValue({ operator: "", network: "MTN" }, "www.smeapi.com.ng"), 1);
+  assert.equal(networkValue({ operator: "", network: "MTN" }, "www.smeapi.com.ng"), 0);
   assert.equal(networkValue({ operator: "mtn", network: "MTN" }, "smeapi.com.ng"), 0);
 });

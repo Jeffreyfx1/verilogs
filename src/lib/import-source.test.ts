@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { extractCatalog, shapeImport } from "./categorize.ts";
-import { destinationOf, flattenGetaText } from "./import-source.ts";
+import { destinationOf, flattenGetaText, readGetaTextPrices } from "./import-source.ts";
 
 const bait = {
   id: "acct-1",
@@ -70,4 +70,40 @@ test("GetaText prices keep cost and stock and do not invent a success rate", () 
   assert.ok(stamped.every((item) => item.category === "usa" && item.importType === "USA_IMPORT"));
   assert.ok(stamped.every((item) => item.serverId === "usa"));
   assert.ok(stamped.every((item) => item.category !== "number"));
+});
+
+test("GetaText prices-info maps service name, api name, price and stock", () => {
+  const payload = {
+    data: [
+      { service_name: "Whatsapp", api_name: "whatsapp", multiple_sms: "true", price: "0.55", ttl: 5, stock: 66, cashback: false },
+      { service_name: "Telegram", api_name: "telegram", multiple_sms: "false", price: "0.45", ttl: 20, stock: 0, cashback: true },
+      { service_name: "No id", price: "1.25", ttl: 5, stock: 4 },
+    ],
+  };
+  const read = readGetaTextPrices(payload);
+  assert.equal(read?.recognized, true);
+  assert.equal(read?.rows.length, 2);
+  assert.equal(read?.rows[0]?.name, "Whatsapp");
+  assert.equal(read?.rows[0]?.service, "whatsapp");
+  assert.equal(read?.rows[0]?.cost, 0.55);
+  assert.equal(read?.rows[0]?.count, 66);
+  assert.equal("rate" in (read?.rows[0] || {}), false);
+  assert.equal(read?.rows[1]?.count, 0);
+  const flat = flattenGetaText(payload);
+  const one = flattenGetaText(payload.data[0]);
+  assert.equal(one?.[0]?.service, "whatsapp");
+  const stamped = shapeImport(extractCatalog(flat).items, "usa", []);
+  assert.equal(stamped.length, 2);
+  assert.equal(stamped[0]?.name, "Whatsapp");
+  assert.equal(stamped[0]?.service, "whatsapp");
+  assert.equal(stamped[0]?.price, 0.55);
+  assert.equal(stamped[0]?.stock, 66);
+  assert.equal(stamped[0]?.category, "usa");
+  assert.equal(stamped[0]?.importType, "USA_IMPORT");
+  assert.equal(stamped.every((item) => item.externalId === "whatsapp" || item.externalId === "telegram"), true);
+  assert.equal(stamped.some((item) => item.service === "ttl" || item.name === "Ttl" || item.externalId === "5"), false);
+  const direct = shapeImport(extractCatalog(payload).items, "usa", []);
+  assert.equal(direct.length, 2);
+  assert.equal(direct.every((item) => item.service === "whatsapp" || item.service === "telegram"), true);
+  assert.equal(direct.some((item) => /no id/i.test(item.name)), false);
 });

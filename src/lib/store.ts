@@ -21,6 +21,7 @@ type Actions = {
   updateProfile: (input: { name: string; phone: string }) => Promise<string | null>;
   changePassword: (oldPw: string, next: string) => Promise<string | null>;
   buy: (productId: string, extra: { phone?: string; amount?: number; detail?: string }) => Promise<string | null>;
+  buyAirtime: (networkId: string, extra: { phone: string; amount: number }) => Promise<string | null>;
   refund: (orderId: string) => Promise<string | null>;
   tickWaiting: () => void;
   importPayload: (input: { providerId?: string; name: string; baseUrl: string; currency: "NGN" | "USD"; usdRate?: number; markup?: number; payload: unknown; hasKey?: boolean; publish?: boolean; apiKey?: string }) => Promise<SyncReport>;
@@ -98,6 +99,17 @@ export const useStore = create<Store>((set) => {
         purchaseKeys.set(slot, key);
       }
       const res = await run("buy", { productId, phone: extra.phone, amount: extra.amount, detail: extra.detail, idempotencyKey: key });
+      if (!res.error || !/already processing|reconciliation|reconciled/i.test(res.error)) purchaseKeys.delete(slot);
+      return res.error;
+    },
+    buyAirtime: async (networkId, extra) => {
+      const slot = `airtime|${networkId}|${extra.phone}|${extra.amount}`;
+      let key = purchaseKeys.get(slot);
+      if (!key) {
+        key = crypto.randomUUID();
+        purchaseKeys.set(slot, key);
+      }
+      const res = await run("buyAirtime", { networkId, phone: extra.phone, amount: extra.amount, idempotencyKey: key });
       if (!res.error || !/already processing|reconciliation|reconciled/i.test(res.error)) purchaseKeys.delete(slot);
       return res.error;
     },

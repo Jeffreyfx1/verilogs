@@ -35,7 +35,68 @@ export function destinationOf(kind: string | undefined): ImportDestination | nul
   return DEST[kind as keyof typeof DEST] || null;
 }
 
+function textField(row: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return "";
+}
+
+function priceInfoRow(row: unknown): row is Record<string, unknown> {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return false;
+  const rec = row as Record<string, unknown>;
+  return typeof rec.api_name === "string" || typeof rec.apiName === "string" || typeof rec.service_name === "string" || typeof rec.serviceName === "string";
+}
+
+/** Documented GET /api/v1/prices-info rows. Null when this is not that shape. */
+export function readGetaTextPrices(payload: unknown): { recognized: boolean; rows: Array<Record<string, unknown>> } | null {
+  const listed = priceInfoList(payload);
+  if (!listed) return null;
+  const rows: Array<Record<string, unknown>> = [];
+  const seen = new Set<string>();
+  for (const row of listed) {
+    const service = textField(row, ["api_name", "apiName"]);
+    const name = textField(row, ["service_name", "serviceName"]) || service;
+    const cost = Number(row.price ?? row.cost);
+    const count = Number(row.stock ?? row.count ?? 0);
+    if (!service || !Number.isFinite(cost) || !(cost > 0) || seen.has(service)) continue;
+    seen.add(service);
+    rows.push({
+      id: service,
+      api_name: service,
+      service_name: name,
+      name,
+      service,
+      country: "usa",
+      operator: "",
+      cost,
+      count: Number.isFinite(count) && count > 0 ? Math.round(count) : 0,
+    });
+  }
+  return { recognized: true, rows };
+}
+
+function priceInfoList(payload: unknown): Array<Record<string, unknown>> | null {
+  if (Array.isArray(payload)) {
+    const rows = payload.filter(priceInfoRow);
+    return rows.length ? rows : null;
+  }
+  if (priceInfoRow(payload)) return [payload];
+  if (!payload || typeof payload !== "object") return null;
+  const bag = payload as Record<string, unknown>;
+  for (const key of ["data", "services", "prices", "result", "items", "list"]) {
+    if (!(key in bag)) continue;
+    const found = priceInfoList(bag[key]);
+    if (found) return found;
+  }
+  return null;
+}
+
 export function flattenGetaText(payload: unknown): Array<Record<string, unknown>> | null {
+  const prices = readGetaTextPrices(payload);
+  if (prices) return prices.rows.length ? prices.rows : null;
   if (!payload || typeof payload !== "object") return null;
   const rows: Array<Record<string, unknown>> = [];
   const push = (country: string, service: string, operator: string, quote: Record<string, unknown>) => {
@@ -133,10 +194,10 @@ export const IMPORT_CARDS = [
     title: "GetaText · USA",
     providerName: "GetaText",
     blurb: "USA services only. Not mixed into Server 1, 2 or 3.",
-    url: "https://getatext.com/stubs/handler_api.php?action=getPrices",
+    url: "https://getatext.com/api/v1/prices-info",
     currency: "USD" as const,
     usdRate: 0,
-    auth: "Documented auth header is Auth. Add your key before importing.",
+    auth: "GET /api/v1/prices-info. The key is sent only in the Auth header. No request body. rent-a-number is never called while importing.",
   },
   {
     kind: "random" as const,
@@ -150,13 +211,13 @@ export const IMPORT_CARDS = [
   },
   {
     kind: "vtu-airtime" as const,
-    title: "SMEAPI · Airtime",
-    providerName: "SMEAPI Airtime",
-    blurb: "Airtime only. Data, electricity and TV are not imported.",
-    url: "https://smeapi.com.ng/api/dataplans/",
+    title: "Airtime networks",
+    providerName: "Airtime",
+    blurb: "Airtime is not imported. Add each network and the provider's own network id under Airtime networks.",
+    url: "",
     currency: "NGN" as const,
     usdRate: 0,
-    auth: "Networks come from the data-plan list. The customer chooses the airtime amount. Purchase uses Authorization: Token.",
+    auth: "SMEAPI airtime is POST /api/airtime/ with Authorization: Token. That address is a purchase, so import never calls it.",
   },
   {
     kind: "vtu-data" as const,

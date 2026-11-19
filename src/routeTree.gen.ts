@@ -22,6 +22,7 @@ import { Route as RegisterRouteImport } from './routes/register'
 import { Route as SupportRouteImport } from './routes/support'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as AdminAirtimeRouteImport } from './routes/admin/airtime'
 import { Route as AdminBrandRouteImport } from './routes/admin/brand'
 import { Route as AdminCatalogRouteImport } from './routes/admin/catalog'
 import { Route as AdminContentRouteImport } from './routes/admin/content'
@@ -110,6 +111,11 @@ const TermsRoute = TermsRouteImport.update({
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAirtimeRoute = AdminAirtimeRouteImport.update({
+  id: '/airtime',
+  path: '/airtime',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminBrandRoute = AdminBrandRouteImport.update({
@@ -246,6 +252,7 @@ export interface FileRoutesByFullPath {
   '/register': typeof RegisterRoute
   '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
+  '/admin/airtime': typeof AdminAirtimeRoute
   '/admin/brand': typeof AdminBrandRoute
   '/admin/catalog': typeof AdminCatalogRoute
   '/admin/content': typeof AdminContentRoute
@@ -283,6 +290,7 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterRoute
   '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
+  '/admin/airtime': typeof AdminAirtimeRoute
   '/admin/brand': typeof AdminBrandRoute
   '/admin/catalog': typeof AdminCatalogRoute
   '/admin/content': typeof AdminContentRoute
@@ -323,6 +331,7 @@ export interface FileRoutesById {
   '/register': typeof RegisterRoute
   '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
+  '/admin/airtime': typeof AdminAirtimeRoute
   '/admin/brand': typeof AdminBrandRoute
   '/admin/catalog': typeof AdminCatalogRoute
   '/admin/content': typeof AdminContentRoute
@@ -364,6 +373,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/support'
     | '/terms'
+    | '/admin/airtime'
     | '/admin/brand'
     | '/admin/catalog'
     | '/admin/content'
@@ -401,6 +411,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/support'
     | '/terms'
+    | '/admin/airtime'
     | '/admin/brand'
     | '/admin/catalog'
     | '/admin/content'
@@ -440,6 +451,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/support'
     | '/terms'
+    | '/admin/airtime'
     | '/admin/brand'
     | '/admin/catalog'
     | '/admin/content'
@@ -576,6 +588,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/airtime': {
+      id: '/admin/airtime'
+      path: '/airtime'
+      fullPath: '/admin/airtime'
+      preLoaderRoute: typeof AdminAirtimeRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/brand': {
@@ -750,6 +769,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AdminRouteChildren {
+  AdminAirtimeRoute: typeof AdminAirtimeRoute
   AdminBrandRoute: typeof AdminBrandRoute
   AdminCatalogRoute: typeof AdminCatalogRoute
   AdminContentRoute: typeof AdminContentRoute
@@ -762,6 +782,7 @@ interface AdminRouteChildren {
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminAirtimeRoute: AdminAirtimeRoute,
   AdminBrandRoute: AdminBrandRoute,
   AdminCatalogRoute: AdminCatalogRoute,
   AdminContentRoute: AdminContentRoute,

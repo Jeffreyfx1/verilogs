@@ -125,6 +125,59 @@ test("GetaText BAD_KEY is an authentication failure and is not retried", async (
   assert.equal(probe.ok, false);
   assert.match(probe.error, /rejected the API key/);
   assert.deepEqual(calls.map((call) => call.method), ["GET"]);
+  assert.equal(calls[0]?.url.includes("bad"), false);
+});
+
+test("GetaText catalogue is GET with the Auth header and never a purchase call", async () => {
+  const services = [
+    { service_name: "Whatsapp", api_name: "whatsapp", multiple_sms: "true", price: "0.55", ttl: 5, stock: 66, cashback: false },
+    { service_name: "Telegram", api_name: "telegram", price: "0.45", ttl: 20, stock: 10, cashback: false },
+    { service_name: "Missing", price: "1.00", ttl: 5, stock: 1 },
+  ];
+  const { transport, calls } = scripted([{ status: 200, body: services }]);
+  const probe = await runCatalogProbe(
+    "https://getatext.com/stubs/handler_api.php?action=getPrices&api_key=secret-key",
+    setup({ method: "POST", auth: "bearer", headerName: "Authorization", body: { service: "whatsapp" }, query: { api_key: "secret-key" } }),
+    "secret-key",
+    transport,
+  );
+  assert.equal(probe.ok, true);
+  assert.equal(probe.method, "GET");
+  assert.equal(probe.discovered, 2);
+  assert.equal(probe.setup.auth, "custom");
+  assert.equal(probe.setup.headerName, "Auth");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.method, "GET");
+  assert.equal(calls[0]?.headers.Auth, "secret-key");
+  assert.equal(calls[0]?.headers.Authorization, undefined);
+  assert.equal(calls[0]?.body, undefined);
+  assert.equal(new URL(calls[0]?.url || "").pathname, "/api/v1/prices-info");
+  assert.equal(calls[0]?.url.includes("secret-key"), false);
+  assert.equal(calls[0]?.url.includes("api_key"), false);
+  const refused = scripted([{ status: 200, body: services }]);
+  const blocked = await runCatalogProbe("https://getatext.com/api/v1/rent-a-number", setup({ method: "POST", auth: "bearer" }), "secret-key", refused.transport);
+  assert.equal(blocked.ok, false);
+  assert.equal(refused.calls.length, 0);
+  const denied = scripted([{ status: 405 }]);
+  const noPost = await runCatalogProbe("https://getatext.com/api/v1/prices-info", setup(), "secret-key", denied.transport);
+  assert.equal(noPost.ok, false);
+  assert.deepEqual(denied.calls.map((call) => call.method), ["GET"]);
+});
+
+test("a custom header name is sent as itself and not as Authorization", async () => {
+  const { transport, calls } = scripted([{ status: 200, body: [product] }]);
+  const probe = await runCatalogProbe(
+    "https://provider.example/api/catalogue",
+    setup({ method: "GET", auth: "custom", headerName: "X_Merchant_Key" }),
+    "secret-key",
+    transport,
+  );
+  assert.equal(probe.ok, true);
+  assert.equal(calls[0]?.headers.X_Merchant_Key, "secret-key");
+  assert.equal(calls[0]?.headers.Authorization, undefined);
+  assert.equal(calls[0]?.headers.Auth, undefined);
+  assert.equal(calls[0]?.body, undefined);
+  assert.equal(calls[0]?.url.includes("secret-key"), false);
 });
 test("saved SMEAPI hint uses GET and an Authorization token", async () => {
   const { transport, calls } = scripted([{ status: 200, body: [product] }]);

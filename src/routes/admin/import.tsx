@@ -89,13 +89,14 @@ function ImportPage() {
     openCatalogSetup({ data: { providerId } })
       .then((res) => {
         if (stop || !res.setup) return;
-        setMethod(res.setup.method || "");
-        setAuthKind(res.setup.auth || "");
-        setHeaderName(res.setup.headerName || "");
+        const getatext = /getatext\.com/i.test(apiUrl);
+        setMethod(getatext ? "GET" : res.setup.method || "");
+        setAuthKind(getatext ? "custom" : res.setup.auth || "");
+        setHeaderName(getatext ? "Auth" : res.setup.headerName || "");
         setContentType(res.setup.contentType || "");
-        setQueryJson(JSON.stringify(res.setup.query || {}, null, 2));
+        setQueryJson(JSON.stringify(getatext ? {} : res.setup.query || {}, null, 2));
         setHeadersJson(JSON.stringify(res.setup.headers || {}, null, 2));
-        setBodyJson(res.setup.body || "{}");
+        setBodyJson(getatext ? "{}" : res.setup.body || "{}");
         setFieldMap(JSON.stringify(res.setup.fieldMap || {}, null, 2));
       })
       .catch(() => undefined);
@@ -105,6 +106,14 @@ function ImportPage() {
     if (namesDirty) return;
     setNames((settings.wantedServices || []).join("\n"));
   }, [namesDirty, settings.wantedServices]);
+  useEffect(() => {
+    if (!/getatext\.com/i.test(apiUrl)) return;
+    setMethod("GET");
+    setAuthKind("custom");
+    setHeaderName("Auth");
+    setBodyJson("{}");
+    setQueryJson("{}");
+  }, [apiUrl]);
   useEffect(() => {
     const existing = providers.find((p) => p.id === providerId);
     if (existing) {
@@ -286,10 +295,17 @@ function ImportPage() {
                   setKind(card.kind);
                   setName(card.providerName);
                   setProviderId("");
-                  setApiUrl(card.url);
-                  setBaseUrl(card.url || "https://");
+                  setApiUrl(card.kind === "vtu-airtime" ? "" : card.url);
+                  setBaseUrl(card.kind === "vtu-airtime" ? "https://" : card.url || "https://");
                   setCurrency(card.currency);
                   if (card.usdRate > 0) setUsdRate(card.usdRate);
+                  if (card.kind === "usa") {
+                    setMethod("GET");
+                    setAuthKind("custom");
+                    setHeaderName("Auth");
+                    setBodyJson("{}");
+                    setQueryJson("{}");
+                  }
                 }}>Use</Button>
               </div>
               <p className="mt-2 text-xs text-muted">{card.auth}</p>
@@ -449,18 +465,22 @@ function ImportPage() {
               </select>
             </Field>
           </div>
-          <p className="text-xs text-muted">Known hosts: SMEAPI uses GET and Authorization: Token. GetaText uses GET and an Auth header. 5sim guest prices use GET. Auto tries GET, then POST only after a 405 on a catalogue address. Purchase addresses are never posted.</p>
+          <p className="text-xs text-muted">Known hosts: SMEAPI data uses GET /api/dataplans/ and Authorization: Token. SMEAPI airtime is a purchase and is not imported. GetaText uses GET /api/v1/prices-info and an Auth header, with no request body. 5sim guest prices use GET. Auto tries GET, then POST only after a 405 on a catalogue address. Purchase addresses, including airtime and rent-a-number, are never called.</p>
           <Field label="Query JSON"><textarea className={`${inputClass} font-mono text-xs`} rows={2} value={queryJson} onChange={(e) => setQueryJson(e.target.value)} /></Field>
           <Field label="Headers JSON"><textarea className={`${inputClass} font-mono text-xs`} rows={2} value={headersJson} onChange={(e) => setHeadersJson(e.target.value)} /></Field>
           <Field label="Request body JSON" hint="Sent only with POST, PUT, or PATCH."><textarea className={`${inputClass} font-mono text-xs`} rows={2} value={bodyJson} onChange={(e) => setBodyJson(e.target.value)} /></Field>
           <Field label="Response field map" hint='Example: {"id":"plan_code","name":"plan","price":"amount"}. Leave {} to detect fields.'>
             <textarea className={`${inputClass} font-mono text-xs`} rows={2} value={fieldMap} onChange={(e) => setFieldMap(e.target.value)} />
           </Field>
+          {kind === "vtu-airtime" ? (
+            <p className="rounded-xl bg-paper p-3 text-sm">Airtime is not a catalogue. Add MTN, Airtel, Glo and 9mobile under <Link to="/admin/airtime" className="font-semibold text-primary">Airtime networks</Link>. The purchase address is never called from here.</p>
+          ) : (
           <div className="flex flex-wrap gap-2">
             <Button tone="soft" busy={testing} disabled={busy || !apiUrl.trim()} onClick={() => void probeConnection()}>{testing ? "Testing…" : "Test API connection"}</Button>
             <Button tone="soft" busy={busy} disabled={!apiUrl.trim()} onClick={() => void runJob(undefined, apiUrl)}>{busy ? "Importing…" : "Pull and import this API"}</Button>
             <Button tone="soft" busy={busy} onClick={() => void runJob(undefined, "https://5sim.net/v1/guest/prices", "numbers")}>{busy ? "Importing…" : "Import every country from 5sim"}</Button>
           </div>
+          )}
           {diag ? <pre className="whitespace-pre-wrap rounded-xl bg-paper p-3 text-xs">{diag}</pre> : null}
           {apiUrl.trim() && !method ? <p className="text-xs text-muted">Suggested for this host: {suggestedSetup(apiUrl).method || "GET"}{suggestedSetup(apiUrl).auth ? ` · ${suggestedSetup(apiUrl).auth}` : ""}.</p> : null}
           <Field label="Price currency">

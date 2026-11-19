@@ -66,7 +66,7 @@ type Ctx = {
 
 const NAME_KEYS = ["name", "plan_name", "plan", "service_name", "title", "package", "bundle_name", "product_name", "variation", "dataplan"];
 const PRICE_KEYS = ["price", "plan_amount", "amount", "cost", "selling_price", "plan_price", "Price", "retail_price"];
-const ID_KEYS = ["id", "plan_id", "planId", "dataplan_id", "data_plan", "service_id", "code", "external_id", "product_id", "slug", "variation_code", "package_code", "plan_code"];
+const ID_KEYS = ["id", "api_name", "plan_id", "planId", "dataplan_id", "data_plan", "service_id", "code", "external_id", "product_id", "slug", "variation_code", "package_code", "plan_code"];
 const STOCK_KEYS = ["count", "stock", "qty", "Qty", "available", "quantity"];
 const VALID_KEYS = ["month_validate", "validity", "duration", "days"];
 const METRIC_KEYS = new Set([
@@ -74,6 +74,7 @@ const METRIC_KEYS = new Set([
   "min", "max", "min_qty", "max_qty", "minimum", "maximum", "refill", "cancel", "dripfeed", "runs", "interval", "service",
   "rate1", "rate3", "rate24", "rate72", "rate168", "rate720",
   "networkid", "network_id", "planid", "plan_id", "dataplan_id", "data_plan", "package_code", "variation_code",
+  "ttl", "multiple_sms", "cashback", "api_name", "service_name",
 ]);
 const META_KEYS = new Set([
   "status", "data", "message", "success", "result", "response", "payload", "items", "list",
@@ -320,13 +321,17 @@ function slug(parts: string[]) {
 }
 
 function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<ParsedItem, "category"> & { hint: string }) | null {
-  const ownName = text(pick(obj, NAME_KEYS));
+  const apiName = text(pick(obj, ["api_name"]));
+  const serviceName = text(pick(obj, ["service_name"]));
+  const priceInfo = !!(apiName || serviceName || "ttl" in obj || "multiple_sms" in obj || "cashback" in obj);
+  const ownName = apiName && serviceName ? serviceName : text(pick(obj, NAME_KEYS));
   let price = parseMoney(pick(obj, PRICE_KEYS));
   const id = text(pick(obj, ID_KEYS));
+  if (priceInfo && !apiName && !id) return null;
   const serviceField = text(pick(obj, ["service", "platform", "app"]));
-  let service = SERVICE_CANON[serviceField.toLowerCase()] || serviceField || ctx.service;
+  let service = apiName || SERVICE_CANON[serviceField.toLowerCase()] || serviceField || ctx.service;
   if (/^\d+$/.test(service)) service = ownName || ctx.service || service;
-  const countryRaw = text(pick(obj, ["country", "country_name", "geo"])) || ctx.country;
+  const countryRaw = text(pick(obj, ["country", "country_name", "geo"])) || ctx.country || (apiName ? "usa" : "");
   const country = countryOf(countryRaw) || (COUNTRIES[countryRaw.toLowerCase()] ? COUNTRIES[countryRaw.toLowerCase()] : countryRaw);
   const blob = [ownName, service, text(pick(obj, ["network", "network_name", "sim", "network_code"])), ctx.network, ctx.operator].join(" ");
   const network = networkOf(blob) || ctx.network;
@@ -348,7 +353,7 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
       ? `${network} ${ownName}`
       : ownName
     : [service || "Number", country].filter(Boolean).join(" · ");
-  const externalId = id ? slug([...path, id]) : slug([...path, hint, display, country, network, operator, String(price ?? "")]);
+  const externalId = apiName ? slug([apiName]) : id ? slug([...path, id]) : slug([...path, hint, display, country, network, operator, String(price ?? "")]);
   const qty = minQ != null || maxQ != null ? `Min ${minQ ?? 0}${maxQ != null ? ` · Max ${maxQ}` : ""}` : "";
   const body = describe(obj);
   const skip = new Set(["id", "plan_id", "price", "cost", "name", "network", "network_id", "service", "country", "operator", "category"]);
@@ -461,7 +466,7 @@ export function vtuCatalogueUrl(raw: string): string | null {
   const host = url.hostname.replace(/^www\./, "");
   if (!/smeapi\.com\.ng$/i.test(host)) return null;
   if (/dataplans/i.test(url.pathname)) return null;
-  if (!/\/(airtime|data)\/?$/i.test(url.pathname)) return null;
+  if (!/\/data\/?$/i.test(url.pathname)) return null;
   return new URL("/api/dataplans/?format=json", url.origin).toString();
 }
 
@@ -505,55 +510,6 @@ export function attachVtuIds(payload: unknown, items: ParsedItem[]): ParsedItem[
     });
   }
   return next;
-}
-
-export function airtimeProductsFromPayload(payload: unknown): ParsedItem[] {
-  const nets = new Map<string, { id: string; network: string; type: string }>();
-  const walk = (node: unknown) => {
-    if (Array.isArray(node)) {
-      node.forEach(walk);
-      return;
-    }
-    if (!node || typeof node !== "object") return;
-    const rec = node as Record<string, unknown>;
-    const rawId = rec.network_id ?? rec.networkId ?? rec.networkid;
-    const rawName = rec.network_name ?? rec.networkName ?? rec.network;
-    const id = typeof rawId === "number" || (typeof rawId === "string" && /^\d+$/.test(rawId.trim())) ? String(rawId).trim() : "";
-    const name = typeof rawName === "string" ? rawName.trim() : "";
-    if (id && name && !/^\d+$/.test(name)) {
-      const network = networkLabel(name);
-      const price = Number(rec.price ?? rec.plan_amount ?? rec.plan_price ?? rec.cost ?? rec.amount);
-      const priced = Number.isFinite(price) && price > 0;
-      const typeName = priced ? "" : firstText(rec, ["airtime_type", "airtimeType", "type", "plan_type", "planType"]);
-      const type = typeName && !/\d+(?:\.\d+)?\s?(?:gb|mb|tb)\b/i.test(typeName) && !/^\d+$/.test(typeName) ? typeName : "";
-      if (type) {
-        const slug = type.toLowerCase().replace(/[^a-z0-9]+/g, "");
-        if (slug) nets.set(`${id}|${slug}`, { id, network, type });
-      } else if (!nets.has(id)) {
-        nets.set(id, { id, network, type: "" });
-      }
-    }
-    for (const value of Object.values(rec)) if (value && typeof value === "object") walk(value);
-  };
-  walk(payload);
-  return [...nets.values()].map((value) => ({
-    externalId: value.type ? `airtime|${value.id}|${value.type.toLowerCase().replace(/[^a-z0-9]+/g, "")}` : `airtime|${value.id}|${value.network.toLowerCase()}`,
-    category: "airtime" as const,
-    name: value.type ? `${value.network} ${value.type} Airtime` : `${value.network} Airtime`,
-    service: value.type || "Airtime",
-    country: "Nigeria",
-    network: value.network,
-    operator: value.id,
-    price: 0,
-    stock: 0,
-    rate: 0,
-    rates: "",
-    validity: "",
-    variable: true,
-    description: `Network ${value.id}${value.type ? `. ${value.type}` : ""}. The customer chooses the amount.`,
-    importType: "VTU_IMPORT",
-    serverId: "",
-  }));
 }
 
 export function shapeImport(items: ParsedItem[], kind: ImportKind, wanted: string[]) {

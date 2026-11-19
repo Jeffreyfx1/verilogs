@@ -17,7 +17,6 @@ const FIVE: Record<string, string> = {
   czechia: "czech",
 };
 
-const SME_NET: Record<string, number> = { mtn: 1, glo: 2, airtel: 4 };
 const NETWORK_BRANDS = new Set(["mtn", "glo", "airtel", "9mobile", "9 mobile", "etisalat", "t2", "t2mobile", "smile"]);
 
 function originOf(base: string) {
@@ -39,13 +38,11 @@ export function planValue(externalId: string): string | number {
   return last;
 }
 
-export function networkValue(product: { operator?: string; network?: string }, host: string): string | number {
+export function networkValue(product: { operator?: string; network?: string }, _host = ""): string | number {
   const operator = String(product.operator || "").trim();
   if (/^\d+$/.test(operator)) return Number(operator);
   const low = operator.toLowerCase();
   if (operator && !NETWORK_BRANDS.has(low)) return operator;
-  const bare = host.trim().toLowerCase().replace(/^www\./, "");
-  if (!operator && bare.endsWith("smeapi.com.ng")) return SME_NET[String(product.network || "").trim().toLowerCase()] || 0;
   return 0;
 }
 
@@ -142,18 +139,20 @@ export async function placeOnProvider(input: { product: Product; provider: Provi
     return { ok: true, phone, ref: String(json.id || ""), waiting: true, cost };
   }
 
-  if (sme && (product.category === "airtime" || product.category === "data")) {
+  if (sme && product.category === "airtime") {
+    return { ok: false, error: "Airtime is sold from the network list, not from an imported product. Nothing was sent." };
+  }
+
+  if (sme && product.category === "data") {
     const phone = input.phone.trim();
     if (phone.length < 8) return { ok: false, error: "Enter the phone number." };
     const network = networkValue(product, host);
     if (network === "" || network === 0) return { ok: false, error: "This plan has no network id, so it was not sent." };
     const ref = purchaseRef(input.clientReference);
     const plan = planValue(product.externalId);
-    const body = product.category === "airtime"
-      ? { network, phone, amount: input.amount, ref, ported_number: "false" }
-      : { network, phone, data_plan: plan, ref, ported_number: "false" };
-    if (product.category === "data" && (plan === "" || plan === 0)) return { ok: false, error: "This data plan has no plan id, so it was not sent." };
-    const url = originOf(provider.baseUrl) + (product.category === "airtime" ? "/api/airtime/" : "/api/data/");
+    const body = { network, phone, data_plan: plan, ref, ported_number: "false" };
+    if (plan === "" || plan === 0) return { ok: false, error: "This data plan has no plan id, so it was not sent." };
+    const url = originOf(provider.baseUrl) + "/api/data/";
     let res: Response;
     try {
       res = await fetch(url, {

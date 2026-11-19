@@ -3,11 +3,13 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
 import { freshData, normalizeData, quoteProduct, serverLabel, topupQuote, withAdminLogin, type Data, type Product, type SyncReport } from "@/lib/catalog";
 import { customerPrice, profitsOf, sellQuote, summarizeProfit } from "@/lib/pricing";
-import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, fiveSimImportPlan, shapeImport, airtimeProductsFromPayload, attachVtuIds, vtuCatalogueUrl, discoverServiceNames, mergeServiceNames, type ImportKind, type ParsedItem } from "@/lib/categorize";
-import { destinationOf, flattenGetaText, sourceKindOf } from "@/lib/import-source";
+import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, fiveSimImportPlan, shapeImport, attachVtuIds, vtuCatalogueUrl, discoverServiceNames, mergeServiceNames, type ImportKind, type ParsedItem } from "@/lib/categorize";
+import { airtimeCharge, airtimeImportBlock, airtimeOffers, prepareAirtimePurchase, sendAirtimePurchase, withoutAirtimeProducts, type AirtimeRouteRecord } from "@/lib/airtime";
+import { deleteAirtimeNetworkRow, deleteAirtimeRouteRow, listAirtimeRecords, saveAirtimeNetworkRow, saveAirtimeRouteRow } from "@/lib/airtime-rows.server";
+import { destinationOf, flattenGetaText, readGetaTextPrices, sourceKindOf } from "@/lib/import-source";
 import { instakingCurrency, instakingPost, isInstakingHost, parseInstakingServices, readSmmDetail } from "@/lib/instaking";
 import { catalogStamp, followCatalogPages, walkBrowse } from "@/lib/catalog-pages";
-import { applyFieldMap, looksLikePurchase, setupView, type CatalogMethod, type CatalogSetup } from "@/lib/catalog-request";
+import { applyFieldMap, getatextCatalogueUrl, looksLikePurchase, publicEndpoint, setupView, type CatalogMethod, type CatalogSetup } from "@/lib/catalog-request";
 import { fetchNote, probeProviderCatalogue, readCataloguePage, reportOf, saveProviderFetch, loadProviderFetch, type FetchReport } from "@/lib/catalog-fetch.server";
 import { IMPORT_BATCH, importBatchCount, sliceImport } from "@/lib/import-batch";
 import { uid } from "@/lib/money";
@@ -51,6 +53,7 @@ import {
   projectShop,
   refundOrder,
   registerUser,
+  recordAirtimeOrder,
   resetPassword,
   resetShop,
   saveFaqs,
@@ -388,6 +391,10 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
       const out = await completePurchase(doc, userId, str("productId"), { phone: str("phone"), amount: num("amount"), detail: str("detail"), idempotencyKey: str("idempotencyKey") });
       doc = out.data;
       error = out.error;
+    } else if (op === "buyAirtime") {
+      const out = await completeAirtimePurchase(doc, userId, { networkId: str("networkId"), phone: str("phone"), amount: num("amount"), idempotencyKey: str("idempotencyKey") });
+      doc = out.data;
+      error = out.error;
     } else if (op === "refund") {
       const orderId = str("orderId");
       const before = doc.orders.find((order) => order.id === orderId);
@@ -560,6 +567,7 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
   const quoted = found ? quoteProduct(found, doc) : null;
   const provider = quoted && doc.providers.find((item) => item.id === quoted.providerId && item.enabled);
   if (!quoted?.enabled || !provider) return { error: "That service is not available.", data: doc };
+  if (quoted.category === "airtime") return { error: "Airtime is sold from the network list, not from the catalogue. Nothing was sent.", data: doc };
   if (quoted.category === "vpn") return { error: "VPN is coming soon.", data: doc };
   const sticker = quoted.price;
   const user = userId ? doc.users.find((item) => item.id === userId) : null;
@@ -597,7 +605,6 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
   if (!priced.ok) return { error: priced.error, data: doc };
   const charge = priced.charge;
   if (!user) return { error: "Sign in first.", data: doc };
-  if (quoted.category === "airtime" && (face < 50 || face > 50000)) return { error: "Airtime must be between ₦50 and ₦50,000.", data: doc };
   if (!quoted.variable && charge <= 0) return { error: "This item has no price yet.", data: doc };
   const key = (extra.idempotencyKey || "").slice(0, 80);
   if (key) {
@@ -609,7 +616,7 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
     if (key) await markPurchaseKey(key, "failed");
     return { error: "Insufficient balance. Top up your balance to make this purchase.", data: doc };
   }
-  const providerAmount = quoted.category === "airtime" || quoted.variable ? face : quantity;
+  const providerAmount = quoted.variable ? face : quantity;
   const placed = await placeOnProvider({ product: quoted, provider, apiKey: await readProviderKey(provider.id), phone: extra.phone || "", amount: providerAmount, detail: extra.detail || "", clientReference: key });
   if (!placed.ok) {
     if (key) await markPurchaseKey(key, "failed");
@@ -666,6 +673,79 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
   if (order && order.status === "completed") {
     await settleReferral({ buyerId: user.id, orderId: order.id, amount: charge, profit: gain, orderStatus: order.status });
   }
+  return { error: null, data };
+}
+
+export async function completeAirtimePurchase(doc: Data, userId: string | null, input: { networkId: string; phone: string; amount: number; idempotencyKey?: string }) {
+  const user = userId ? doc.users.find((item) => item.id === userId) : null;
+  if (!user) return { error: "Sign in first.", data: doc };
+  const records = await listAirtimeRecords();
+  const network = records.networks.find((item) => item.id === input.networkId);
+  if (!network?.enabled) return { error: "That network is not available.", data: doc };
+  const routes = records.routes.filter((route) => route.networkId === network.id && route.enabled);
+  if (routes.length !== 1) return { error: "That network is not available.", data: doc };
+  const route = routes[0];
+  const provider = doc.providers.find((item) => item.id === route.providerId && item.enabled);
+  if (!provider) return { error: "The airtime provider is turned off.", data: doc };
+  const phone = input.phone.trim();
+  if (phone.length < 8) return { error: "Enter the phone number.", data: doc };
+  const face = Math.round(Number(input.amount) || 0);
+  if (face < network.minAmount || face > network.maxAmount) {
+    return { error: `${network.name} airtime must be between ₦${network.minAmount.toLocaleString("en-NG")} and ₦${network.maxAmount.toLocaleString("en-NG")}.`, data: doc };
+  }
+  const profit = network.profitNaira == null ? profitsOf({ airtime: doc.settings.airtimeProfit }).airtime : network.profitNaira;
+  const priced = airtimeCharge(face, profit);
+  if (!priced.ok) return { error: priced.error, data: doc };
+  const charge = priced.charge;
+  const key = (input.idempotencyKey || "").slice(0, 80);
+  if (key) {
+    const gate = await beginPurchaseKey({ key, userId: user.id, productId: network.id });
+    if (gate === "completed") return { error: null, data: doc };
+    if (gate === "busy") return { error: "This purchase is already processing.", data: doc };
+  }
+  if (user.balance < charge) {
+    if (key) await markPurchaseKey(key, "failed");
+    return { error: "Insufficient balance. Top up your balance to make this purchase.", data: doc };
+  }
+  const apiKey = await readProviderKey(provider.id);
+  const ref = "VL" + ((key || uid("air")).replace(/[^A-Za-z0-9]/g, "").slice(0, 24) || Date.now().toString(36));
+  const prepared = prepareAirtimePurchase({ baseUrl: provider.baseUrl, apiKey, route, phone, amount: face, ref });
+  if (!prepared.ok) {
+    if (key) await markPurchaseKey(key, "failed");
+    return { error: prepared.error, data: doc };
+  }
+  const sent = await sendAirtimePurchase(prepared, apiKey);
+  if (!sent.ok) {
+    if (key) await markPurchaseKey(key, "failed");
+    return { error: sent.error, data: doc };
+  }
+  const providerRef = sent.ref || ref;
+  const ledgerRef = "purchase:" + (key || uid("ord"));
+  const debited = await debitBalance(user.id, charge, ledgerRef, `${network.name} Airtime`);
+  const reconcileDetail = JSON.stringify({ title: `${network.name} Airtime`, category: "airtime", network: network.name, phone, cost: face, gain: priced.profit, code: providerRef, status: "completed" });
+  if (!debited.ok) {
+    if (key) await markPurchaseKey(key, "needs_reconcile", { providerOrderId: providerRef, amount: charge, detail: reconcileDetail });
+    return { error: "The provider accepted the order, but the wallet update did not finish. It is flagged for reconciliation and will not be charged twice.", data: doc };
+  }
+  const ready = { ...doc, users: doc.users.map((item) => (item.id === user.id ? { ...item, balance: debited.balance + charge } : item)) };
+  const bought = recordAirtimeOrder(ready, userId, {
+    networkId: network.id,
+    title: `${network.name} Airtime`,
+    providerId: provider.id,
+    network: network.name,
+    phone,
+    charge,
+    cost: face,
+    gain: priced.profit,
+    ref: providerRef,
+  });
+  if (bought.error || !("order" in bought) || !bought.order) {
+    if (key) await markPurchaseKey(key, "needs_reconcile", { providerOrderId: providerRef, amount: charge, detail: reconcileDetail });
+    return { error: "The provider accepted the order. The wallet debit is recorded and the order will be reconciled.", data: doc };
+  }
+  const data = { ...bought.data, users: bought.data.users.map((item) => (item.id === user.id ? { ...item, balance: debited.balance } : item)) };
+  if (key) await markPurchaseKey(key, "completed", { orderId: bought.order.id, providerOrderId: providerRef, amount: charge, detail: reconcileDetail });
+  await settleReferral({ buyerId: user.id, orderId: bought.order.id, amount: charge, profit: priced.profit, orderStatus: "completed" });
   return { error: null, data };
 }
 
@@ -846,9 +926,16 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     return { ok: false as const, error: "Enter a full https address." };
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") return { ok: false as const, error: "Only http and https catalogues can be pulled." };
+  const blocked = airtimeImportBlock(input.kind || "", url.toString());
+  if (blocked) return { ok: false as const, error: blocked };
   const key = input.apiKey?.trim() || (input.providerId ? await readProviderKey(input.providerId) : "");
   const headers: Record<string, string> = { Accept: "application/json" };
   const host = url.hostname.replace(/^www\./, "");
+  if (/(^|\.)getatext\.com$/i.test(host) && looksLikePurchase(url.toString())) {
+    return { ok: false as const, error: "That address rents a number. Catalogue import will not call it." };
+  }
+  const catalogue = getatextCatalogueUrl(url.toString());
+  if (catalogue) url = new URL(catalogue);
   if (key && /(^|\.)getatext\.com$/i.test(host)) headers.Auth = key;
   else if (key && /smeapi\.com\.ng$/i.test(host)) headers.Authorization = `Token ${key}`;
   else if (key) {
@@ -870,7 +957,6 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
       const reported = balance.ok && balance.body && typeof balance.body === "object" ? instakingCurrency((balance.body as { currency?: unknown }).currency) : "";
       return { ok: true as const, payload: { instaking: true, items }, currency: reported || undefined };
     }
-    if (key && /(^|\.)getatext\.com$/i.test(host) && !url.searchParams.has("api_key")) url.searchParams.set("api_key", key);
     const barePrices = fiveSimImportPlan(url.toString(), allow) === "fanout";
     if (barePrices) {
       const merged: Record<string, unknown> = {};
@@ -890,7 +976,7 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
       if (!Object.keys(merged).length) return { ok: false as const, error: "None of the saved services came back from 5sim." };
       return { ok: true as const, payload: slimFiveSim(merged, "", allow, {}), services: discoverServiceNames(merged) };
     }
-    if (input.kind === "vtu" || input.kind === "vtu-airtime" || input.kind === "vtu-data") {
+    if (input.kind === "vtu-data" || input.kind === "vtu") {
       const catalogue = vtuCatalogueUrl(url.toString());
       if (catalogue) {
         try {
@@ -906,7 +992,7 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
           return { ok: false as const, error: "The plan list could not be reached, so nothing was imported." };
         }
       }
-      if (/\/(airtime|data)\/?$/i.test(url.pathname) || looksLikePurchase(url.toString())) {
+      if (/\/data\/?$/i.test(url.pathname) || looksLikePurchase(url.toString())) {
         return { ok: false as const, error: "That address places an order. Catalogue import will not call it." };
       }
     }
@@ -918,7 +1004,7 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
       timeoutMs: 45000,
     });
     const providerName = doc.providers.find((item) => item.id === input.providerId)?.name || "";
-    const fetchReport = reportOf(probe, url.toString(), providerName);
+    const fetchReport = reportOf(probe, publicEndpoint(url.toString()), providerName);
     if (!probe.ok || probe.payload == null) return { ok: false as const, error: probe.error || "The API did not return a catalogue.", fetch: fetchReport };
     let payload: unknown = applyFieldMap(probe.payload, probe.setup.fieldMap);
     const method = (probe.method || "GET") as CatalogMethod;
@@ -940,6 +1026,11 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     const ready = url.hostname.endsWith("5sim.net") ? slimFiveSim(payload, hint, allow, place) : payload;
     const services = url.hostname.endsWith("5sim.net") ? discoverServiceNames(payload) : [];
     if (/(^|\.)getatext\.com$/i.test(host)) {
+      const prices = readGetaTextPrices(ready);
+      if (prices?.recognized) {
+        if (!prices.rows.length) return { ok: false as const, error: "GetaText did not return any USA services.", fetch: fetchReport };
+        return { ok: true as const, payload: prices.rows, fetch: fetchReport, setup: probe.setup, services };
+      }
       const flat = flattenGetaText(ready);
       if (flat) return { ok: true as const, payload: flat, fetch: fetchReport, setup: probe.setup, services };
     }
@@ -1005,6 +1096,8 @@ export async function browseRemoteCatalog(input: { url: string; apiKey?: string;
     return emptyBrowse("Enter a full https address.");
   }
   if (start.protocol !== "https:" && start.protocol !== "http:") return emptyBrowse("Only http and https catalogues can be browsed.");
+  const blocked = airtimeImportBlock("", start.toString());
+  if (blocked) return emptyBrowse(blocked);
   let pageUrl = start;
   let from = 0;
   if (input.cursor) {
@@ -1019,6 +1112,8 @@ export async function browseRemoteCatalog(input: { url: string; apiKey?: string;
   pageUrl.searchParams.delete("vl_from");
   const key = input.apiKey?.trim() || (input.providerId ? await readProviderKey(input.providerId) : "");
   if (looksLikePurchase(pageUrl.toString())) return emptyBrowse("That address places an order. Catalogue browse will not call it.");
+  const catalogue = getatextCatalogueUrl(pageUrl.toString());
+  if (catalogue) pageUrl = new URL(catalogue);
   try {
     const probe = await probeProviderCatalogue({
       url: pageUrl.toString(),
@@ -1106,10 +1201,17 @@ export async function testCatalogConnection(input: { url: string; apiKey?: strin
     return { error: "Enter a full https address.", report: null };
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") return { error: "Only http and https catalogues can be tested.", report: null };
+  const blocked = airtimeImportBlock("", input.url);
+  if (blocked) return { error: blocked, report: null };
+  const catalogue = getatextCatalogueUrl(url.toString());
+  if (catalogue) url = new URL(catalogue);
+  if (/(^|\.)getatext\.com$/i.test(url.hostname) && looksLikePurchase(input.url)) {
+    return { error: "That address rents a number. Catalogue import will not call it.", report: null };
+  }
   const key = input.apiKey?.trim() || (input.providerId ? await readProviderKey(input.providerId) : "");
   const probe = await probeProviderCatalogue({ url: url.toString(), apiKey: key, providerId: input.providerId, draft: input.setup, timeoutMs: 20000 });
   const name = doc.providers.find((item) => item.id === input.providerId)?.name || "";
-  return { error: probe.ok ? null : probe.error, report: reportOf(probe, url.toString(), name) };
+  return { error: probe.ok ? null : probe.error, report: reportOf(probe, publicEndpoint(url.toString()), name) };
 }
 
 type ImportMeta = {
@@ -1140,7 +1242,7 @@ const KIND_EMPTY: Record<string, string> = {
   server2: "No virtual numbers were in that catalogue.",
   server3: "No virtual numbers were in that catalogue.",
   usa: "GetaText did not return any USA services.",
-  "vtu-airtime": "No airtime networks were in that catalogue.",
+  "vtu-airtime": "Airtime is not a catalogue. Nothing was saved.",
   "vtu-data": "No data plans were in that catalogue.",
   vtu: "Choose Airtime import or Data import.",
   vpn: "VPN is coming soon.",
@@ -1171,7 +1273,9 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
   const selective = !!input.selective;
   const kind = importKindOf(input.kind);
   if (kind === "vpn") return emptyImport("VPN is coming soon. No products were imported.");
-  if (kind === "vtu") return emptyImport("Choose Airtime import or Data import. Electricity and TV are not imported.");
+  if (kind === "vtu") return emptyImport("Choose Data import. Airtime is configured under Airtime networks, not imported.");
+  const blocked = airtimeImportBlock(kind, input.url || "");
+  if (blocked) return emptyImport(blocked);
   const wantedForPull: string[] = [];
   const routed = input.url ? fiveSimCategoryUrl(input.url) : { url: "", product: "" };
   let payload = input.payload;
@@ -1214,9 +1318,10 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
     const attached = attachVtuIds(payload, extracted.items);
     if (attached !== extracted.items) source = attached;
   }
-  const shaped = kind === "vtu-airtime"
-    ? airtimeProductsFromPayload(payload).map((item) => ({ ...item, category: "airtime" as const, importType: "VTU_IMPORT", serverId: "" }))
+  const shapedBase = kind === "vtu-airtime"
+    ? []
     : shapeImport(source, instakingBundle ? "smm" : kind, !selective && numberLike ? wantedForPull : []);
+  const shaped = kind === "vtu-data" ? withoutAirtimeProducts(shapedBase) : shapedBase;
   const items = (selective ? shaped.slice(0, 200) : shaped) as ParsedItem[];
   if (!items.length) {
     if (services.length) await rememberDiscoveredServices(services);
@@ -1766,6 +1871,48 @@ export function googleRedirect(origin: string) {
 
 export function googleConfigured() {
   return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+}
+
+export async function listPublicAirtime() {
+  const session = await readSession();
+  const doc = await loadLight();
+  const user = doc.users.find((item) => item.id === session.userId);
+  if (!user) return { error: "Sign in first.", offers: [] as ReturnType<typeof airtimeOffers> };
+  const records = await listAirtimeRecords();
+  return { error: null as string | null, offers: airtimeOffers(records.networks, records.routes, doc.providers, doc.settings.airtimeProfit) };
+}
+
+export async function listAdminAirtime() {
+  const admin = await adminContext();
+  if (!admin) return { error: "Only an admin can manage airtime.", networks: [], routes: [] as AirtimeRouteRecord[] };
+  const records = await listAirtimeRecords();
+  return { error: null as string | null, networks: records.networks, routes: records.routes };
+}
+
+export async function saveAdminAirtimeNetwork(input: { id?: string; name: string; imageUrl?: string; enabled: boolean; minAmount: number; maxAmount: number; profitNaira: number | null }) {
+  const admin = await adminContext();
+  if (!admin) return { error: "Only an admin can manage airtime." };
+  return saveAirtimeNetworkRow(input);
+}
+
+export async function saveAdminAirtimeRoute(input: AirtimeRouteRecord) {
+  const admin = await adminContext();
+  if (!admin) return { error: "Only an admin can manage airtime." };
+  const provider = admin.doc.providers.find((item) => item.id === input.providerId);
+  if (!provider) return { error: "Choose a provider that already exists." };
+  return saveAirtimeRouteRow(input);
+}
+
+export async function removeAdminAirtimeRoute(id: string) {
+  const admin = await adminContext();
+  if (!admin) return { error: "Only an admin can manage airtime." };
+  return deleteAirtimeRouteRow(id);
+}
+
+export async function removeAdminAirtimeNetwork(id: string) {
+  const admin = await adminContext();
+  if (!admin) return { error: "Only an admin can manage airtime." };
+  return deleteAirtimeNetworkRow(id);
 }
 
 export async function adminContext() {
