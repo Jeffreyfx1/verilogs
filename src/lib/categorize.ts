@@ -72,6 +72,7 @@ const VALID_KEYS = ["month_validate", "validity", "duration", "days"];
 const METRIC_KEYS = new Set([
   "price", "cost", "count", "qty", "quantity", "rate", "id", "stock", "amount", "category", "pos", "retail_price",
   "min", "max", "min_qty", "max_qty", "minimum", "maximum", "refill", "cancel", "dripfeed", "runs", "interval", "service",
+  "rate1", "rate3", "rate24", "rate72", "rate168", "rate720",
 ]);
 const META_KEYS = new Set([
   "status", "data", "message", "success", "result", "response", "payload", "items", "list",
@@ -536,46 +537,151 @@ function pushQuote(rows: Array<Record<string, unknown>>, service: string, countr
   });
 }
 
+function unwrapMeta(payload: unknown, depth = 0): unknown {
+  if (depth > 3 || !payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+  const entries = objectEntries(payload);
+  if (entries.length === 1 && META_KEYS.has(entries[0][0].trim().toLowerCase())) return unwrapMeta(entries[0][1], depth + 1);
+  return payload;
+}
+
+function objectEntries(node: unknown) {
+  const out: Array<[string, Record<string, unknown>]> = [];
+  if (!node || typeof node !== "object" || Array.isArray(node)) return out;
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    out.push([key, value as Record<string, unknown>]);
+  }
+  return out;
+}
+
+/** 5sim guest prices are either service → country → operator, or country → service → operator. */
+function fiveSimOrientation(top: string, children: Array<[string, Record<string, unknown>]>) {
+  const topIsCountry = isCountrySlug(top);
+  const countryChildren = children.filter(([key]) => isCountrySlug(key)).length;
+  if (!topIsCountry && countryChildren >= Math.ceil(children.length / 2)) return "service" as const;
+  return "country" as const;
+}
+
 export function slimFiveSim(payload: unknown, hint = "", allow: string[] = [], place: { country?: string; operator?: string } = {}): unknown {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+  const root = unwrapMeta(payload);
+  if (!root || typeof root !== "object" || Array.isArray(root)) return root;
   const rows: Array<Record<string, unknown>> = [];
-  const entries = Object.entries(payload as Record<string, unknown>).filter(([, value]) => value && typeof value === "object" && !Array.isArray(value));
+  const entries = objectEntries(root);
   if (entries.length && entries.every(([, value]) => isOperatorQuote(value))) {
     const country = place.country || "";
     const operator = place.operator || "any";
     for (const [service, row] of entries) {
       if (allow.length && !serviceAllowed(service, allow)) continue;
-      pushQuote(rows, service, country, operator, row as Record<string, unknown>, hint);
+      pushQuote(rows, service, country, operator, row, hint);
     }
     return rows;
   }
   let understood = false;
   for (const [top, nested] of entries) {
-    const table = nested as Record<string, unknown>;
-    const children = Object.entries(table).filter(([, value]) => value && typeof value === "object" && !Array.isArray(value));
+    const children = objectEntries(nested);
     if (!children.length) continue;
     if (children.every(([, value]) => isOperatorMap(value))) {
       understood = true;
-      if (allow.length && !serviceAllowed(top, allow)) continue;
-      for (const [country, operators] of children) {
-        for (const [operator, row] of Object.entries(operators as Record<string, unknown>)) {
+      const orientation = fiveSimOrientation(top, children);
+      if (orientation === "service") {
+        if (allow.length && !serviceAllowed(top, allow)) continue;
+        for (const [country, operators] of children) {
+          for (const [operator, row] of Object.entries(operators)) {
+            if (!isOperatorQuote(row)) continue;
+            pushQuote(rows, top, country, operator, row, hint);
+          }
+        }
+        continue;
+      }
+      for (const [service, operators] of children) {
+        if (!isOperatorMap(operators)) continue;
+        if (allow.length && !serviceAllowed(service, allow)) continue;
+        for (const [operator, row] of Object.entries(operators)) {
           if (!isOperatorQuote(row)) continue;
-          pushQuote(rows, top, country, operator, row, hint);
+          pushQuote(rows, service, top, operator, row, hint);
         }
       }
       continue;
     }
-    understood = true;
+    let matched = false;
     for (const [service, operators] of children) {
       if (!isOperatorMap(operators)) continue;
+      matched = true;
       if (allow.length && !serviceAllowed(service, allow)) continue;
-      for (const [operator, row] of Object.entries(operators as Record<string, unknown>)) {
+      for (const [operator, row] of Object.entries(operators)) {
         if (!isOperatorQuote(row)) continue;
         pushQuote(rows, service, top, operator, row, hint);
       }
     }
+    if (matched) understood = true;
   }
-  return understood ? rows : payload;
+  return understood ? rows : root;
+}
+
+export function discoverServiceNames(payload: unknown): string[] {
+  const names = new Set<string>();
+  const add = (service: string) => {
+    const name = String(service || "").trim();
+    if (!name || name.length > 80 || isCountrySlug(name) || isOperatorKey(name)) return;
+    names.add(name);
+  };
+  const visit = (node: unknown) => {
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        if (item && typeof item === "object" && !Array.isArray(item)) add(String((item as { service?: unknown }).service || ""));
+      }
+      return;
+    }
+    for (const [top, nested] of objectEntries(node)) {
+      const children = objectEntries(nested);
+      if (!children.length) {
+        if (isOperatorQuote(nested)) add(top);
+        continue;
+      }
+      if (children.every(([, value]) => isOperatorMap(value))) {
+        if (fiveSimOrientation(top, children) === "service") add(top);
+        else for (const [service, operators] of children) if (isOperatorMap(operators)) add(service);
+        continue;
+      }
+      if (children.every(([, value]) => isOperatorQuote(value))) {
+        if (!isCountrySlug(top)) add(top);
+        continue;
+      }
+      for (const [service, operators] of children) if (isOperatorMap(operators)) add(service);
+    }
+  };
+  visit(unwrapMeta(payload));
+  return [...names];
+}
+
+export function mergeServiceNames(existing: string[], discovered: string[], limit = 4000) {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of [...existing, ...discovered]) {
+    const name = String(raw || "").trim();
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+export function fiveSimImportPlan(url: string, allow: string[] = []): "get" | "fanout" | "other" {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return "other";
+  }
+  const bare = parsed.hostname.endsWith("5sim.net") && /\/v1\/guest\/prices\/?$/.test(parsed.pathname) && !parsed.searchParams.get("product");
+  if (!bare) return "other";
+  return allow.length ? "fanout" : "get";
+}
+
+export function savedProductCount(report: { created?: number; updated?: number } | null | undefined) {
+  return Math.max(0, Number(report?.created) || 0) + Math.max(0, Number(report?.updated) || 0);
 }
 
 export function extractCatalog(payload: unknown): CatalogExtract {

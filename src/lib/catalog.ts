@@ -327,7 +327,7 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
       supportWelcome: incoming?.supportWelcome || base.supportWelcome,
       popup: { ...base.popup, ...incoming?.popup },
       wantedServices: Array.isArray(incoming?.wantedServices) && incoming.wantedServices.length
-        ? incoming.wantedServices.map((name) => String(name || "").trim()).filter(Boolean).slice(0, 200)
+        ? incoming.wantedServices.map((name) => String(name || "").trim()).filter(Boolean).slice(0, 4000)
         : base.wantedServices,
       pricing: pricingOf(incoming?.pricing),
       marketplaceSubcategories: Array.isArray(incoming?.marketplaceSubcategories)

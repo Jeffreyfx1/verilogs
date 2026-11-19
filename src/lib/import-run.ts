@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import type { SyncReport } from "@/lib/catalog";
+import { savedProductCount } from "@/lib/categorize";
 import { beginCatalogImport, stepCatalogImport, type ImportStep } from "@/lib/shop-fns";
 import { useStore } from "@/lib/store";
 
@@ -136,7 +137,17 @@ async function drain(jobId: string, batches: number) {
     toast.error("Import stopped.");
     return;
   }
-  const filed = latest.report.imported.toLocaleString("en-NG");
+  const filedCount = savedProductCount(latest.report);
+  if (filedCount < 1) {
+    emit({
+      phase: "fail",
+      status: "The catalogue was read, but no products were saved.",
+      failedSteps: snap.failedSteps + 1,
+    });
+    toast.error("The catalogue was read, but no products were saved.");
+    return;
+  }
+  const filed = filedCount.toLocaleString("en-NG");
   emit({
     phase: "done",
     report: latest.report,

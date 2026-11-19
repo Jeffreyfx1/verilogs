@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
 import { freshData, normalizeData, quoteProduct, serverLabel, topupQuote, withAdminLogin, type Data, type Product, type SyncReport } from "@/lib/catalog";
 import { customerPrice, profitsOf, sellQuote, summarizeProfit } from "@/lib/pricing";
-import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, shapeImport, airtimeProductsFromPayload, type ImportKind, type ParsedItem } from "@/lib/categorize";
+import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, fiveSimImportPlan, shapeImport, airtimeProductsFromPayload, discoverServiceNames, mergeServiceNames, type ImportKind, type ParsedItem } from "@/lib/categorize";
 import { destinationOf, flattenGetaText, sourceKindOf } from "@/lib/import-source";
 import { instakingCurrency, instakingPost, isInstakingHost, parseInstakingServices, readSmmDetail } from "@/lib/instaking";
 import { catalogStamp, followCatalogPages, walkBrowse } from "@/lib/catalog-pages";
@@ -871,9 +871,8 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
       return { ok: true as const, payload: { instaking: true, items }, currency: reported || undefined };
     }
     if (key && /(^|\.)getatext\.com$/i.test(host) && !url.searchParams.has("api_key")) url.searchParams.set("api_key", key);
-    const barePrices = url.hostname.endsWith("5sim.net") && /\/v1\/guest\/prices\/?$/.test(url.pathname) && !url.searchParams.get("product") && !routed.product;
+    const barePrices = fiveSimImportPlan(url.toString(), allow) === "fanout";
     if (barePrices) {
-      if (!allow.length) return { ok: false as const, error: "Save the service names first." };
       const merged: Record<string, unknown> = {};
       for (const name of allow) {
         const slug = name.toLowerCase().replace(/[^a-z0-9.]+/g, "");
@@ -889,7 +888,7 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
         }
       }
       if (!Object.keys(merged).length) return { ok: false as const, error: "None of the saved services came back from 5sim." };
-      return { ok: true as const, payload: slimFiveSim(merged, "", allow, {}) };
+      return { ok: true as const, payload: slimFiveSim(merged, "", allow, {}), services: discoverServiceNames(merged) };
     }
     if (input.kind === "vtu" && /\/airtime\/?$/i.test(url.pathname)) {
       const plans = new URL("/api/dataplans/?format=json", url.origin);
@@ -930,11 +929,12 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     const at = parts.findIndex((part) => part === "products");
     const place = at >= 0 ? { country: parts[at + 1] || "", operator: parts[at + 2] || "any" } : {};
     const ready = url.hostname.endsWith("5sim.net") ? slimFiveSim(payload, hint, allow, place) : payload;
+    const services = url.hostname.endsWith("5sim.net") ? discoverServiceNames(payload) : [];
     if (/(^|\.)getatext\.com$/i.test(host)) {
       const flat = flattenGetaText(ready);
-      if (flat) return { ok: true as const, payload: flat, fetch: fetchReport, setup: probe.setup };
+      if (flat) return { ok: true as const, payload: flat, fetch: fetchReport, setup: probe.setup, services };
     }
-    return { ok: true as const, payload: ready, fetch: fetchReport, setup: probe.setup };
+    return { ok: true as const, payload: ready, fetch: fetchReport, setup: probe.setup, services };
   } catch {
     return { ok: false as const, error: "Could not reach that API. Check the URL and key." };
   } finally {
@@ -1118,6 +1118,7 @@ type ImportMeta = {
   fetchSetup?: CatalogSetup;
   fetchStatus?: number;
   fetchDiscovered?: number;
+  services?: string[];
 };
 
 
@@ -1142,6 +1143,17 @@ function importKindOf(value: string | undefined): ImportKind {
   return sourceKindOf(value) || "numbers";
 }
 
+async function rememberDiscoveredServices(discovered: string[]) {
+  if (!discovered.length) return;
+  await locked(async () => {
+    const loaded = await loadLight();
+    const wantedServices = mergeServiceNames(loaded.settings.wantedServices || [], discovered);
+    const previous = loaded.settings.wantedServices || [];
+    if (wantedServices.length === previous.length && wantedServices.every((name, index) => name === previous[index])) return;
+    await writeState({ ...loaded, products: [], settings: { ...loaded.settings, wantedServices } });
+  });
+}
+
 export async function beginCatalogImport(input: { url?: string; payload?: unknown; apiKey?: string; providerId?: string; name?: string; baseUrl?: string; currency?: string; usdRate?: number; markup?: number; publish?: boolean; kind?: string; selective?: boolean; setup?: CatalogSetup | null }) {
   const session = await readSession();
   const doc = await loadLight();
@@ -1159,11 +1171,13 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
   let fetchStatus = 0;
   let fetchDiscovered = 0;
   let noted = "";
+  let services: string[] = [];
   if (!selective && input.url) {
     const fetched = await pullRemote({ url: input.url, apiKey: input.apiKey, providerId: input.providerId, allow: kind === "numbers" ? wantedForPull : [], kind, setup: input.setup });
     if (!fetched.ok) return emptyImport(fetched.error);
     payload = fetched.payload;
     if ("currency" in fetched && (fetched.currency === "NGN" || fetched.currency === "USD")) reportedCurrency = fetched.currency;
+    if ("services" in fetched && Array.isArray(fetched.services)) services = fetched.services.filter((name) => typeof name === "string" && name);
     if ("setup" in fetched && fetched.setup?.confirmed) {
       fetchSetup = fetched.setup;
       fetchStatus = "fetch" in fetched && fetched.fetch ? fetched.fetch.status : 200;
@@ -1190,7 +1204,10 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
     ? airtimeProductsFromPayload(payload).map((item) => ({ ...item, category: "airtime" as const, importType: "VTU_IMPORT", serverId: "" }))
     : shapeImport(extracted.items, instakingBundle ? "smm" : kind, !selective && numberLike ? wantedForPull : []);
   const items = (selective ? shaped.slice(0, 200) : shaped) as ParsedItem[];
-  if (!items.length) return emptyImport(selective ? "None of the ticked products could be read." : KIND_EMPTY[kind]);
+  if (!items.length) {
+    if (services.length) await rememberDiscoveredServices(services);
+    return emptyImport(selective ? "None of the ticked products could be read." : KIND_EMPTY[kind]);
+  }
   const jobId = crypto.randomUUID();
   const touched = [...new Set(items.map((item) => `${item.country}|${item.service}`))];
   const categories = [...new Set(items.map((item) => item.category))];
@@ -1209,6 +1226,7 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
     fetchSetup,
     fetchStatus,
     fetchDiscovered,
+    services: services.length ? services : [...new Set(items.map((item) => item.service).filter(Boolean))],
   };
   const sql = await getSql();
   const skipped = extracted.skipped + (extracted.items.length - items.length);
@@ -1372,6 +1390,7 @@ export async function stepCatalogImport(jobId: string) {
       smmRefill: !!item.smmRefill,
     }));
     await upsertProductRows(products, jobId);
+    const ids = [...new Set(items.map((item) => item.externalId).filter(Boolean))];
     tally.created += Math.max(0, items.length - existing);
     tally.updated += existing;
     for (const item of items) {
@@ -1386,8 +1405,13 @@ export async function stepCatalogImport(jobId: string) {
       const touched = JSON.parse(job.touched || "[]") as string[];
       await pruneSyncedProducts(providerId, jobId, touched, meta.categories || [...new Set(items.map((item) => item.category))]);
     }
+    const written = ids.length ? await countExistingProducts(providerId, ids) : 0;
+    if (ids.length && written < ids.length) {
+      throw new Error(`Saved ${written.toLocaleString("en-NG")} of ${ids.length.toLocaleString("en-NG")} products. Nothing was marked complete.`);
+    }
     await locked(async () => {
       const loaded = await loadLight();
+      const wantedServices = mergeServiceNames(loaded.settings.wantedServices || [], meta.services || []);
       const providers = loaded.providers.map((provider) => {
         if (provider.id !== providerId) return provider;
         return {
@@ -1405,7 +1429,7 @@ export async function stepCatalogImport(jobId: string) {
           },
         };
       });
-      await writeState({ ...loaded, providers, products: [] });
+      await writeState({ ...loaded, providers, products: [], settings: { ...loaded.settings, wantedServices } });
     });
     const saved = finalize ? total : Math.min(total, (cursor + 1) * batchSize);
     await sql`update shop_import_jobs set status = ${finalize ? "done" : "running"}, cursor = ${cursor + 1}, created_count = ${tally.created}, updated_count = ${tally.updated}, by_category = ${JSON.stringify(tally.byCategory)}, by_network = ${JSON.stringify(tally.byNetwork)}, provider_id = ${providerId}, meta = ${JSON.stringify(meta)}, error = '' where id = ${jobId}`;
