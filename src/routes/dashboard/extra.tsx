@@ -54,18 +54,18 @@ function orderTotal(row: Product, qty: number, comments: string, span: number, p
 const COPY: Record<Shelf, { title: string; body: string; empty: string }> = {
   vpn: {
     title: "VPN plans",
-    body: "VPN is coming soon. This shelf does not sell imported products.",
-    empty: "VPN is not for sale yet.",
+    body: "VPN is coming soon.",
+    empty: "VPN is coming soon.",
   },
   smm: {
     title: "SMM services",
-    body: "Instaking services, grouped by the provider category. Numbers, logs, airtime and data stay off this shelf.",
-    empty: "No SMM services yet. Import Instaking and turn the rows on.",
+    body: "Social and marketing services.",
+    empty: "No products available yet. Please check back later.",
   },
   random: {
     title: "Buy logs",
-    body: "Logs from Random Import. Pick a platform to see only that subcategory. Unassigned logs stay under All categories.",
-    empty: "No logs are live in this category yet.",
+    body: "Logs grouped by platform.",
+    empty: "No products available yet. Please check back later.",
   },
 };
 

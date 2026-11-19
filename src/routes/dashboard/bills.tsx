@@ -71,7 +71,7 @@ function BillsPage() {
                 <Button busy={buying === p.id} disabled={!!buying} onClick={() => void purchase(p)}>{p.variable ? "Pay" : naira(p.price)}</Button>
               </div>
             ))}
-            {!list.length ? <p className="py-6 text-sm text-muted">Nothing live in this category.</p> : null}
+            {!list.length ? <p className="py-6 text-sm text-muted">No products available yet. Please check back later.</p> : null}
           </div>
         </section>
         <section className="space-y-3 rounded-card border border-line bg-card p-4 shadow-card">

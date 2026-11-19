@@ -171,6 +171,7 @@ function NumbersPage() {
 
       <section className="rounded-[1.4rem] border border-line bg-card p-4">
         <h1 className="text-xl font-extrabold">{title} {usa ? null : <span className="text-sm text-primary">[{active?.label || "Server"}]</span>}</h1>
+        {!countries.length ? <p className="mt-3 text-sm text-muted">No products available yet. Please check back later.</p> : null}
         <label className="mt-4 block text-sm font-extrabold">Country</label>
         <div className="relative mt-1">
           <input
@@ -189,7 +190,7 @@ function NumbersPage() {
                   <span className="text-xs">from {naira(c.price)}</span>
                 </button>
               ))}
-              {!shownCountries.length ? <p className="px-3 py-3 text-sm text-muted">No country matches that search.</p> : null}
+              {!shownCountries.length ? <p className="px-3 py-3 text-sm text-muted">{countryQ ? "No country matches that search." : "No products available yet. Please check back later."}</p> : null}
             </div>
           ) : null}
         </div>

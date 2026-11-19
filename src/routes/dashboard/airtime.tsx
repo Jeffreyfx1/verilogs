@@ -46,7 +46,7 @@ function AirtimePage() {
     <div className="mx-auto max-w-xl space-y-4">
       <h1 className="text-2xl font-extrabold">Airtime</h1>
       <p className="text-sm text-muted">The SIM receives the amount you type. Your wallet pays that same amount.</p>
-      {!products.length ? <p className="text-sm text-muted">No airtime services are live, so a recharge cannot start.</p> : (
+      {!products.length ? <p className="text-sm text-muted">No products available yet. Please check back later.</p> : (
       <div className="grid grid-cols-2 gap-2">
         {products.map((p) => (
           <button key={p.id} type="button" onClick={() => setNet(p.network)} className={`rounded-card border p-4 text-left ${current?.id === p.id ? "border-primary" : "border-line bg-card"}`}>

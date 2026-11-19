@@ -32,6 +32,7 @@ import {
   upsertProductRows,
 } from "@/lib/product-rows.server";
 import { catalogSplitVerified, ensureCatalogSplit } from "@/lib/catalog-split.server";
+import { clearImportedProducts } from "@/lib/catalog-reset.server";
 import { beginPurchaseKey, creditBalance, debitBalance, markPurchaseKey, overlayBalances, reconcilePurchases } from "@/lib/shop-wallet.server";
 import {
   addAnnouncement,
@@ -146,8 +147,14 @@ async function loadLight(): Promise<Data> {
   const rows = await sql<{ doc: string }>`select doc from shop_state where id = 'main'`;
   if (!rows[0]) {
     const doc = freshData();
-    await sql`insert into shop_state (id, doc) values ('main', ${JSON.stringify({ ...doc, products: [] })})`;
-    return doc;
+    const light = { ...doc, products: [] as Data["products"] };
+    await sql`insert into shop_state (id, doc) values ('main', ${JSON.stringify(light)})`;
+    try {
+      await clearImportedProducts();
+    } catch (err) {
+      console.error("catalogue reset skipped", err instanceof Error ? err.message : err);
+    }
+    return overlayBalances(light);
   }
   const parsed = normalizeData(JSON.parse(rows[0].doc) as Data);
   const doc = withAdminLogin(withoutSampleCatalog(parsed));
@@ -161,6 +168,11 @@ async function loadLight(): Promise<Data> {
   }
   const light = { ...doc, products: [] as Data["products"] };
   if (clear) await writeState(light);
+  try {
+    await clearImportedProducts();
+  } catch (err) {
+    console.error("catalogue reset skipped", err instanceof Error ? err.message : err);
+  }
   return overlayBalances(light);
 }
 
@@ -194,6 +206,7 @@ export async function clearNumberCatalog() {
 
 async function writeState(doc: Data) {
   const sql = await getSql();
+  doc = await overlayBalances(doc);
   let products: Data["products"] = [];
   if (!catalogSplitVerified()) {
     const rows = await sql<{ doc: string }>`select doc from shop_state where id = 'main'`;

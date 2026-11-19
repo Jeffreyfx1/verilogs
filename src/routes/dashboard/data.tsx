@@ -75,7 +75,7 @@ function DataPage() {
               <Button busy={buying === p.id} disabled={!!buying} onClick={() => void purchase(p.id)}>{naira(p.price)}</Button>
             </div>
           ))}
-          {!shown.length ? <p className="py-6 text-sm text-muted">No live plans for this network. An admin can enable them from the catalogue.</p> : null}
+          {!shown.length ? <p className="py-6 text-sm text-muted">No products available yet. Please check back later.</p> : null}
         </div>
       </section>
     </div>

@@ -2,18 +2,38 @@ import type { Data, Order } from "@/lib/catalog";
 import { getSql } from "@/lib/db";
 import { uid } from "@/lib/money";
 
+export type BalanceDiff = { userId: string; email: string; sql: number; json: number };
+
+const diffs: BalanceDiff[] = [];
+const diffSeen = new Set<string>();
+
+export function walletDiscrepancies() {
+  return diffs;
+}
+
+/** shop_balances is the only balance that can be read or changed. JSON is never copied over an existing SQL row. */
 export async function overlayBalances(doc: Data): Promise<Data> {
   if (!doc.users.length) return doc;
   const sql = await getSql();
+  const balances = new Map<string, number>();
   for (const user of doc.users) {
-    const balance = Math.round(Number(user.balance) || 0);
-    await sql`insert into shop_balances (user_id, balance) values (${user.id}, ${balance}) on conflict (user_id) do nothing`;
+    const jsonBalance = Math.round(Number(user.balance) || 0);
+    const existing = await sql.query<{ balance: number }>("select balance from shop_balances where user_id = $1", [user.id]);
+    if (!existing[0]) {
+      await sql`insert into shop_balances (user_id, balance) values (${user.id}, ${jsonBalance}) on conflict (user_id) do nothing`;
+      const seeded = await sql.query<{ balance: number }>("select balance from shop_balances where user_id = $1", [user.id]);
+      balances.set(user.id, Number(seeded[0]?.balance) || 0);
+      continue;
+    }
+    const sqlBalance = Number(existing[0].balance) || 0;
+    if (sqlBalance !== jsonBalance && !diffSeen.has(user.id)) {
+      diffSeen.add(user.id);
+      diffs.push({ userId: user.id, email: user.email, sql: sqlBalance, json: jsonBalance });
+      await sql`insert into shop_catalog_backups (id, note, products_json, product_count) values (${"wallet-diff-" + user.id}, ${"user=" + user.email + " sql=" + sqlBalance + " json=" + jsonBalance + " kept=sql"}, '[]', 0) on conflict (id) do nothing`;
+      console.error(`Wallet discrepancy for ${user.email}: SQL kept, JSON differed. They were not added together.`);
+    }
+    balances.set(user.id, sqlBalance);
   }
-  const rows = await sql.query<{ user_id: string; balance: number }>(
-    "select user_id, balance from shop_balances where user_id = any($1::text[])",
-    [doc.users.map((user) => user.id)],
-  );
-  const balances = new Map(rows.map((row) => [row.user_id, Number(row.balance) || 0]));
   return {
     ...doc,
     users: doc.users.map((user) => (balances.has(user.id) ? { ...user, balance: balances.get(user.id) || 0 } : user)),
@@ -57,21 +77,16 @@ export async function creditBalance(userId: string, amount: number, ref: string,
   if (amt === 0 || !ref) return { ok: false, balance: await balanceOf(userId), applied: false };
   const id = uid("led");
   const rows = await sql.query<{ balance_after: number }>(
-    `with attempt as (
-       insert into shop_ledger (id, user_id, kind, amount, balance_after, note, ref)
-       values ($4, $1, $6, $2, 0, $5, $3)
-       on conflict (ref) where ref <> '' do nothing
-       returning id
-     ), upd as (
+    `with upd as (
        update shop_balances
        set balance = balance + $2, updated_at = now()
-       where user_id = $1 and exists (select 1 from attempt)
+       where user_id = $1
+         and not exists (select 1 from shop_ledger where ref = $3)
        returning balance
      )
-     update shop_ledger set balance_after = upd.balance
-     from upd
-     where shop_ledger.id in (select id from attempt)
-     returning shop_ledger.balance_after`,
+     insert into shop_ledger (id, user_id, kind, amount, balance_after, note, ref)
+     select $4, $1, $6, $2, upd.balance, $5, $3 from upd
+     returning balance_after`,
     [userId, amt, ref, id, note.slice(0, 240), kind],
   );
   if (rows[0]) return { ok: true, balance: Number(rows[0].balance_after) || 0, applied: true };
