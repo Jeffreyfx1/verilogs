@@ -5,22 +5,24 @@ import { toast } from "sonner";
 import { GooglePicker } from "@/components/google-picker";
 import { PromoBanners } from "@/components/promos";
 import { Button, Field, inputClass, Logo } from "@/components/ui";
+import { normalizeReferralCode } from "@/lib/referral";
 import { useStore, useUser } from "@/lib/store";
 
 export const Route = createFileRoute("/register")({
   validateSearch: (search: Record<string, unknown>): { ref?: string } => {
-    const ref = typeof search.ref === "string" ? search.ref.slice(0, 24) : "";
-    return ref ? { ref } : {};
+    const parsed = normalizeReferralCode(typeof search.ref === "string" ? search.ref : "");
+    return parsed.ok && parsed.code ? { ref: parsed.code } : {};
   },
   component: RegisterPage,
 });
 
 function RegisterPage() {
-  const { ref } = Route.useSearch();
+  const { ref = "" } = Route.useSearch();
   const user = useUser();
   const register = useStore((s) => s.register);
   const nav = useNavigate();
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", confirm: "" });
+  const [referral, setReferral] = useState(ref);
   const [terms, setTerms] = useState(false);
   const [remember, setRemember] = useState(true);
   const [show, setShow] = useState(false);
@@ -31,6 +33,18 @@ function RegisterPage() {
     if (user) nav({ to: "/dashboard", replace: true });
   }, [user, nav]);
 
+  const onReferral = (value: string) => {
+    const next = value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
+    setReferral(next);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const parsed = normalizeReferralCode(next);
+    if (!next) url.searchParams.delete("ref");
+    else if (parsed.ok && parsed.code) url.searchParams.set("ref", parsed.code);
+    else return;
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!terms) return toast.error("Agree to the terms to create an account.");
@@ -38,7 +52,7 @@ function RegisterPage() {
     if (form.phone.trim().length < 8) return toast.error("Enter a real phone number.");
     setBusy(true);
     try {
-      const err = await register({ ...form, remember, referral: ref });
+      const err = await register({ ...form, remember, referral });
       if (err) toast.error(err);
       else nav({ to: "/dashboard" });
     } catch {
@@ -66,6 +80,9 @@ function RegisterPage() {
             </span>
           </Field>
           <Field label="Confirm password"><input className={inputClass} type={show ? "text" : "password"} required value={form.confirm} onChange={set("confirm")} placeholder="Repeat password" /></Field>
+          <Field label="Referral code (optional)" hint="Filled in automatically from a referral link. Leave blank if you were not invited.">
+            <input className={inputClass} value={referral} onChange={(e) => onReferral(e.target.value)} placeholder="Referral code" autoCapitalize="characters" autoComplete="off" spellCheck={false} maxLength={16} />
+          </Field>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
             Remember me on this device

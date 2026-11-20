@@ -14,7 +14,7 @@ import {
   type Ticket,
   type User,
 } from "@/lib/catalog";
-import { makeReferralCode } from "@/lib/referral";
+import { attributeReferral, makeReferralCode } from "@/lib/referral";
 import { uid } from "@/lib/money";
 import { AIRTIME_CLOSED, BILL_CLOSED, SMM_CLOSED, airtimeSalesOpen, isRetiredBill, smmSalesOpen } from "@/lib/purchase-history";
 
@@ -82,8 +82,8 @@ export async function registerUser(data: Data, input: { name: string; email: str
   if (input.password.length < 8) return { error: "Use at least 8 characters.", data };
   if (input.phone.trim().length < 8) return { error: "Enter a real phone number.", data };
   const taken = new Set(data.users.map((user) => String(user.referralCode || "").toUpperCase()).filter(Boolean));
-  const code = String(input.referralCode || "").trim().toUpperCase();
-  const referrer = code ? data.users.find((user) => String(user.referralCode || "").toUpperCase() === code) : undefined;
+  const link = attributeReferral({ code: input.referralCode || "", email: clean, users: data.users });
+  if (link.error) return { error: link.error, data };
   const user: User = {
     id: uid("usr"),
     name: input.name.trim(),
@@ -95,7 +95,7 @@ export async function registerUser(data: Data, input: { name: string; email: str
     balance: 0,
     createdAt: new Date().toISOString(),
     referralCode: makeReferralCode(input.name, taken, uid("ref")),
-    referredBy: referrer && referrer.email !== clean ? referrer.id : "",
+    referredBy: link.referrerId,
   };
   let next = { ...data, users: [...data.users, user] };
   next = pushNote(next, user.id, "Welcome to VeriLogs", "Your account is ready. Fund the wallet with Paystack, then buy a number, data or a bill.", "account");
