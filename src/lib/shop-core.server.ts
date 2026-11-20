@@ -191,7 +191,7 @@ async function clearNumberImports() {
   const sql = await getSql();
   const { readFileSync } = await import("node:fs");
   const { join } = await import("node:path");
-  const text = readFileSync(join(process.cwd(), "migrations/0016_clear_stale_numbers.sql"), "utf8");
+  const text = readFileSync(join(process.cwd(), "scripts/number-catalogue-reset.sql"), "utf8");
   await sql.query(text);
 }
 

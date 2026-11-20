@@ -4,7 +4,8 @@ services:
     runtime: node
     plan: pro
     region: frankfurt
-    buildCommand: npm install && NITRO_PRESET=node-server npm run build
+    buildCommand: npm install && NITRO_PRESET=node-server node scripts/with-app-env.mjs vite build && node scripts/copy-pglite-assets.mjs
+    preDeployCommand: node scripts/migrate.mjs
     startCommand: node .output/server/index.mjs
     envVars:
       - key: NODE_VERSION

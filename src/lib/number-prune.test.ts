@@ -91,7 +91,7 @@ test("number catalogue reset removes server rows and leaves GetaText and other c
     { id: "logs-1", category: "logs" },
   ])]);
 
-  await db.exec(readFileSync(new URL("../../migrations/0016_clear_stale_numbers.sql", import.meta.url), "utf8"));
+  await db.exec(readFileSync(new URL("../../scripts/number-catalogue-reset.sql", import.meta.url), "utf8"));
 
   const products = await db.query<{ id: string }>("select id from shop_products order by id");
   assert.deepEqual(products.rows.map((row) => row.id), ["logs-1", "smm-1", "usa-1", "usa-old", "vpn-1"]);
