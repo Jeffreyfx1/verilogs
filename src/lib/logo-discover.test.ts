@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyCategoryLogo, matchCategories, parseAccsZoneHtml } from "./logo-discover.ts";
+import { applyCategoryLogo, matchCategories, parseAccsZoneHtml, selectableLogoCategories } from "./logo-discover.ts";
 
 const html = `
 <a href="https://accszone.com/all_ads/buy-facebook-accounts" class="mega-title">
@@ -75,6 +75,31 @@ test("known service groups inherit one category logo and custom images stay", ()
   assert.equal(plain.price, 1500);
   assert.equal(plain.name, "FB page");
   assert.equal(custom.imageUrl, "https://cdn.example.com/custom.png");
+});
+
+test("enable all only selects discovered logos and does not change a service", () => {
+  const rows = [
+    { category: "Facebook Followers", imageUrl: "https://accszone.com/uploads/fb.png" },
+    { category: "Instagram Views", imageUrl: "https://accszone.com/uploads/ig.jpg" },
+    { category: "TikTok Followers", imageUrl: "https://accszone.com/uploads/tt.png" },
+    { category: "Threads Accounts", imageUrl: "https://accszone.com/uploads/th.jpg" },
+    { category: "Telegram", imageUrl: "https://accszone.com/uploads/tg.jpg" },
+    { category: "Other", imageUrl: "" },
+    { category: "Facebook Followers", imageUrl: "https://accszone.com/uploads/fb.png" },
+  ];
+  const picked = selectableLogoCategories(rows);
+  assert.deepEqual(picked, ["Facebook Followers", "Instagram Views", "TikTok Followers", "Threads Accounts", "Telegram"]);
+  const afterOneOff = picked.filter((name) => name !== "TikTok Followers");
+  assert.deepEqual(afterOneOff, ["Facebook Followers", "Instagram Views", "Threads Accounts", "Telegram"]);
+  const logos = { "Facebook Followers": rows[0].imageUrl };
+  const own = applyCategoryLogo({ name: "Custom facebook", price: 2200, subcategory: "Facebook Followers", imageUrl: "https://cdn.example.com/custom.png" }, logos);
+  const empty = applyCategoryLogo({ name: "Facebook followers pack", price: 1500, subcategory: "Facebook Followers", imageUrl: "" }, logos);
+  assert.equal(own.imageUrl, "https://cdn.example.com/custom.png");
+  assert.equal(own.name, "Custom facebook");
+  assert.equal(own.price, 2200);
+  assert.equal(empty.imageUrl, rows[0].imageUrl);
+  assert.equal(empty.name, "Facebook followers pack");
+  assert.equal(empty.price, 1500);
 });
 
 test("a stored category logo does not rewrite service rows", async () => {

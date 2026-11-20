@@ -18,6 +18,14 @@ export const Route = createFileRoute("/dashboard/extra")({ component: ExtraPage 
 const SMM_GROUPS = ["Instagram", "TikTok", "YouTube", "Facebook", "X (Twitter)", "Telegram", "Snapchat", "Twitch", "Audiomack", "Other"];
 const DELAYS = [0, 5, 10, 15, 30, 60, 90];
 
+function ServiceLogo({ row, large }: { row: Product; large?: boolean }) {
+  const box = large ? "size-16 rounded-2xl sm:size-20" : "size-12 rounded-xl";
+  if (row.imageUrl) {
+    return <img src={row.imageUrl} alt="" className={`${box} shrink-0 bg-slate-100 object-contain`} onError={(e) => { e.currentTarget.style.display = "none"; }} />;
+  }
+  return <span className={`flex ${box} shrink-0 items-center justify-center bg-slate-100 font-extrabold text-slate-500 ${large ? "text-lg" : "text-sm"}`}>{(row.subcategory || row.name || "?").slice(0, 1)}</span>;
+}
+
 function facts(row: Product) {
   return [row.subcategory, row.category, row.service, row.country, row.network, row.operator, row.validity, row.stock > 0 ? `${row.stock} in stock` : ""].filter(Boolean).join(" · ");
 }
@@ -305,8 +313,13 @@ export function Marketplace({ kind }: { kind: Shelf }) {
           <button type="button" className="mb-3 inline-flex items-center gap-1 text-sm font-bold text-slate-700" onClick={() => { setOpen(null); setQty(1); }}>
             <Glyph icon={glyph.back} className="size-4" /> Back to products
           </button>
-          <p className="text-xs font-bold uppercase tracking-wide text-[#0c6e8a]">{[open.subcategory, open.category || "Product"].filter(Boolean).join(" · ")}</p>
-          <h2 className="mt-1 text-xl font-extrabold leading-snug break-words">{open.name}</h2>
+          <div className="flex items-start gap-3">
+            <ServiceLogo row={open} large />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold uppercase tracking-wide text-[#0c6e8a]">{[open.subcategory, open.category || "Product"].filter(Boolean).join(" · ")}</p>
+              <h2 className="mt-1 text-xl font-extrabold leading-snug break-words">{open.name}</h2>
+            </div>
+          </div>
           <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed break-words text-slate-700">{open.description || facts(open)}</p>
           <p className="mt-2 text-sm text-slate-600">{facts(open)}</p>
           <Checkout
@@ -353,7 +366,7 @@ export function Marketplace({ kind }: { kind: Shelf }) {
             {shown.map((row) => (
               <article key={row.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                 <div className="flex items-start gap-3">
-                  {row.imageUrl ? <img src={row.imageUrl} alt="" className="size-12 shrink-0 rounded-xl bg-slate-100 object-contain" onError={(e) => { e.currentTarget.style.display = "none"; }} /> : <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm font-extrabold text-slate-500">{(row.subcategory || row.name || "?").slice(0, 1)}</span>}
+                  <ServiceLogo row={row} />
                   <div className="min-w-0">
                     <p className="text-[11px] font-bold text-[#0c6e8a]">{[row.subcategory, row.category === "logs" ? "" : row.category, row.service].filter(Boolean).join(" · ")}</p>
                     <p className="mt-1 text-sm font-extrabold leading-snug break-words text-slate-900">{row.name}</p>

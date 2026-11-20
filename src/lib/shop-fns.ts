@@ -370,7 +370,7 @@ export const scanCategoryLogos = createServerFn({ method: "POST" }).handler(asyn
 
 export const importCategoryLogos = createServerFn({ method: "POST" })
   .validator((input: { categories?: string[]; allHigh?: boolean; replace?: boolean }) => ({
-    categories: Array.isArray(input?.categories) ? input.categories.map((name) => String(name || "").slice(0, 80)).slice(0, 80) : [],
+    categories: Array.isArray(input?.categories) ? input.categories.map((name) => String(name || "").slice(0, 80)).slice(0, 500) : [],
     allHigh: !!input?.allHigh,
     replace: !!input?.replace,
   }))

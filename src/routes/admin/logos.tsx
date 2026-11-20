@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
 import { importCategoryLogos, logoManager, refreshCategoryLogos, saveManualCategoryLogo, scanCategoryLogos } from "@/lib/shop-fns";
+import { selectableLogoCategories } from "@/lib/logo-discover";
 
 export const Route = createFileRoute("/admin/logos")({ component: LogoManager });
 
@@ -70,6 +71,14 @@ function LogoManager() {
   };
 
   const shown = onlyMissing ? rows.filter((row) => !row.stored?.imageUrl) : rows;
+  const available = selectableLogoCategories(rows);
+
+  const enableAll = () => {
+    setOnlyMissing(false);
+    setPicked(available);
+    if (!available.length) toast.error("No category logos to select. Scan first.");
+    else toast.success(`${available.length} logos selected. Nothing was imported.`);
+  };
 
   return (
     <div className="space-y-4">
@@ -80,6 +89,8 @@ function LogoManager() {
           <Button busy={busy === "scan"} onClick={() => void scan()}>Scan AccsZone</Button>
           <Button tone="soft" busy={busy === "all"} onClick={() => void runImport(true)}>Import high-confidence matches</Button>
           <Button tone="soft" busy={busy === "some"} onClick={() => void runImport(false)}>Import selected</Button>
+          <Button tone="soft" onClick={enableAll}>Enable all</Button>
+          <Button tone="soft" onClick={() => setPicked([])}>Deselect all</Button>
           <Button tone="soft" busy={busy === "refresh"} onClick={() => {
             setBusy("refresh");
             void refreshCategoryLogos().then((res) => {
@@ -93,6 +104,7 @@ function LogoManager() {
           <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />
           Replace an approved logo. Required for ambiguous matches and manual replacements.
         </label>
+        <p className="mt-3 text-sm font-semibold">{picked.length} logo{picked.length === 1 ? "" : "s"} selected. Enable all only ticks them. Import still has to be pressed, and replacing an approved logo still needs the checkbox.</p>
         <p className="mt-3 text-sm text-muted">{summary.fetchedAt ? `Last scan ${summary.fetchedAt}. ` : "No scan yet. "}{summary.discovered} AccsZone categories, {summary.listingImages} listing images recorded, {summary.moreLinks} further pages not fully crawled. {summary.high} high-confidence matches, {summary.ambiguous} need approval, {summary.missing} categories have no logo. {summary.covered} services can inherit a stored logo.</p>
         {summary.note ? <p className="mt-1 text-xs text-muted">{summary.note}</p> : null}
         {errors.length ? <p className="mt-1 text-xs text-danger">{errors.join(" ")}</p> : null}

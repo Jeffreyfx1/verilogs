@@ -203,6 +203,19 @@ export function applyCategoryLogo<T extends { imageUrl?: string; subcategory?: s
   return url ? { ...row, imageUrl: url } : row;
 }
 
+/** Names an admin can tick for the next import. Does not import or replace anything. */
+export function selectableLogoCategories(rows: Array<{ category?: string; imageUrl?: string }>) {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const category = String(row.category || "").trim();
+    if (!category || !String(row.imageUrl || "").trim() || seen.has(category)) continue;
+    seen.add(category);
+    names.push(category);
+  }
+  return names;
+}
+
 export function duplicateListingUrls(listings: DiscoveredListing[]) {
   const counts = new Map<string, number>();
   for (const listing of listings) counts.set(listing.imageUrl, (counts.get(listing.imageUrl) || 0) + 1);
