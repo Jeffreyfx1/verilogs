@@ -3,7 +3,7 @@ import { getSql } from "@/lib/db";
 import { cleanFieldMap, cleanPageMap, lastPageOf, mapLogProducts, publicHttpsUrl, type MappedLog } from "@/lib/logs-map";
 import { uid } from "@/lib/money";
 import { customerPrice, profitsOf } from "@/lib/pricing";
-import { upsertProductRows } from "@/lib/product-rows.server";
+import { logoGaps, paintProductLogos, upsertProductRows } from "@/lib/product-rows.server";
 
 type LogRow = {
   id: string;
@@ -342,4 +342,38 @@ export async function importLogProvider(id: string, resume = false) {
   }
   await remember(id, { status: "imported", error: "", imported, page: pageNumber });
   return { error: null as string | null, imported, created: imported };
+}
+
+/** Fetches provider logos and writes image URLs only. Products, prices and ids are not changed. */
+export async function refreshLogLogos(id: string) {
+  const row = await readRow(id);
+  if (!row) return { error: "That provider was not found.", updated: 0, missing: 0, categories: [] as string[] };
+  if (!row.enabled) return { error: "Enable the provider before refreshing logos.", updated: 0, missing: 0, categories: [] as string[] };
+  const providerId = row.provider_id || await ensureShopProvider(row);
+  const fields = cleanFieldMap(jsonObject(row.field_map));
+  const page = cleanPageMap(jsonObject(row.pagination_json));
+  let pageNumber = page.pageStart;
+  let updated = 0;
+  let guard = 0;
+  const seen = new Set<string>();
+  while (guard < 40) {
+    guard += 1;
+    const called = await callProvider(row, pageNumber);
+    if (!called.ok) {
+      const gaps = await logoGaps(providerId);
+      return { error: called.error, updated, missing: gaps.missing, categories: gaps.categories };
+    }
+    const all = mapLogProducts(called.body, fields);
+    const mapped = all.filter((item) => {
+      if (!item.imageUrl || seen.has(item.externalId)) return false;
+      seen.add(item.externalId);
+      return true;
+    });
+    if (mapped.length) updated += await paintProductLogos(providerId, mapped.map((item) => ({ externalId: item.externalId, imageUrl: item.imageUrl })));
+    const last = page.mode === "page" ? lastPageOf(called.body, page) : 0;
+    if (page.mode !== "page" || !all.length || (last && pageNumber >= last)) break;
+    pageNumber += 1;
+  }
+  const gaps = await logoGaps(providerId);
+  return { error: null as string | null, updated, missing: gaps.missing, categories: gaps.categories };
 }

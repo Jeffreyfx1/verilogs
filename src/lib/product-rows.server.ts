@@ -1,5 +1,6 @@
 import type { Product } from "@/lib/catalog";
 import { getSql } from "@/lib/db";
+import { publicImage } from "@/lib/logs-map";
 import { SHELF_CATEGORIES, shelfOf } from "@/lib/shelves";
 
 const COLS = 27;
@@ -267,6 +268,63 @@ export async function setProductSubcategory(id: string, subcategory: string) {
     [id, name],
   );
   return !!rows[0];
+}
+
+/** Updates the logo only. Name, price, category and provider id stay as they are. */
+export async function setProductImage(id: string, imageUrl: string) {
+  const url = publicImage(imageUrl);
+  if (!id || !url) return false;
+  const sql = await getSql();
+  const rows = await sql.query<{ id: string }>(
+    "update shop_products set image_url = $2 where id = $1 returning id",
+    [id, url],
+  );
+  return !!rows[0];
+}
+
+export async function paintProductLogos(providerId: string, rows: Array<{ externalId: string; imageUrl: string }>) {
+  const usable = rows.filter((row) => row.externalId && publicImage(row.imageUrl));
+  if (!providerId || !usable.length) return 0;
+  const sql = await getSql();
+  let updated = 0;
+  for (let i = 0; i < usable.length; i += 80) {
+    const slice = usable.slice(i, i + 80);
+    const values: unknown[] = [providerId];
+    const pairs = slice.map((row) => {
+      values.push(row.externalId, publicImage(row.imageUrl));
+      const id = values.length - 1;
+      return `($${id - 1}::text, $${id}::text)`;
+    });
+    const written = await sql.query<{ id: string }>(
+      `update shop_products as product
+       set image_url = logo.image_url
+       from (values ${pairs.join(",")}) as logo(external_id, image_url)
+       where product.provider_id = $1
+         and product.external_id = logo.external_id
+         and logo.image_url <> ''
+         and product.image_url is distinct from logo.image_url
+       returning product.id`,
+      values,
+    );
+    updated += written.length;
+  }
+  return updated;
+}
+
+export async function logoGaps(providerId: string) {
+  if (!providerId) return { missing: 0, categories: [] as string[] };
+  const sql = await getSql();
+  const rows = await sql.query<{ missing: string; category: string }>(
+    `select count(*) filter (where coalesce(image_url, '') = '')::text as missing,
+            coalesce(marketplace_subcategory, '') as category
+     from shop_products
+     where provider_id = $1 and category in ('logs', 'smm')
+     group by marketplace_subcategory`,
+    [providerId],
+  );
+  const missing = rows.reduce((sum, row) => sum + (Number(row.missing) || 0), 0);
+  const categories = rows.filter((row) => Number(row.missing) > 0).map((row) => row.category || "Uncategorized");
+  return { missing, categories };
 }
 
 export async function lockListing(id: string, patch: { description: string; price: number }) {

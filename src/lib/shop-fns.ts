@@ -339,6 +339,23 @@ export const runLogImport = createServerFn({ method: "POST" })
     return importLogProvider(data.id, data.resume);
   });
 
+export const refreshLogos = createServerFn({ method: "POST" })
+  .validator((input: { id?: string }) => ({ id: String(input?.id || "") }))
+  .handler(async ({ data }) => {
+    await adminOnly();
+    const { refreshLogLogos } = await import("@/lib/logs-import.server");
+    return refreshLogLogos(data.id);
+  });
+
+export const saveProductLogo = createServerFn({ method: "POST" })
+  .validator((input: { id?: string; imageUrl?: string }) => ({ id: String(input?.id || ""), imageUrl: String(input?.imageUrl || "").slice(0, 400) }))
+  .handler(async ({ data }) => {
+    await adminOnly();
+    const { setProductImage } = await import("@/lib/product-rows.server");
+    const saved = await setProductImage(data.id, data.imageUrl);
+    return saved ? { error: null as string | null } : { error: "Enter a product and an https logo URL from the provider." };
+  });
+
 export const myReferrals = createServerFn({ method: "GET" }).handler(async () => {
   const { sessionCustomer } = await core();
   const me = await sessionCustomer();

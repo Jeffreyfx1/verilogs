@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Button, inputClass } from "@/components/ui";
 import { CATEGORY_LABEL, type Product } from "@/lib/catalog";
 import { naira } from "@/lib/money";
-import { browseCatalog } from "@/lib/shop-fns";
+import { browseCatalog, saveProductLogo } from "@/lib/shop-fns";
 import { useServers, useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/catalog")({ component: CatalogPage });
@@ -34,6 +34,7 @@ function CatalogPage() {
   const [price, setPrice] = useState("");
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState("");
+  const [logo, setLogo] = useState("");
   const [loading, setLoading] = useState(true);
   const settings = useStore((s) => s.settings);
   const saveSettings = useStore((s) => s.saveSettings);
@@ -89,6 +90,7 @@ function CatalogPage() {
     setEditId(product.id);
     setDraft(product.description || "");
     setPrice(product.variable ? "" : String(product.price));
+    setLogo(product.imageUrl || "");
     setNote("");
   };
   const saveEdit = async () => {
@@ -199,6 +201,10 @@ function CatalogPage() {
                     <Button busy={saving} onClick={() => void saveEdit()}>{saving ? "Saving" : "Save"}</Button>
                   </div>
                   {note ? <p className="text-xs text-danger sm:col-span-2">{note}</p> : <p className="text-xs text-muted sm:col-span-2">Saving locks this description and price so a later import will not overwrite them.</p>}
+                  <div className="flex flex-col gap-2 sm:col-span-2 sm:flex-row">
+                    <input className={inputClass} value={logo} onChange={(e) => setLogo(e.target.value)} placeholder="https:// logo from the provider" aria-label="Logo URL" />
+                    <Button tone="soft" onClick={() => void saveProductLogo({ data: { id: p.id, imageUrl: logo.trim() } }).then((res) => res.error ? toast.error(res.error) : toast.success("Logo updated. Name and price were not changed."))}>Save logo only</Button>
+                  </div>
                 </div>
               ) : null}
               {p.category === "logs" || p.category === "smm" ? (

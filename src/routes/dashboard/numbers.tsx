@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { Glyph, glyph } from "@/components/icons";
 import { toast } from "sonner";
@@ -6,6 +6,7 @@ import { BtnSpinner, inputClass } from "@/components/ui";
 import type { Product } from "@/lib/catalog";
 import { naira, when } from "@/lib/money";
 import { browseNumbers } from "@/lib/shop-fns";
+import { restoreSlot, type NumberSlot } from "@/lib/number-slots";
 import { withTimeout } from "@/lib/with-timeout";
 import { useServers, useStore, useUser } from "@/lib/store";
 
@@ -57,10 +58,17 @@ function NumbersPage() {
   const usa = kind === "usa";
   const activeId = usa ? "" : liveServers.some((s) => s.id === server) ? server : liveServers[0]?.id || "";
   const active = servers.find((s) => s.id === activeId);
-  const [countryName, setCountryName] = useState(usa ? "usa" : lockedCountry);
+  const slotKey = usa ? "usa" : activeId || "none";
+  const memory = useRef<Record<string, NumberSlot>>({});
+  const seeded = useRef(false);
+  if (!seeded.current) {
+    seeded.current = true;
+    memory.current[slotKey] = { country: usa ? "usa" : lockedCountry, service: preset };
+  }
+  const [countryName, setCountryName] = useState(memory.current[slotKey]?.country || (usa ? "usa" : ""));
   const [countryQ, setCountryQ] = useState("");
   const [countryOpen, setCountryOpen] = useState(false);
-  const [service, setService] = useState(preset);
+  const [service, setService] = useState(memory.current[slotKey]?.service || "");
   const [serviceQ, setServiceQ] = useState("");
   const [serviceOpen, setServiceOpen] = useState(false);
   const [countries, setCountries] = useState<Product[]>([]);
@@ -68,81 +76,135 @@ function NumbersPage() {
   const [operators, setOperators] = useState<Product[]>([]);
   const [picked, setPicked] = useState(false);
   const [loadingOps, setLoadingOps] = useState(false);
+  const [loadingServices, setLoadingServices] = useState(false);
+  const [countriesReady, setCountriesReady] = useState(false);
   const [opsError, setOpsError] = useState("");
+  const [notice, setNotice] = useState("");
   const want = usa ? "usa" : kind === "rent" ? "rent" : "number";
+  const countryGen = useRef(0);
+  const serviceGen = useRef(0);
+  const opGen = useRef(0);
+
+  const remember = (country: string, nextService: string) => {
+    memory.current[slotKey] = { country, service: nextService };
+    setCountryName(country);
+    setService(nextService);
+  };
 
   useEffect(() => {
-    if (usa) setCountryName("usa");
-  }, [usa]);
-
-  useEffect(() => {
+    const slot = memory.current[slotKey] || { country: usa ? "usa" : "", service: "" };
+    setCountryName(usa ? "usa" : slot.country);
+    setService(slot.service);
+    setCountryQ("");
+    setServiceQ("");
+    setCountryOpen(false);
+    setServiceOpen(false);
     setOperators([]);
     setCountries([]);
     setServices([]);
     setPicked(false);
     setOpsError("");
-  }, [activeId]);
+    setNotice("");
+    setLoadingOps(false);
+    setCountriesReady(usa);
+  }, [slotKey, usa]);
 
   useEffect(() => {
-    let stop = false;
+    const token = ++countryGen.current;
     if (usa) return;
     browseNumbers({ data: { providerId: activeId, category: want, list: "countries" } })
-      .then((res) => { if (!stop) setCountries(res.countries); })
-      .catch(() => { if (!stop) setCountries([]); });
-    return () => { stop = true; };
-  }, [activeId, want]);
+      .then((res) => {
+        if (token !== countryGen.current) return;
+        const list = Array.isArray(res?.countries) ? res.countries : [];
+        setCountries(list);
+        setCountriesReady(true);
+        const saved = memory.current[slotKey];
+        const country = restoreSlot(saved, list.map((row) => row.country), [], "").country;
+        if (saved?.country && !country) {
+          memory.current[slotKey] = { country: "", service: "" };
+          setCountryName("");
+          setService("");
+          setPicked(false);
+          setOperators([]);
+          setNotice("That country is not on this server. Choose another.");
+        } else if (country && country !== saved?.country) {
+          memory.current[slotKey] = { country, service: saved?.service || "" };
+          setCountryName(country);
+        }
+      })
+      .catch(() => {
+        if (token !== countryGen.current) return;
+        setCountries([]);
+        setCountriesReady(true);
+      });
+    return () => { countryGen.current += 1; };
+  }, [activeId, want, usa, slotKey]);
 
   useEffect(() => {
+    const token = ++serviceGen.current;
     if (!countryName) {
       setServices([]);
+      setLoadingServices(false);
       return;
     }
-    let stop = false;
+    setLoadingServices(true);
     const timer = setTimeout(() => {
       withTimeout(browseNumbers({ data: { providerId: activeId, category: want, country: countryName, list: "services", q: serviceQ } }))
-        .then((res) => { if (!stop) setServices(res.services); })
-        .catch(() => { if (!stop) setServices([]); });
+        .then((res) => {
+          if (token !== serviceGen.current) return;
+          const list = Array.isArray(res?.services) ? res.services : [];
+          setServices(list);
+          if (serviceQ.trim()) return;
+          const saved = memory.current[slotKey];
+          const next = restoreSlot(saved, [countryName], list.map((row) => row.service), usa ? "usa" : "");
+          if (saved?.service && !next.service) {
+            memory.current[slotKey] = { country: next.country || countryName, service: "" };
+            setService("");
+            setPicked(false);
+            setOperators([]);
+            setNotice("That service is not on this server. Choose another.");
+          } else if (next.service && next.service !== service) {
+            setService(next.service);
+          }
+        })
+        .catch(() => {
+          if (token !== serviceGen.current) return;
+          setServices([]);
+        })
+        .finally(() => {
+          if (token === serviceGen.current) setLoadingServices(false);
+        });
     }, 200);
-    return () => { stop = true; clearTimeout(timer); };
-  }, [activeId, want, countryName, serviceQ]);
+    return () => { serviceGen.current += 1; clearTimeout(timer); };
+  }, [activeId, want, countryName, serviceQ, slotKey, usa, service]);
 
   const runSelect = (nextCountry: string, nextService: string) => {
     if (!nextCountry || !nextService) {
       toast.error("Pick a country and a service first.");
       return;
     }
+    const token = ++opGen.current;
     setPicked(true);
     setLoadingOps(true);
     setOpsError("");
+    setNotice("");
     setCountryOpen(false);
     setServiceOpen(false);
+    memory.current[slotKey] = { country: nextCountry, service: nextService };
     withTimeout(browseNumbers({ data: { providerId: activeId, category: want, country: nextCountry, service: nextService, detail: true } }))
-      .then((res) => setOperators(res.operators))
+      .then((res) => {
+        if (token !== opGen.current) return;
+        setOperators(Array.isArray(res?.operators) ? res.operators : []);
+      })
       .catch((err: unknown) => {
+        if (token !== opGen.current) return;
         setOperators([]);
         setOpsError(err instanceof Error && err.message === "timeout" ? "The server list took too long." : "Could not load servers.");
       })
-      .finally(() => setLoadingOps(false));
+      .finally(() => {
+        if (token === opGen.current) setLoadingOps(false);
+      });
   };
-
-  useEffect(() => {
-    if (!preset || !lockedCountry) return;
-    setCountryName(lockedCountry);
-    setService(preset);
-    setPicked(true);
-    setLoadingOps(true);
-    setOpsError("");
-    let stop = false;
-    withTimeout(browseNumbers({ data: { providerId: activeId, category: want, country: lockedCountry, service: preset, detail: true } }))
-      .then((res) => { if (!stop) setOperators(res.operators); })
-      .catch((err: unknown) => {
-        if (stop) return;
-        setOperators([]);
-        setOpsError(err instanceof Error && err.message === "timeout" ? "The server list took too long." : "Could not load servers.");
-      })
-      .finally(() => { if (!stop) setLoadingOps(false); });
-    return () => { stop = true; };
-  }, [preset, lockedCountry, activeId, want]);
 
   const copy = async (value: string) => {
     try {
@@ -174,8 +236,8 @@ function NumbersPage() {
 
       <div className="flex gap-2 overflow-x-auto pb-1">
         <Link to="/dashboard/numbers" search={{ server: "", country: "", kind: "usa", service: "" }} className={`shrink-0 rounded-full border px-4 py-2 text-sm font-extrabold ${usa ? "border-primary bg-primary text-on-primary" : "border-line bg-card text-ink"}`}>USA</Link>
-        {usa ? null : liveServers.map((s) => (
-          <Link key={s.id} to="/dashboard/numbers" search={{ server: s.id, country: lockedCountry, kind, service: preset }} className={`shrink-0 rounded-full border px-4 py-2 text-sm font-extrabold ${s.id === activeId ? "border-primary bg-primary text-on-primary" : "border-line bg-card text-ink"}`}>
+        {liveServers.map((s) => (
+          <Link key={s.id} to="/dashboard/numbers" search={{ server: s.id, country: "", kind: kind === "rent" ? "rent" : "", service: "" }} className={`shrink-0 rounded-full border px-4 py-2 text-sm font-extrabold ${!usa && s.id === activeId ? "border-primary bg-primary text-on-primary" : "border-line bg-card text-ink"}`}>
             {s.label || "Server"}
           </Link>
         ))}
@@ -184,7 +246,7 @@ function NumbersPage() {
 
       <section className="rounded-[1.4rem] border border-line bg-card p-4">
         <h1 className="text-xl font-extrabold">{title} {usa ? null : <span className="text-sm text-primary">[{active?.label || "Server"}]</span>}</h1>
-        {usa ? null : !countries.length ? <p className="mt-3 text-sm text-muted">No products available yet. Please check back later.</p> : null}
+        {usa || !countriesReady ? null : !countries.length ? <p className="mt-3 text-sm text-muted">No products available yet. Please check back later.</p> : null}
         {usa ? null : (
         <>
         <label className="mt-4 block text-sm font-extrabold">Country</label>
@@ -199,7 +261,7 @@ function NumbersPage() {
           {countryOpen ? (
             <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-line bg-card shadow-card">
               {shownCountries.map((c) => (
-                <button key={c.country} type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-primary hover:text-on-primary" onClick={() => { setCountryName(c.country); setCountryQ(""); setCountryOpen(false); setService(""); setPicked(false); setOperators([]); }}>
+                <button key={c.country} type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-primary hover:text-on-primary" onClick={() => { remember(c.country, ""); setCountryQ(""); setCountryOpen(false); setPicked(false); setOperators([]); setNotice(""); }}>
                   <span>{flag(c.country)}</span>
                   <span className="flex-1">{c.country === "United States" ? "USA" : c.country}</span>
                   <span className="text-xs">from {naira(c.price)}</span>
@@ -225,16 +287,17 @@ function NumbersPage() {
             <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-line bg-card shadow-card">
               {!countryName ? <p className="px-3 py-3 text-sm text-muted">Pick a country first.</p> : null}
               {services.map((s) => (
-                <button key={s.service} type="button" className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-primary hover:text-on-primary" onClick={() => { setService(s.service); setServiceQ(""); setServiceOpen(false); setPicked(false); setOperators([]); }}>
+                <button key={s.service} type="button" className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-primary hover:text-on-primary" onClick={() => { remember(countryName, s.service); setServiceQ(""); setServiceOpen(false); setPicked(false); setOperators([]); setNotice(""); }}>
                   <span>{s.service}</span>
                   <span className="text-xs">from {naira(s.price)}</span>
                 </button>
               ))}
-              {usa && !services.length ? <p className="px-3 py-3 text-sm text-muted">No USA services available at the moment. Please check back later.</p> : null}
-              {!usa && countryName && !services.length ? <p className="px-3 py-3 text-sm text-muted">No service matches that search.</p> : null}
+              {usa && !loadingServices && !services.length ? <p className="px-3 py-3 text-sm text-muted">No USA services available at the moment. Please check back later.</p> : null}
+              {!usa && countryName && !loadingServices && !services.length ? <p className="px-3 py-3 text-sm text-muted">{serviceQ.trim() ? "No service matches that search." : "No services are available for this country on this server."}</p> : null}
             </div>
           ) : null}
         </div>
+        {notice ? <p className="mt-2 text-sm text-muted">{notice}</p> : null}
 
         <button type="button" disabled={loadingOps} className="btn-gradient mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-extrabold tracking-wide disabled:opacity-60" onClick={() => { if (!loadingOps) runSelect(countryName, service); }}>
           {loadingOps ? <BtnSpinner /> : null}

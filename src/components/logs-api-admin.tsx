@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
 import { ACCSZONE_MAP, ACCSZONE_PAGE } from "@/lib/logs-map";
 import { naira } from "@/lib/money";
-import { logProviders, previewLogProvider, removeLogProvider, runLogImport, saveLogProvider, testLogProvider } from "@/lib/shop-fns";
+import { logProviders, previewLogProvider, refreshLogos, removeLogProvider, runLogImport, saveLogProvider, saveProductLogo, testLogProvider } from "@/lib/shop-fns";
 
 type ProviderRow = {
   id: string;
@@ -52,6 +52,9 @@ export function LogsApiAdmin() {
   const [form, setForm] = useState(blank);
   const [preview, setPreview] = useState<Array<{ name: string; description: string; imageUrl: string; category: string; subcategory: string; price: number }>>([]);
   const [busy, setBusy] = useState("");
+  const [gaps, setGaps] = useState<Record<string, { missing: number; categories: string[] }>>({});
+  const [logoId, setLogoId] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
 
   const load = () => {
     logProviders().then((list) => setRows(list as ProviderRow[])).catch(() => toast.error("Could not load log providers."));
@@ -77,7 +80,7 @@ export function LogsApiAdmin() {
     }
   };
 
-  const act = async (id: string, kind: "test" | "preview" | "import" | "resume" | "delete") => {
+  const act = async (id: string, kind: "test" | "preview" | "import" | "resume" | "delete" | "logos") => {
     setBusy(id + kind);
     try {
       if (kind === "delete") {
@@ -95,10 +98,15 @@ export function LogsApiAdmin() {
           setPreview(res.rows);
           toast.success(res.rows.length ? "Preview ready" : "The provider returned no products.");
         }
+      } else if (kind === "logos") {
+        const res = await refreshLogos({ data: { id } });
+        setGaps((prev) => ({ ...prev, [id]: { missing: res.missing, categories: res.categories } }));
+        if (res.error) toast.error(res.error);
+        else toast.success(res.updated ? `Updated ${res.updated} logos. Prices and names were not changed.` : "No new logos were returned. Existing products were left as they are.");
       } else {
         const res = await runLogImport({ data: { id, resume: kind === "resume" } });
         if (res.error) toast.error(res.error);
-        else toast.success(`${res.imported} products are in Buy Logs.`);
+        else toast.success(`${res.imported} products are in Logs / VPN.`);
       }
       load();
     } catch {
@@ -111,7 +119,7 @@ export function LogsApiAdmin() {
   return (
     <section className="rounded-card border border-line bg-card p-4 shadow-card">
       <h2 className="font-extrabold">Logs API providers</h2>
-      <p className="mt-1 text-sm text-muted">Every product imported here is filed in Buy Logs only. Add more than one provider. Keys stay on the server.</p>
+      <p className="mt-1 text-sm text-muted">Every product imported here is filed in Logs / VPN only. Add more than one provider. Keys stay on the server.</p>
       <div className="mt-3 grid gap-3">
         {rows.map((row) => (
           <article key={row.id} className="rounded-xl border border-line p-3">
@@ -124,6 +132,7 @@ export function LogsApiAdmin() {
               <div className="flex flex-wrap gap-2">
                 <Button tone="soft" busy={busy === row.id + "test"} onClick={() => void act(row.id, "test")}>Test connection</Button>
                 <Button tone="soft" busy={busy === row.id + "preview"} onClick={() => void act(row.id, "preview")}>Preview</Button>
+                <Button tone="soft" busy={busy === row.id + "logos"} onClick={() => void act(row.id, "logos")}>Refresh logos</Button>
                 <Button busy={busy === row.id + "import"} onClick={() => void act(row.id, "import")}>Import</Button>
                 <Button tone="soft" busy={busy === row.id + "resume"} onClick={() => void act(row.id, "resume")}>Resume</Button>
                 <Button tone="soft" onClick={() => setForm({ ...blank, ...row, apiKey: "", fieldMap: row.fieldMap, paginationJson: row.paginationJson })}>Edit</Button>
@@ -131,6 +140,12 @@ export function LogsApiAdmin() {
                 <Button tone="soft" busy={busy === row.id + "delete"} onClick={() => void act(row.id, "delete")}>Delete</Button>
               </div>
             </div>
+            {gaps[row.id] ? (
+              <p className="mt-2 text-xs text-muted">
+                {gaps[row.id].missing} products still have no API logo.
+                {gaps[row.id].categories.length ? ` Categories: ${gaps[row.id].categories.join(", ")}.` : ""}
+              </p>
+            ) : null}
           </article>
         ))}
       </div>
@@ -149,6 +164,11 @@ export function LogsApiAdmin() {
           ))}
         </div>
       ) : null}
+      <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+        <Field label="Manual logo override" hint="Product id. This changes only the logo."><input className={inputClass} value={logoId} onChange={(e) => setLogoId(e.target.value)} placeholder="Product id" /></Field>
+        <Field label="HTTPS logo URL"><input className={inputClass} value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://" /></Field>
+        <Button tone="soft" onClick={() => void saveProductLogo({ data: { id: logoId.trim(), imageUrl: logoUrl.trim() } }).then((res) => res.error ? toast.error(res.error) : toast.success("Logo saved. The product itself was not changed."))}>Save logo</Button>
+      </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <Field label="Provider name"><input className={inputClass} value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="AccsZone" /></Field>
         <Field label="API base URL"><input className={inputClass} value={form.baseUrl} onChange={(e) => set("baseUrl", e.target.value)} /></Field>

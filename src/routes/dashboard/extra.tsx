@@ -9,6 +9,7 @@ import { naira } from "@/lib/money";
 import { profitsOf, sellQuote } from "@/lib/pricing";
 import { beginPaystack, browseExtras } from "@/lib/shop-fns";
 import { onShelf, type Shelf } from "@/lib/shelves";
+import { EMPTY_CATEGORY, mergeCategories, rowsOf } from "@/lib/shelf-nav";
 import { withTimeout } from "@/lib/with-timeout";
 import { useStore, useUser } from "@/lib/store";
 
@@ -69,7 +70,7 @@ const COPY: Record<Shelf, { title: string; body: string; empty: string }> = {
     empty: "No products available yet. Please check back later.",
   },
   random: {
-    title: "Buy logs",
+    title: "Logs / VPN",
     body: "Browse available digital products and services.",
     empty: "No products available yet. Please check back later.",
   },
@@ -104,7 +105,8 @@ export function Marketplace({ kind }: { kind: Shelf }) {
   const [nextAfter, setNextAfter] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [waiting, setWaiting] = useState(false);
-  const discovered = (remote || []).flatMap((row) => [row.subcategory || "", row.network || ""]);
+  const [known, setKnown] = useState<string[]>([]);
+  const discovered = known;
   const options = groupsFor(kind, settings.marketplaceSubcategories || [], discovered);
   const rateFor = (row: Product) => {
     const provider = providers.find((item) => item.id === row.providerId);
@@ -120,19 +122,22 @@ export function Marketplace({ kind }: { kind: Shelf }) {
     setOpen(null);
     setSub("All");
     setQ("");
+    setKnown([]);
   }, [kind]);
 
   useEffect(() => {
     let stop = false;
+    const request = `${kind}|${sub}|${q}|${after}|${attempt}`;
     setWaiting(true);
     const timer = setTimeout(() => {
       withTimeout(browseExtras({ data: { q, kind, subcategory: sub === "All" ? "" : sub, after } }))
         .then((res) => {
           if (stop) return;
-          const rows = (res?.rows || []).filter((row) => onShelf(row.category, kind));
+          const rows = rowsOf<Product>(res?.rows).filter((row) => onShelf(row.category, kind));
+          setKnown((prev) => mergeCategories(prev, rows.flatMap((row) => [row.subcategory || "", row.network || ""]), sub));
           setRemote((prev) => (after ? [...(prev || []), ...rows] : rows));
           setMore(!!res?.more);
-          setNextAfter(res?.next || "");
+          setNextAfter(typeof res?.next === "string" ? res.next : "");
           setFailed(false);
         })
         .catch(() => {
@@ -149,6 +154,7 @@ export function Marketplace({ kind }: { kind: Shelf }) {
     return () => {
       stop = true;
       clearTimeout(timer);
+      void request;
     };
   }, [q, kind, after, attempt, sub]);
 
@@ -175,6 +181,15 @@ export function Marketplace({ kind }: { kind: Shelf }) {
     });
     return rows;
   }, [items, sort, stockOnly]);
+
+  const chooseCategory = (name: string) => {
+    setSub(name);
+    setAfter("");
+    setNextAfter("");
+    setRemote(null);
+    setFailed(false);
+    setOpen(null);
+  };
 
   const openRow = (row: Product) => {
     const floor = row.category === "smm" && row.smmMin && row.smmMin > 0 ? row.smmMin : 1;
@@ -255,6 +270,14 @@ export function Marketplace({ kind }: { kind: Shelf }) {
           <Link to="/dashboard/wallet" className="mt-1 inline-block text-sm font-bold underline">Fund wallet</Link>
         </div>
       </section>
+      <nav className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+        {sub !== "All" || open ? (
+          <button type="button" className="font-extrabold text-[#174C70]" onClick={() => { if (open) setOpen(null); else chooseCategory("All"); }}>Back</button>
+        ) : null}
+        <button type="button" className="font-bold text-[#174C70]" onClick={() => chooseCategory("All")}>{copy.title}</button>
+        {sub !== "All" ? <span className="text-slate-600">/ {sub}</span> : null}
+        {open ? <span className="min-w-0 truncate text-slate-600">/ {open.name}</span> : null}
+      </nav>
       <input
         className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900"
         placeholder="Search by name"
@@ -262,8 +285,8 @@ export function Marketplace({ kind }: { kind: Shelf }) {
         onChange={(e) => { setQ(e.target.value); setAfter(""); setNextAfter(""); setRemote(null); setOpen(null); }}
       />
       <div className="mt-2 grid grid-cols-2 gap-2">
-        <select className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base" value={sub} onChange={(e) => { setSub(e.target.value); setAfter(""); setNextAfter(""); setRemote(null); setOpen(null); }}>
-          {options.map((name) => <option key={name} value={name}>{name === "All" ? "All categories" : name}</option>)}
+        <select className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base" value={sub} onChange={(e) => chooseCategory(e.target.value)}>
+          {(options.includes(sub) || sub === "All" ? options : [sub, ...options]).map((name) => <option key={name} value={name}>{name === "All" ? "All categories" : name}</option>)}
         </select>
         <select className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base" value={sort} onChange={(e) => setSort(e.target.value)}>
           <option value="popular">Most popular</option>
@@ -325,12 +348,12 @@ export function Marketplace({ kind }: { kind: Shelf }) {
             </p>
           ) : null}
           {loading ? <ProductSkeletons /> : null}
-          {!loading && !shown.length ? <p className="mt-6 text-sm text-slate-500">{copy.empty}</p> : null}
+          {!loading && !shown.length ? <p className="mt-6 text-sm text-slate-500">{sub !== "All" ? EMPTY_CATEGORY : copy.empty}</p> : null}
           <div className="mt-3 grid grid-cols-1 gap-3">
             {shown.map((row) => (
               <article key={row.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                 <div className="flex items-start gap-3">
-                  {row.imageUrl ? <img src={row.imageUrl} alt="" className="size-12 shrink-0 rounded-xl bg-slate-100 object-contain" /> : <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm font-extrabold text-slate-500">{(row.subcategory || row.name || "?").slice(0, 1)}</span>}
+                  {row.imageUrl ? <img src={row.imageUrl} alt="" className="size-12 shrink-0 rounded-xl bg-slate-100 object-contain" onError={(e) => { e.currentTarget.style.display = "none"; }} /> : <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm font-extrabold text-slate-500">{(row.subcategory || row.name || "?").slice(0, 1)}</span>}
                   <div className="min-w-0">
                     <p className="text-[11px] font-bold text-[#0c6e8a]">{[row.subcategory, row.category === "logs" ? "" : row.category, row.service].filter(Boolean).join(" · ")}</p>
                     <p className="mt-1 text-sm font-extrabold leading-snug break-words text-slate-900">{row.name}</p>

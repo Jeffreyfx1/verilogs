@@ -1,6 +1,7 @@
 /** Instaking SMM API. https://instaking.ng/api — POST form fields, not another provider's client. */
 
 import type { ParsedItem } from "@/lib/categorize";
+import { inheritLogos, logoFromRecord } from "@/lib/logs-map";
 
 export const INSTAKING_URL = "https://instaking.ng/api/v1";
 
@@ -124,9 +125,11 @@ export function parseInstakingServices(payload: unknown): ParsedItem[] | null {
       smmMax: max,
       smmType: type,
       smmRefill: refill,
+      imageUrl: logoFromRecord(record),
     });
   }
-  return items.length ? items : null;
+  const withLogos = inheritLogos(items.map((item) => ({ ...item, imageUrl: item.imageUrl || "", group: item.subcategory || item.network || "" })));
+  return withLogos.length ? withLogos.map(({ group: _group, ...item }) => item) : null;
 }
 
 export type SmmOrderFields = {

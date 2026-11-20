@@ -203,7 +203,7 @@ export const IMPORT_CARDS = [
     kind: "random" as const,
     title: "Logs import",
     providerName: "Logs",
-    blurb: "Products imported here appear only in Buy Logs. Add each API in the Logs API providers section.",
+    blurb: "Products imported here appear only in Logs / VPN. Add each API in the Logs API providers section.",
     url: "",
     currency: "USD" as const,
     usdRate: 0,

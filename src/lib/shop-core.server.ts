@@ -1507,6 +1507,7 @@ export async function stepCatalogImport(jobId: string) {
       smmMax: item.smmMax || 0,
       smmType: item.smmType || "",
       smmRefill: !!item.smmRefill,
+      imageUrl: item.imageUrl || "",
     }));
     await upsertProductRows(products, jobId);
     const ids = [...new Set(items.map((item) => item.externalId).filter(Boolean))];

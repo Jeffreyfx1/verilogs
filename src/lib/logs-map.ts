@@ -32,6 +32,10 @@ export type MappedLog = {
 };
 
 const SECRET = /password|passwd|cookie|session|token|secret|credential|otp|2fa|auth.?key/i;
+const BLOCKED_HOST = /^(localhost|127\.|0\.0\.0\.0|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[0-1])\.|\[?::1\]?|metadata|metadata\.google)/i;
+const IMAGE_KEYS = ["image", "image_url", "imageUrl", "logo", "logo_url", "logoUrl", "icon", "icon_url", "iconUrl", "thumbnail", "thumb", "picture", "photo", "avatar", "img", "src"];
+const NESTS = ["category", "subcategory", "service", "platform", "group"];
+const NOT_IMAGE = /\.(html?|php|json|xml|pdf|zip|csv|txt)(\?|$)/i;
 
 export const ACCSZONE_MAP: FieldMap = {
   id: "id",
@@ -117,15 +121,65 @@ function textOf(value: unknown) {
   return "";
 }
 
-function publicImage(value: string) {
-  if (!/^https:\/\/[^\s]+$/i.test(value)) return "";
+function imageText(value: unknown): string {
+  const direct = textOf(value);
+  if (direct) return direct;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  const record = value as Record<string, unknown>;
+  for (const key of ["url", "src", "href", "path", "image", "logo", "icon"]) {
+    const nested = textOf(record[key]);
+    if (nested) return nested;
+  }
+  return "";
+}
+
+/** HTTPS logo from the provider. Extensionless CDN paths are kept. Documents and private URLs are not. */
+export function publicImage(value: string) {
+  const raw = value.trim();
+  if (!raw || /\s/.test(raw)) return "";
+  if (!/^https:\/\//i.test(raw)) return "";
   try {
-    const url = new URL(value);
-    if (!/\.(png|jpe?g|webp|gif|svg|avif)(\?|$)/i.test(url.pathname + url.search)) return "";
+    const url = new URL(raw);
+    if (BLOCKED_HOST.test(url.hostname) || url.hostname.endsWith(".local") || url.hostname.endsWith(".internal")) return "";
+    if (NOT_IMAGE.test(url.pathname)) return "";
     return url.toString().slice(0, 400);
   } catch {
     return "";
   }
+}
+
+/** Prefer the mapped field, then any logo the provider actually returned. */
+export function logoFromRecord(record: Record<string, unknown>, preferredPath = ""): string {
+  const preferred = preferredPath ? publicImage(imageText(dig(record, preferredPath))) : "";
+  if (preferred) return preferred;
+  for (const key of IMAGE_KEYS) {
+    const hit = publicImage(imageText(record[key]));
+    if (hit) return hit;
+  }
+  for (const nest of NESTS) {
+    const child = record[nest];
+    if (!child || typeof child !== "object" || Array.isArray(child)) continue;
+    const box = child as Record<string, unknown>;
+    for (const key of IMAGE_KEYS) {
+      const hit = publicImage(imageText(box[key]));
+      if (hit) return hit;
+    }
+  }
+  return "";
+}
+
+export function inheritLogos<T extends { imageUrl: string; group: string }>(items: T[]): T[] {
+  const byGroup = new Map<string, string>();
+  for (const item of items) {
+    const group = item.group.trim().toLowerCase();
+    if (item.imageUrl && group && !byGroup.has(group)) byGroup.set(group, item.imageUrl);
+  }
+  return items.map((item) => {
+    if (item.imageUrl) return item;
+    const group = item.group.trim().toLowerCase();
+    const shared = group ? byGroup.get(group) || "" : "";
+    return shared ? { ...item, imageUrl: shared } : item;
+  });
 }
 
 function safeDescription(value: string) {
@@ -155,22 +209,21 @@ export function mapLogProducts(payload: unknown, fields: FieldMap): MappedLog[] 
       externalId,
       name,
       description: safeDescription(textOf(dig(record, fields.description))),
-      imageUrl: publicImage(textOf(dig(record, fields.image))),
+      imageUrl: logoFromRecord(record, fields.image),
       category: textOf(dig(record, fields.category)).slice(0, 80),
       subcategory: textOf(dig(record, fields.subcategory)).slice(0, 80),
       price,
       stock,
     });
   }
-  return out;
+  const withLogos = inheritLogos(out.map((row) => ({ ...row, group: row.category })));
+  return withLogos.map(({ group: _group, ...row }) => row);
 }
 
 export function lastPageOf(payload: unknown, page: PageMap) {
   const value = Number(dig(payload, page.lastPagePath));
   return Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
 }
-
-const BLOCKED_HOST = /^(localhost|127\.|0\.0\.0\.0|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[0-1])\.|\[?::1\]?|metadata|metadata\.google)/i;
 
 /** Rejects private, loopback and non-HTTPS targets before a provider request. */
 export function publicHttpsUrl(base: string, path: string): { ok: true; url: URL } | { ok: false; error: string } {

@@ -1,5 +1,6 @@
 import { parseMoney } from "./money.ts";
 import { destinationOf, type SourceKind } from "./import-source.ts";
+import { logoFromRecord } from "./logs-map.ts";
 
 export const MAJOR_SERVICES = [
   "WhatsApp",
@@ -52,6 +53,7 @@ export type ParsedItem = {
   smmMax?: number;
   smmType?: string;
   smmRefill?: boolean;
+  imageUrl?: string;
 };
 
 export type CatalogExtract = { items: ParsedItem[]; skipped: number };
@@ -378,6 +380,7 @@ function toRaw(obj: Record<string, unknown>, ctx: Ctx, path: string[]): (Omit<Pa
     hint,
     importType: "",
     serverId: "",
+    imageUrl: logoFromRecord(obj),
   };
 }
 
