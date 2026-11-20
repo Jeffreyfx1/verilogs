@@ -58,6 +58,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
     { to: "/admin", label: "Overview", icon: glyph.dashboard, end: true },
     { to: "/admin/import", label: "Import services", icon: glyph.download },
     { to: "/admin/catalog", label: "Catalogue", icon: glyph.package },
+    { to: "/admin/logos", label: "Category logos", icon: glyph.store },
     { to: "/admin/airtime", label: "Airtime networks", icon: glyph.phone },
     { to: "/admin/orders", label: "Orders", icon: glyph.scroll },
     { to: "/admin/customers", label: "Customers", icon: glyph.users },

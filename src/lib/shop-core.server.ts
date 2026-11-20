@@ -4,6 +4,7 @@ import { getSql } from "@/lib/db";
 import { freshData, normalizeData, quoteProduct, serverLabel, topupQuote, withAdminLogin, type Data, type Product, type SyncReport } from "@/lib/catalog";
 import { customerPrice, profitsOf, sellQuote, summarizeProfit } from "@/lib/pricing";
 import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, fiveSimImportPlan, shapeImport, attachVtuIds, vtuCatalogueUrl, discoverServiceNames, mergeServiceNames, type ImportKind, type ParsedItem } from "@/lib/categorize";
+import { applyCategoryLogo } from "@/lib/logo-discover";
 import { airtimeCharge, airtimeImportBlock, airtimeOffers, prepareAirtimePurchase, sendAirtimePurchase, withoutAirtimeProducts, type AirtimeRouteRecord } from "@/lib/airtime";
 import { deleteAirtimeNetworkRow, deleteAirtimeRouteRow, listAirtimeRecords, saveAirtimeNetworkRow, saveAirtimeRouteRow } from "@/lib/airtime-rows.server";
 import { destinationOf, flattenGetaText, readGetaTextPrices, sourceKindOf } from "@/lib/import-source";
@@ -1652,7 +1653,9 @@ export async function browseExtras(input: { q?: string; kind?: string; page?: nu
   const providerIds = doc.providers.filter((provider) => provider.enabled).map((provider) => provider.id);
   const kind = input.kind === "vpn" || input.kind === "smm" ? input.kind : "random";
   const page = await queryExtras({ q: (input.q || "").trim(), providerIds, kind, page: input.page, subcategory: (input.subcategory || "").trim(), after: input.after || "" });
-  return { rows: page.rows.map((row) => quoteProduct(row, doc)), more: page.more, next: page.next };
+  const { logoMap } = await import("@/lib/logo-rows.server");
+  const logos = await logoMap();
+  return { rows: page.rows.map((row) => applyCategoryLogo(quoteProduct(row, doc), logos)), more: page.more, next: page.next };
 }
 
 export async function browseCatalog(input: { q?: string; category?: string; providerId?: string; only?: string; page?: number; subcategory?: string; after?: string }) {

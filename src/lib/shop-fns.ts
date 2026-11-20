@@ -356,6 +356,48 @@ export const saveProductLogo = createServerFn({ method: "POST" })
     return saved ? { error: null as string | null } : { error: "Enter a product and an https logo URL from the provider." };
   });
 
+export const logoManager = createServerFn({ method: "GET" }).handler(async () => {
+  await adminOnly();
+  const { logoDesk } = await import("@/lib/logo-discover.server");
+  return logoDesk();
+});
+
+export const scanCategoryLogos = createServerFn({ method: "POST" }).handler(async () => {
+  await adminOnly();
+  const { scanAccsZone } = await import("@/lib/logo-discover.server");
+  return scanAccsZone();
+});
+
+export const importCategoryLogos = createServerFn({ method: "POST" })
+  .validator((input: { categories?: string[]; allHigh?: boolean; replace?: boolean }) => ({
+    categories: Array.isArray(input?.categories) ? input.categories.map((name) => String(name || "").slice(0, 80)).slice(0, 80) : [],
+    allHigh: !!input?.allHigh,
+    replace: !!input?.replace,
+  }))
+  .handler(async ({ data }) => {
+    await adminOnly();
+    const { importCategoryLogos: run } = await import("@/lib/logo-discover.server");
+    return run(data);
+  });
+
+export const saveManualCategoryLogo = createServerFn({ method: "POST" })
+  .validator((input: { category?: string; imageUrl?: string; replace?: boolean }) => ({
+    category: String(input?.category || "").slice(0, 80),
+    imageUrl: String(input?.imageUrl || "").slice(0, 500),
+    replace: !!input?.replace,
+  }))
+  .handler(async ({ data }) => {
+    await adminOnly();
+    const { saveManualLogo } = await import("@/lib/logo-discover.server");
+    return saveManualLogo(data);
+  });
+
+export const refreshCategoryLogos = createServerFn({ method: "POST" }).handler(async () => {
+  await adminOnly();
+  const { refreshCategoryLogos: run } = await import("@/lib/logo-discover.server");
+  return run();
+});
+
 export const myReferrals = createServerFn({ method: "GET" }).handler(async () => {
   const { sessionCustomer } = await core();
   const me = await sessionCustomer();

@@ -29,6 +29,7 @@ import { Route as AdminContentRouteImport } from './routes/admin/content'
 import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
 import { Route as AdminHostingRouteImport } from './routes/admin/hosting'
 import { Route as AdminImportRouteImport } from './routes/admin/import'
+import { Route as AdminLogosRouteImport } from './routes/admin/logos'
 import { Route as AdminOrdersRouteImport } from './routes/admin/orders'
 import { Route as AdminReferralsRouteImport } from './routes/admin/referrals'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
@@ -148,6 +149,11 @@ const AdminImportRoute = AdminImportRouteImport.update({
   path: '/import',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminLogosRoute = AdminLogosRouteImport.update({
+  id: '/logos',
+  path: '/logos',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminOrdersRoute = AdminOrdersRouteImport.update({
   id: '/orders',
   path: '/orders',
@@ -259,6 +265,7 @@ export interface FileRoutesByFullPath {
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/hosting': typeof AdminHostingRoute
   '/admin/import': typeof AdminImportRoute
+  '/admin/logos': typeof AdminLogosRoute
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/referrals': typeof AdminReferralsRoute
   '/dashboard/airtime': typeof DashboardAirtimeRoute
@@ -297,6 +304,7 @@ export interface FileRoutesByTo {
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/hosting': typeof AdminHostingRoute
   '/admin/import': typeof AdminImportRoute
+  '/admin/logos': typeof AdminLogosRoute
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/referrals': typeof AdminReferralsRoute
   '/dashboard/airtime': typeof DashboardAirtimeRoute
@@ -338,6 +346,7 @@ export interface FileRoutesById {
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/hosting': typeof AdminHostingRoute
   '/admin/import': typeof AdminImportRoute
+  '/admin/logos': typeof AdminLogosRoute
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/referrals': typeof AdminReferralsRoute
   '/dashboard/airtime': typeof DashboardAirtimeRoute
@@ -380,6 +389,7 @@ export interface FileRouteTypes {
     | '/admin/customers'
     | '/admin/hosting'
     | '/admin/import'
+    | '/admin/logos'
     | '/admin/orders'
     | '/admin/referrals'
     | '/dashboard/airtime'
@@ -418,6 +428,7 @@ export interface FileRouteTypes {
     | '/admin/customers'
     | '/admin/hosting'
     | '/admin/import'
+    | '/admin/logos'
     | '/admin/orders'
     | '/admin/referrals'
     | '/dashboard/airtime'
@@ -458,6 +469,7 @@ export interface FileRouteTypes {
     | '/admin/customers'
     | '/admin/hosting'
     | '/admin/import'
+    | '/admin/logos'
     | '/admin/orders'
     | '/admin/referrals'
     | '/dashboard/airtime'
@@ -639,6 +651,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminImportRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/logos': {
+      id: '/admin/logos'
+      path: '/logos'
+      fullPath: '/admin/logos'
+      preLoaderRoute: typeof AdminLogosRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/orders': {
       id: '/admin/orders'
       path: '/orders'
@@ -776,6 +795,7 @@ interface AdminRouteChildren {
   AdminCustomersRoute: typeof AdminCustomersRoute
   AdminHostingRoute: typeof AdminHostingRoute
   AdminImportRoute: typeof AdminImportRoute
+  AdminLogosRoute: typeof AdminLogosRoute
   AdminOrdersRoute: typeof AdminOrdersRoute
   AdminReferralsRoute: typeof AdminReferralsRoute
   AdminIndexRoute: typeof AdminIndexRoute
@@ -789,6 +809,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminCustomersRoute: AdminCustomersRoute,
   AdminHostingRoute: AdminHostingRoute,
   AdminImportRoute: AdminImportRoute,
+  AdminLogosRoute: AdminLogosRoute,
   AdminOrdersRoute: AdminOrdersRoute,
   AdminReferralsRoute: AdminReferralsRoute,
   AdminIndexRoute: AdminIndexRoute,
