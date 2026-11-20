@@ -189,20 +189,10 @@ async function loadLight(): Promise<Data> {
 
 async function clearNumberImports() {
   const sql = await getSql();
-  try {
-    await sql`delete from shop_products where category in ('numbers', 'rent') or (category = 'other' and price <= 0)`;
-  } catch {
-    // The products table is created by the next migration.
-  }
-  try {
-    await sql`update shop_catalog set doc = '[]' where id = 'main'`;
-  } catch {
-    // No old catalogue blob yet.
-  }
-  const doc = await loadLight();
-  const products = doc.products.filter((product) => product.category !== "numbers" && product.category !== "rent");
-  const providers = doc.providers.map((provider) => ({ ...provider, servesNumbers: false }));
-  await writeState({ ...doc, products, providers });
+  const { readFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const text = readFileSync(join(process.cwd(), "migrations/0016_clear_stale_numbers.sql"), "utf8");
+  await sql.query(text);
 }
 
 export async function clearNumberCatalog() {
