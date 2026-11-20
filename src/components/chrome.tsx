@@ -86,7 +86,7 @@ export function PublicFooter() {
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:grid-cols-3">
         <div>
           <Logo />
-          <p className="mt-3 text-sm font-medium text-on-deep/80">Virtual numbers, data, airtime and bills. Wallet in naira. Servers stay separate.</p>
+          <p className="mt-3 text-sm font-medium text-on-deep/80">Virtual numbers, data and digital services. Wallet in naira. Servers stay separate.</p>
         </div>
         <div>
           <p className="text-sm font-semibold">Help</p>

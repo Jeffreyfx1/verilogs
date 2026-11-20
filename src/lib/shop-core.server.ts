@@ -5,6 +5,7 @@ import { freshData, normalizeData, quoteProduct, serverLabel, topupQuote, withAd
 import { customerPrice, profitsOf, sellQuote, summarizeProfit } from "@/lib/pricing";
 import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, fiveSimImportPlan, shapeImport, attachVtuIds, vtuCatalogueUrl, discoverServiceNames, mergeServiceNames, type ImportKind, type ParsedItem } from "@/lib/categorize";
 import { applyCategoryLogo } from "@/lib/logo-discover";
+import { AIRTIME_CLOSED, BILL_CLOSED, SMM_CLOSED, airtimeSalesOpen, isRetiredBill, smmSalesOpen } from "@/lib/purchase-history";
 import { airtimeCharge, airtimeImportBlock, airtimeOffers, prepareAirtimePurchase, sendAirtimePurchase, withoutAirtimeProducts, type AirtimeRouteRecord } from "@/lib/airtime";
 import { deleteAirtimeNetworkRow, deleteAirtimeRouteRow, listAirtimeRecords, saveAirtimeNetworkRow, saveAirtimeRouteRow } from "@/lib/airtime-rows.server";
 import { destinationOf, flattenGetaText, readGetaTextPrices, sourceKindOf } from "@/lib/import-source";
@@ -570,6 +571,8 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
   if (!quoted?.enabled || !provider) return { error: "That service is not available.", data: doc };
   if (quoted.category === "airtime") return { error: "Airtime is sold from the network list, not from the catalogue. Nothing was sent.", data: doc };
   if (quoted.category === "vpn") return { error: "VPN is coming soon.", data: doc };
+  if (!smmSalesOpen() && quoted.category === "smm") return { error: SMM_CLOSED, data: doc };
+  if (isRetiredBill(quoted.category)) return { error: BILL_CLOSED, data: doc };
   const sticker = quoted.price;
   const user = userId ? doc.users.find((item) => item.id === userId) : null;
   const face = quoted.variable ? Math.round(extra.amount || 0) : sticker;
@@ -678,6 +681,7 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
 }
 
 export async function completeAirtimePurchase(doc: Data, userId: string | null, input: { networkId: string; phone: string; amount: number; idempotencyKey?: string }) {
+  if (!airtimeSalesOpen()) return { error: AIRTIME_CLOSED, data: doc };
   const user = userId ? doc.users.find((item) => item.id === userId) : null;
   if (!user) return { error: "Sign in first.", data: doc };
   const records = await listAirtimeRecords();
@@ -1674,7 +1678,7 @@ export async function browseCatalog(input: { q?: string; category?: string; prov
   });
 }
 
-const SHELF_OK = new Set(["airtime", "data", "cable", "exam", "giftcard", "betting"]);
+const SHELF_OK = new Set(["data"]);
 
 export async function listShelf(category: string, q = "", network = "") {
   const doc = await loadLight();

@@ -16,6 +16,7 @@ import {
 } from "@/lib/catalog";
 import { makeReferralCode } from "@/lib/referral";
 import { uid } from "@/lib/money";
+import { AIRTIME_CLOSED, BILL_CLOSED, SMM_CLOSED, airtimeSalesOpen, isRetiredBill, smmSalesOpen } from "@/lib/purchase-history";
 
 export type Draft = { name: string; email: string };
 export type SessionPatch = { userId?: string | null; draft?: Draft | null };
@@ -100,7 +101,7 @@ export async function registerUser(data: Data, input: { name: string; email: str
   next = pushNote(next, user.id, "Welcome to VeriLogs", "Your account is ready. Fund the wallet with Paystack, then buy a number, data or a bill.", "account");
   const admin = data.users.find((u) => u.role === "admin");
   if (admin) next = pushNote(next, admin.id, "New customer", `${user.name} · ${user.email}`, "account");
-  return { error: null, data: next, userId: user.id, referrerId: user.referredBy || "", mail: { to: user.email, subject: "Welcome to VeriLogs", text: `Hi ${user.name}, your VeriLogs account is ready. Fund your naira wallet, then buy numbers, data or bills.` } };
+  return { error: null, data: next, userId: user.id, referrerId: user.referredBy || "", mail: { to: user.email, subject: "Welcome to VeriLogs", text: `Hi ${user.name}, your VeriLogs account is ready. Fund your naira wallet, then buy numbers, data or other digital services.` } };
 }
 
 export async function loginUser(data: Data, email: string, password: string) {
@@ -181,6 +182,9 @@ export function buyProduct(data: Data, userId: string | null, productId: string,
   const product = data.products.find((p) => p.id === productId && p.enabled);
   const provider = product && data.providers.find((p) => p.id === product.providerId && p.enabled);
   if (!product || !provider) return { error: "That service is not available.", data };
+  if (!airtimeSalesOpen() && product.category === "airtime") return { error: AIRTIME_CLOSED, data };
+  if (!smmSalesOpen() && product.category === "smm") return { error: SMM_CLOSED, data };
+  if (isRetiredBill(product.category)) return { error: BILL_CLOSED, data };
   const face = product.variable ? Math.round(extra.amount || 0) : product.price;
   const amount = extra.charge && extra.charge > 0 ? Math.round(extra.charge) : face;
   if (product.category === "airtime" && (face < 50 || face > 50000)) return { error: "Airtime must be between ₦50 and ₦50,000.", data };
@@ -222,6 +226,7 @@ export function buyProduct(data: Data, userId: string | null, productId: string,
 }
 
 export function recordAirtimeOrder(data: Data, userId: string | null, input: { networkId: string; title: string; providerId: string; network: string; phone: string; charge: number; cost: number; gain: number; ref: string }) {
+  if (!airtimeSalesOpen()) return { error: AIRTIME_CLOSED, data };
   const user = actor(data, userId);
   if (!user) return { error: "Sign in first.", data };
   const provider = data.providers.find((item) => item.id === input.providerId && item.enabled);

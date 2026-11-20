@@ -216,13 +216,13 @@ export function defaultSettings(): Settings {
     supportWelcome: "Hi, I am Vera. Ask about numbers, data, your wallet, or how to reach the Telegram channel.",
     home: {
       eyebrow: "Trusted digital services",
-      title: "Secure SMS verification, data and bills",
-      body: "Get virtual numbers, airtime, data and bill payment from one naira wallet. Pick a server, fund the wallet, and the code or recharge shows up in your dashboard.",
+      title: "Secure SMS verification and digital services",
+      body: "Get virtual numbers, data and digital products from one naira wallet. Pick a server, fund the wallet, and the code shows up in your dashboard.",
       image: "",
       cards: [
         { id: "c1", title: "Virtual numbers", body: "SMS codes for the apps you use. Pick a server, a country and a service.", image: "" },
-        { id: "c2", title: "Data and airtime", body: "MTN, Airtel, Glo, 9mobile and Smile, each with its own plans.", image: "" },
-        { id: "c3", title: "Bills", body: "Cable, electricity and exam PINs from the same naira wallet.", image: "" },
+        { id: "c2", title: "Data", body: "MTN, Airtel, Glo, 9mobile and Smile, each with its own plans.", image: "" },
+        { id: "c3", title: "Logs and social", body: "Digital products and social services from the same naira wallet.", image: "" },
       ],
     },
     banners: [

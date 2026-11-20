@@ -210,7 +210,7 @@ function DashHome() {
     <div className="min-w-0 space-y-4 pb-4">
       <div>
         <h1 className="text-2xl font-extrabold text-ink">Welcome back{user.name ? `, ${user.name.split(" ")[0]}` : ""}</h1>
-        <p className="mt-1 text-sm text-muted">Wallet, numbers, data and bills in one place.</p>
+        <p className="mt-1 text-sm text-muted">Wallet, numbers, data and digital services in one place.</p>
       </div>
 
       <section className="balance-card overflow-hidden rounded-[1.6rem] px-5 py-5 text-white">
@@ -260,6 +260,7 @@ function DashHome() {
             const cls = "relative flex min-h-[5.4rem] flex-col items-center justify-center gap-2 rounded-2xl bg-[#E5F2F8] px-1 py-3 text-center";
             return (
               <Link key={q.label} to={q.to} search={"search" in q ? q.search : undefined} hash={"hash" in q ? q.hash : undefined} className={cls}>
+                {q.label === "Airtime" || q.label === "SMM" ? <span className="absolute right-1.5 top-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white">Soon</span> : null}
                 {body}
               </Link>
             );
@@ -269,22 +270,16 @@ function DashHome() {
 
       <section className="rounded-[1.4rem] bg-white p-3 shadow-[0_8px_24px_rgba(23,76,112,0.06)]">
         <h2 className="px-1 text-lg font-extrabold text-ink">History</h2>
-        <div className="mt-2 space-y-2">
-          {[
-            { hash: "deposits", title: "Deposit History", body: "Wallet deposits", icon: glyph.history },
-            { hash: "numbers", title: "Number History", body: "Numbers, codes and active orders", icon: glyph.hash },
-            { hash: "bills", title: "Bills History", body: "Airtime, data and TV", icon: glyph.phone },
-          ].map((row) => (
-            <Link key={row.title} to="/dashboard/history" hash={row.hash} className="flex items-center gap-3 rounded-2xl bg-[#E5F2F8] px-3 py-3">
-              <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#286D86] text-white">
-                <Glyph icon={row.icon} className="size-5" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-sm font-extrabold text-ink">{row.title}</span>
-                <span className="block text-xs text-muted">{row.body}</span>
-              </span>
-            </Link>
-          ))}
+        <div className="mt-2">
+          <Link to="/dashboard/history" className="flex items-center gap-3 rounded-2xl bg-[#E5F2F8] px-3 py-3">
+            <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#286D86] text-white">
+              <Glyph icon={glyph.history} className="size-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-extrabold text-ink">Order history</span>
+              <span className="block text-xs text-muted">Logs, VPN, numbers and other purchases</span>
+            </span>
+          </Link>
         </div>
       </section>
       <InstallApp />

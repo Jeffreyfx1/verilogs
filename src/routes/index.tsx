@@ -3,25 +3,25 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Glyph, glyph, type GlyphIcon } from "@/components/icons";
 import { PublicFrame } from "@/components/chrome";
 import { Reveal } from "@/components/reveal";
-import { bills, hero, sim } from "@/components/site-art";
+import { hero, sim } from "@/components/site-art";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/")({ component: Home });
 
-const fallbackArt = [hero, sim, bills];
+const fallbackArt = [hero, sim];
 
 const why: { icon: GlyphIcon; title: string; body: string }[] = [
-  { icon: glyph.shield, title: "Wallet stays in naira", body: "Fund once. Spend on numbers, data, airtime and bills." },
+  { icon: glyph.shield, title: "Wallet stays in naira", body: "Fund once. Spend on numbers, data and digital services." },
   { icon: glyph.bolt, title: "Instant delivery", body: "A number shows on the order. The SMS code lands on that same card." },
   { icon: glyph.lock, title: "Servers stay apart", body: "Choose Server 1, Server 2 or Server 3. Each one keeps its own prices and stock." },
   { icon: glyph.headset, title: "Support on the page", body: "FAQ, tickets and the Telegram channel sit with the shop." },
-  { icon: glyph.check, title: "Pay from your wallet", body: "Fund once in naira, then buy a number, data, airtime or a bill." },
-  { icon: glyph.globe, title: "Services in one place", body: "Numbers, data, airtime, bills, logs and social services from your dashboard." },
+  { icon: glyph.check, title: "Pay from your wallet", body: "Fund once in naira, then buy a number, data or another digital service." },
+  { icon: glyph.globe, title: "Services in one place", body: "Numbers, data, logs and social services from your dashboard." },
 ];
 
 function Home() {
   const home = useStore((s) => s.settings.home);
-  const cards = home.cards?.length ? home.cards : [];
+  const cards = (home.cards || []).filter((card) => !/\bbills?\b|cable|electricity|exam pin|gift card|betting/i.test(`${card.title} ${card.body}`));
   const picture = (image: string, index: number) => image || fallbackArt[index % fallbackArt.length];
   return (
     <PublicFrame>
@@ -47,6 +47,7 @@ function Home() {
         </div>
       </section>
 
+      {cards.length ? (
       <section className="overflow-hidden py-6">
         <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1">
           {cards.map((o, i) => (
@@ -62,6 +63,7 @@ function Home() {
           ))}
         </div>
       </section>
+      ) : null}
 
       <section className="stat-row mx-auto max-w-6xl px-4 py-4">
         {[
@@ -82,9 +84,9 @@ function Home() {
       <section id="offer" className="mx-auto max-w-6xl px-4 py-8">
         <Reveal>
           <h2 className="text-center text-3xl font-extrabold">What we offer</h2>
-          <p className="mx-auto mt-2 max-w-xl text-center text-sm font-medium text-muted">Numbers, data, airtime and bills, filed the way people buy them.</p>
+          <p className="mx-auto mt-2 max-w-xl text-center text-sm font-medium text-muted">Numbers, data, logs and social services, filed the way people buy them.</p>
         </Reveal>
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
+        {cards.length ? <div className="mt-8 grid gap-4 md:grid-cols-3">
           {cards.map((o, i) => (
             <Reveal key={o.id} delay={i * 90}>
               <article className="overflow-hidden rounded-card border border-line bg-card shadow-card">
@@ -97,7 +99,7 @@ function Home() {
               </article>
             </Reveal>
           ))}
-        </div>
+        </div> : null}
       </section>
 
       <Reveal>
@@ -165,7 +167,7 @@ function Home() {
       <Reveal>
         <section className="bg-deep py-16 text-center text-on-deep">
           <h2 className="text-4xl font-extrabold">Start the smarter way</h2>
-          <p className="mt-2 text-sm font-medium text-on-deep/75">Numbers, data and bills. One naira wallet.</p>
+          <p className="mt-2 text-sm font-medium text-on-deep/75">Numbers, data and digital services. One naira wallet.</p>
           <Link to="/register" className="mt-6 inline-block rounded-2xl bg-card px-6 py-3.5 text-sm font-extrabold text-ink">Create free account</Link>
         </section>
       </Reveal>

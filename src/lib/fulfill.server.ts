@@ -1,5 +1,6 @@
 import { nairaCost, type Product, type Provider } from "@/lib/catalog";
 import { instakingOrderFields, instakingPost, isInstakingHost, readSmmDetail } from "@/lib/instaking";
+import { SMM_CLOSED, smmSalesOpen } from "@/lib/purchase-history";
 
 export type Placement =
   | { ok: true; phone: string; ref: string; waiting: boolean; cost: number }
@@ -76,6 +77,7 @@ export async function placeOnProvider(input: { product: Product; provider: Provi
   const numberCategory = product.category === "number" || product.category === "numbers" || product.category === "rent";
 
   if (isInstakingHost(host) && product.category === "smm") {
+    if (!smmSalesOpen()) return { ok: false, error: SMM_CLOSED };
     const fields = readSmmDetail(input.detail || "", 0);
     const built = instakingOrderFields(product.smmType || product.operator || "Default", product.externalId || product.service, fields);
     if ("error" in built && built.error) return { ok: false, error: built.error };

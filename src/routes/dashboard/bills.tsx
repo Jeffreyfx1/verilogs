@@ -1,86 +1,11 @@
-import { useEffect, useState } from "react";
-import { createFileRoute, useRouterState } from "@tanstack/react-router";
-import { toast } from "sonner";
-import { Button, Field, inputClass } from "@/components/ui";
-import type { Product } from "@/lib/catalog";
-import { naira } from "@/lib/money";
-import { listShelf } from "@/lib/shop-fns";
-import { useStore } from "@/lib/store";
+import { createFileRoute, Navigate, redirect } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/dashboard/bills")({ component: BillsPage });
+export const Route = createFileRoute("/dashboard/bills")({
+  beforeLoad: () => {
+    throw redirect({ to: "/dashboard" });
+  },
+  component: function RetiredBills() {
+    return <Navigate to="/dashboard" />;
+  },
+});
 
-const TABS = [
-  { id: "cable", label: "Cable TV" },
-  { id: "exam", label: "Exam PINs" },
-  { id: "giftcard", label: "Gift cards" },
-  { id: "betting", label: "Betting" },
-] as const;
-
-function BillsPage() {
-  const buy = useStore((s) => s.buy);
-  const rawHash = useRouterState({ select: (s) => s.location.hash });
-  const hash = String(rawHash || "").replace(/^#/, "");
-  const fromHash = TABS.some((t) => t.id === hash) ? (hash as (typeof TABS)[number]["id"]) : "cable";
-  const [tab, setTab] = useState<(typeof TABS)[number]["id"]>(fromHash);
-  const [phone, setPhone] = useState("");
-  const [detail, setDetail] = useState("");
-  const [amount, setAmount] = useState("2000");
-  const [q, setQ] = useState("");
-  const [buying, setBuying] = useState("");
-  const [products, setProducts] = useState<Product[]>([]);
-  useEffect(() => {
-    if (TABS.some((t) => t.id === hash)) setTab(hash as (typeof TABS)[number]["id"]);
-  }, [hash]);
-  useEffect(() => {
-    let stop = false;
-    const timer = setTimeout(() => {
-      listShelf({ data: { category: tab, q } })
-        .then((rows) => { if (!stop) setProducts(rows || []); })
-        .catch(() => { if (!stop) setProducts([]); });
-    }, 200);
-    return () => { stop = true; clearTimeout(timer); };
-  }, [tab, q]);
-  const list = products;
-  const purchase = async (p: Product) => {
-    if (buying) return;
-    if (phone.trim().length < 8 && tab !== "exam" && tab !== "giftcard") return toast.error("Enter a phone number.");
-    setBuying(p.id);
-    const err = await buy(p.id, { phone, detail, amount: p.variable ? Number(amount) : undefined });
-    setBuying("");
-    if (err) toast.error(err);
-    else toast.success("Order placed");
-  };
-  return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-extrabold">Bills</h1>
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {TABS.map((t) => (
-          <button key={t.id} type="button" onClick={() => setTab(t.id)} className={`rounded-full px-4 py-2 text-sm font-semibold ${tab === t.id ? "nav-active text-white" : "border border-line bg-card"}`}>{t.label}</button>
-        ))}
-      </div>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <section className="rounded-card border border-line bg-card p-4 shadow-card lg:col-span-2">
-          <input className={inputClass} placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />
-          <div className="scroll-pane mt-3 space-y-2 pr-1">
-            {list.map((p) => (
-              <div key={p.id} className="flex items-center justify-between gap-3 rounded-xl bg-paper px-3 py-3">
-                <div>
-                  <p className="text-sm font-semibold">{p.name}</p>
-                  <p className="text-xs text-muted">{p.description}</p>
-                </div>
-                <Button busy={buying === p.id} disabled={!!buying} onClick={() => void purchase(p)}>{p.variable ? "Pay" : naira(p.price)}</Button>
-              </div>
-            ))}
-            {!list.length ? <p className="py-6 text-sm text-muted">No products available yet. Please check back later.</p> : null}
-          </div>
-        </section>
-        <section className="space-y-3 rounded-card border border-line bg-card p-4 shadow-card">
-          <Field label="Phone"><input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
-          <Field label={tab === "cable" ? "Smartcard / IUC" : "Note"}>
-            <input className={inputClass} value={detail} onChange={(e) => setDetail(e.target.value)} />
-          </Field>
-        </section>
-      </div>
-    </div>
-  );
-}

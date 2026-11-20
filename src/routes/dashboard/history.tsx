@@ -3,65 +3,91 @@ import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { BtnSpinner } from "@/components/ui";
 import { naira, when } from "@/lib/money";
+import { historyFilterFromHash, listPurchases, orderQuantity, pagePurchases, purchaseTypeLabel, type HistoryFilter } from "@/lib/purchase-history";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/history")({ component: HistoryPage });
 
+const FILTERS: Array<[HistoryFilter, string]> = [
+  ["all", "All purchases"],
+  ["logs", "Logs"],
+  ["vpn", "VPN"],
+  ["numbers", "Numbers"],
+  ["other", "Other products"],
+];
+
+function statusClass(status: string) {
+  if (status === "refunded") return "bg-red-50 text-red-700";
+  if (status === "waiting") return "bg-amber-50 text-amber-800";
+  if (status === "received" || status === "completed") return "bg-emerald-50 text-emerald-800";
+  return "bg-slate-100 text-slate-700";
+}
+
 function HistoryPage() {
-  const hash = useRouterState({ select: (s) => s.location.hash });
-  const start = hash === "bills" ? "bills" : hash === "deposits" ? "txns" : "numbers";
-  const [tab, setTab] = useState<"numbers" | "bills" | "txns">(start);
-  useEffect(() => { setTab(start); }, [start]);
+  const hash = useRouterState({ select: (s) => String(s.location.hash || "") });
+  const start = historyFilterFromHash(hash);
+  const [filter, setFilter] = useState<HistoryFilter>(start);
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const [busy, setBusy] = useState("");
+  useEffect(() => { setFilter(start); }, [start]);
   const allOrders = useStore((s) => s.orders);
-  const allTxns = useStore((s) => s.txns);
   const session = useStore((s) => s.sessionUserId);
   const refillOrder = useStore((s) => s.refillOrder);
-  const [busy, setBusy] = useState("");
-  const orders = useMemo(() => allOrders.filter((o) => o.userId === session), [allOrders, session]);
-  const txns = useMemo(() => allTxns.filter((t) => t.userId === session), [allTxns, session]);
-  const numbers = orders.filter((o) => o.category === "numbers" || o.category === "rent");
-  const bills = orders.filter((o) => o.category !== "numbers" && o.category !== "rent");
+  const matched = useMemo(() => listPurchases(allOrders, { userId: session || "", filter, q }), [allOrders, session, filter, q]);
+  const shown = pagePurchases(matched, 20, page);
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-extrabold">History</h1>
-      <div className="flex flex-wrap gap-2">
-        {([["numbers", "Number history"], ["bills", "Bills history"], ["txns", "Deposit history"]] as const).map(([id, label]) => (
-          <button key={id} type="button" onClick={() => setTab(id)} className={`rounded-full px-4 py-2 text-sm font-semibold ${tab === id ? "bg-primary text-on-primary" : "border border-line bg-card"}`}>{label}</button>
+      <div>
+        <h1 className="text-2xl font-extrabold">Order history</h1>
+        <p className="mt-1 text-sm text-muted">Every purchase on this account. Logs, VPN, numbers and other digital products stay in one list.</p>
+      </div>
+      <input className="w-full rounded-xl border border-line bg-card px-3 py-2.5 text-base" placeholder="Search purchases" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {FILTERS.map(([id, label]) => (
+          <button key={id} type="button" onClick={() => { setFilter(id); setPage(1); }} className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${filter === id ? "bg-primary text-on-primary" : "border border-line bg-card"}`}>{label}</button>
         ))}
       </div>
-      <div className="scroll-tall rounded-card border border-line bg-card">
-        {tab === "txns" ? txns.map((t) => (
-          <div key={t.id} className="flex items-center justify-between border-b border-line px-4 py-3 text-sm">
-            <span>{t.note}<span className="block text-xs text-muted">{when(t.createdAt)}</span></span>
-            <span className={t.amount < 0 ? "text-danger" : "text-ok"}>{naira(t.amount)}</span>
-          </div>
-        )) : (tab === "numbers" ? numbers : bills).map((o) => (
-          <div key={o.id} className="border-b border-line px-4 py-3 text-sm">
-            <div className="flex justify-between gap-3"><span className="font-semibold">{o.title}</span><span>{naira(o.amount)}</span></div>
-            <p className="text-xs text-muted">{[o.server, o.network, o.phone, o.code && `code ${o.code}`, o.providerOrderId && `provider ${o.providerOrderId}`, o.providerStatus, o.status, when(o.createdAt)].filter(Boolean).join(" · ")}</p>
-            {o.category === "smm" && o.refillAvailable && o.providerOrderId && o.status !== "refunded" ? (
+      <div className="space-y-2">
+        {shown.rows.map((order) => (
+          <article key={order.id} className="rounded-2xl border border-line bg-card px-4 py-3 text-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#0c6e8a]">{purchaseTypeLabel(order.category)}</p>
+                <h2 className="mt-0.5 break-words font-extrabold">{order.title}</h2>
+              </div>
+              <p className="shrink-0 font-extrabold">{naira(order.amount)}</p>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <span className={`rounded-full px-2 py-1 font-bold ${statusClass(order.status)}`}>{order.status}</span>
+              <span className="text-muted">{when(order.createdAt)}</span>
+              <span className="text-muted">Qty {orderQuantity(order.detail || "")}</span>
+            </div>
+            <p className="mt-2 break-words text-xs leading-relaxed text-muted">{[order.server, order.network, order.phone, order.code && `code ${order.code}`, order.providerStatus, order.detail && !order.detail.startsWith("{") ? order.detail : ""].filter(Boolean).join(" · ")}</p>
+            {order.category === "smm" && order.refillAvailable && order.providerOrderId && order.status !== "refunded" ? (
               <button
                 type="button"
-                disabled={busy === o.id}
+                disabled={busy === order.id}
                 className="mt-2 inline-flex items-center gap-2 rounded-full border border-line px-3 py-1 text-xs font-bold disabled:opacity-60"
                 onClick={() => {
                   if (busy) return;
-                  setBusy(o.id);
-                  void refillOrder(o.id).then((err) => {
+                  setBusy(order.id);
+                  void refillOrder(order.id).then((err) => {
                     setBusy("");
                     if (err) toast.error(err);
                     else toast.success("Refill requested");
                   });
                 }}
               >
-                {busy === o.id ? <BtnSpinner /> : null}
-                {busy === o.id ? "Requesting refill…" : o.refillId ? "Request refill again" : "Request refill"}
+                {busy === order.id ? <BtnSpinner /> : null}
+                {busy === order.id ? "Requesting refill…" : order.refillId ? "Request refill again" : "Request refill"}
               </button>
             ) : null}
-          </div>
+          </article>
         ))}
-        {((tab === "txns" && !txns.length) || (tab === "numbers" && !numbers.length) || (tab === "bills" && !bills.length)) ? <p className="p-6 text-sm text-muted">Nothing here yet.</p> : null}
+        {!shown.rows.length ? <p className="rounded-2xl border border-line bg-card p-6 text-sm text-muted">No purchases match this view.</p> : null}
       </div>
+      {shown.more ? <button type="button" className="w-full rounded-xl border border-line bg-card py-2.5 text-sm font-extrabold" onClick={() => setPage((n) => n + 1)}>Show more</button> : null}
     </div>
   );
 }
