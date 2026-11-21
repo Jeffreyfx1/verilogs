@@ -91,7 +91,7 @@ function DataPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-extrabold">Data</h1>
-        <p className="text-sm text-muted">Each SIM network is its own list. A plan only shows under the network it was imported with.</p>
+        <p className="text-sm text-muted">Pick a network, then a plan.</p>
       </div>
       {!ready ? <p className="text-sm text-muted">Loading plans…</p> : !networks.length ? <p className="text-sm text-muted">No products available yet. Please check back later.</p> : (
         <>

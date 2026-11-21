@@ -101,7 +101,7 @@ function RentPage() {
       </section>
       <div>
         <h1 className="text-2xl font-extrabold">Rent number</h1>
-        <p className="mt-1 text-sm text-muted">Choose a country, then a service. Price and stock come from the Rent number catalogue. A phone number is requested only when you buy. This is not Server 1, Server 2, or Server 3.</p>
+        <p className="mt-1 text-sm text-muted">Choose a country, then a service.</p>
       </div>
       <label className="block text-sm font-bold">
         Country
@@ -110,11 +110,11 @@ function RentPage() {
           {countries.map((row) => <option key={row.slug} value={row.slug}>{row.name}</option>)}
         </select>
       </label>
-      {!loading && !countries.length ? <p className="rounded-2xl border border-line bg-card p-4 text-sm text-muted">No rent catalogue yet. An admin has to import countries and services from FiveSim.</p> : null}
+      {!loading && !countries.length ? <p className="rounded-2xl border border-line bg-card p-4 text-sm text-muted">Nothing is available right now.</p> : null}
       {country ? (
         <div className="space-y-2">
           {loadingServices ? <p className="text-sm text-muted">Loading services…</p> : null}
-          {!loadingServices && !services.length ? <p className="text-sm text-muted">FiveSim has no stocked service stored for this country.</p> : null}
+          {!loadingServices && !services.length ? <p className="text-sm text-muted">Nothing is available for this country right now.</p> : null}
           {services.map((offer) => (
             <article key={offer.id} className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-card p-3">
               <div>
@@ -126,7 +126,6 @@ function RentPage() {
               </button>
             </article>
           ))}
-          {services.length ? <p className="text-xs text-muted">Stock is from the last import, not a live list of phone numbers.</p> : null}
         </div>
       ) : null}
       <section className="space-y-2">

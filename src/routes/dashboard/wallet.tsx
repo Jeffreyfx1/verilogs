@@ -106,7 +106,7 @@ function WalletPage() {
             ) : (
               <Button className="mt-4 w-full" busy={busy} onClick={() => void payFromWallet()}>{busy ? "Reserving…" : `Pay ${naira(order.price)} from wallet`}</Button>
             )}
-            {paystack === false ? <p className="mt-3 text-sm text-muted">Paystack is not connected on this host yet. Add PAYSTACK_SECRET_KEY in the host environment.</p> : null}
+            {paystack === false ? <p className="mt-3 text-sm text-muted">Card top-up is not available right now.</p> : null}
           </>
         )}
       </section>
@@ -135,7 +135,7 @@ function WalletPage() {
         {quote.fee > 0 ? <p className="mt-2 text-sm text-muted">Wallet receives {naira(quote.credit)}. Site charge {naira(quote.fee)}.</p> : null}
         {paystack === false ? (
           <p className="mt-3 text-sm text-muted">
-            Paystack is not connected on this host yet. Add PAYSTACK_SECRET_KEY in the host environment, then this button charges for real. An admin can credit a wallet from Customers until then.
+            Paystack is not available right now. Card top-up will open once it is connected.
           </p>
         ) : null}
       </section>
