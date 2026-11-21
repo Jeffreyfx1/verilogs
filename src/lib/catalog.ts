@@ -188,6 +188,7 @@ export type Settings = {
   referralEnabled: boolean;
   referralReward: number;
   referralMinPurchase: number;
+  theme: "light" | "dark";
 };
 
 export type Data = {
@@ -243,6 +244,7 @@ export function defaultSettings(): Settings {
     referralEnabled: true,
     referralReward: 100,
     referralMinPurchase: 0,
+    theme: "light",
   };
 }
 
@@ -343,6 +345,7 @@ export function normalizeData(input: Partial<Data> | null | undefined): Data {
       referralEnabled: incoming?.referralEnabled !== false,
       referralReward: moneySetting(incoming?.referralReward, base.referralReward),
       referralMinPurchase: moneySetting(incoming?.referralMinPurchase, base.referralMinPurchase),
+      theme: incoming?.theme === "dark" ? "dark" : "light",
     },
   };
 }

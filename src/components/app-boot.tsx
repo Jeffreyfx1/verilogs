@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { WelcomeModal } from "@/components/welcome-modal";
 import { BrandLoader } from "@/components/brand-loader";
+import { SiteTheme } from "@/components/site-theme";
 import { useStore } from "@/lib/store";
 
 export function AppBoot({ children }: { children: ReactNode }) {
@@ -27,6 +28,7 @@ export function AppBoot({ children }: { children: ReactNode }) {
   return (
     <>
       {children}
+      <SiteTheme />
       <WelcomeModal />
     </>
   );

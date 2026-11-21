@@ -458,6 +458,7 @@ export function saveSettings(data: Data, userId: string | null, patch: Partial<S
   }
   const banners = patch.banners ? patch.banners.slice(0, 6) : data.settings.banners;
   const nextPatch = { ...patch };
+  if (nextPatch.theme !== "light" && nextPatch.theme !== "dark") delete nextPatch.theme;
   for (const key of ["generalProfit", "airtimeProfit", "dataProfit", "referralReward", "referralMinPurchase"] as const) {
     if (nextPatch[key] == null) continue;
     const amount = Number(nextPatch[key]);

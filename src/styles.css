@@ -34,8 +34,8 @@
   }
   body {
     font-family: var(--font-sans);
-    background: #eef7fa;
-    color: #193642;
+    background: var(--color-paper);
+    color: var(--color-ink);
     min-height: 100%;
     max-width: 100%;
     overflow-x: hidden;
@@ -1095,5 +1095,115 @@ html[data-form="phone"] .scroll-pane {
 .nav-glyph {
   width: 1.15rem;
   height: 1.15rem;
+}
+
+.how-snake {
+  color: #8aa0ab;
+}
+
+.how-orb {
+  background: #ffffff;
+  color: #286d86;
+  box-shadow: 0 16px 36px rgba(23, 76, 112, 0.12);
+}
+
+html[data-theme="dark"] {
+  --color-paper: #0d1c24;
+  --color-card: #14303b;
+  --color-ink: #e7f4f8;
+  --color-muted: #a9c0c9;
+  --color-line: #2a4a57;
+  --color-primary: #8fd0e2;
+  --color-deep: #071821;
+  --color-accent: #9ad7e8;
+  --color-on-primary: #08202a;
+  --color-on-deep: #e7f4f8;
+  color-scheme: dark;
+}
+
+html[data-theme="dark"] body {
+  background: #0d1c24;
+  color: #e7f4f8;
+}
+
+html[data-theme="dark"] .hero-wash {
+  background:
+    radial-gradient(32rem 18rem at 100% 0%, #163848, transparent 58%),
+    radial-gradient(28rem 16rem at 0% 80%, #122c38, transparent 55%),
+    #0d1c24;
+}
+
+html[data-theme="dark"] .how-snake {
+  color: #7f9aaa;
+}
+
+html[data-theme="dark"] .how-orb {
+  background: #f4fbfe;
+  color: #174c70;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+}
+
+html[data-theme="dark"] .bg-white {
+  background-color: var(--color-card);
+}
+
+html[data-theme="dark"] .text-\[\#5b4cdb\],
+html[data-theme="dark"] .text-\[\#174C70\],
+html[data-theme="dark"] .text-\[\#0c6e8a\],
+html[data-theme="dark"] .text-\[\#12313c\] {
+  color: var(--color-accent);
+}
+
+html[data-theme="dark"] .text-\[\#5c7380\],
+html[data-theme="dark"] .text-slate-700,
+html[data-theme="dark"] .text-slate-900 {
+  color: var(--color-ink);
+}
+
+html[data-theme="dark"] .bg-\[\#E5F2F8\],
+html[data-theme="dark"] .bg-\[\#e5f2f8\],
+html[data-theme="dark"] .bg-\[\#eef6fb\],
+html[data-theme="dark"] .bg-\[\#EEF7FA\],
+html[data-theme="dark"] .bg-\[\#e7f5fb\],
+html[data-theme="dark"] .bg-\[\#eef4ff\] {
+  background-color: #1a3642;
+}
+
+html[data-theme="dark"] .border-slate-200,
+html[data-theme="dark"] .border-slate-300,
+html[data-theme="dark"] .border-\[\#d5e7ef\] {
+  border-color: var(--color-line);
+}
+
+html[data-theme="dark"] .vera-log,
+html[data-theme="dark"] .vera-chip {
+  background: #102832;
+  color: var(--color-ink);
+  border-color: var(--color-line);
+}
+
+html[data-theme="dark"] .vera-bubble-vera,
+html[data-theme="dark"] .vera-quick {
+  background: #173642;
+  color: var(--color-ink);
+}
+
+html[data-theme="dark"] .brand-loader-name {
+  color: var(--color-accent);
+}
+
+.site-theme-toggle {
+  position: fixed;
+  left: 0.75rem;
+  bottom: 5.4rem;
+  z-index: 45;
+  border-radius: 999px;
+  border: 1px solid var(--color-line);
+  background: var(--color-card);
+  color: var(--color-ink);
+  padding: 0.45rem 0.8rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  box-shadow: 0 8px 20px rgba(8, 50, 74, 0.16);
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { createFileRoute } from "@tanstack/react-router";
 import { Glyph, glyph, type GlyphIcon } from "@/components/icons";
@@ -26,6 +26,78 @@ function SlotImage({ slot, alt, className }: { slot: SiteSlot; alt: string; clas
       <source media="(max-width: 767px)" srcSet={src("mobile")} />
       <img src={src("desktop")} alt={alt} className={className} />
     </picture>
+  );
+}
+
+function HowItWorks() {
+  const root = useRef<HTMLDivElement>(null);
+  const [d, setD] = useState("");
+  const steps: { icon: GlyphIcon; title: string; body: string }[] = [
+    { icon: glyph.users, title: "Create account", body: "Sign up with email or Google. A Google account still confirms a name and phone." },
+    { icon: glyph.wallet, title: "Fund wallet", body: "Add naira. That balance is what you spend." },
+    { icon: glyph.package, title: "Buy", body: "Pick a server or a network. The number, code or recharge shows on the order." },
+  ];
+
+  useLayoutEffect(() => {
+    const box = root.current;
+    if (!box) return;
+    const draw = () => {
+      const origin = box.getBoundingClientRect();
+      const orbs = [...box.querySelectorAll<HTMLElement>("[data-how-orb]")];
+      const pts = orbs.map((el) => {
+        const rect = el.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2 - origin.left, y: rect.top + rect.height / 2 - origin.top };
+      });
+      if (pts.length < 2) return;
+      let path = `M ${pts[0].x} ${pts[0].y}`;
+      for (let i = 0; i < pts.length - 1; i += 1) {
+        const a = pts[i];
+        const b = pts[i + 1];
+        const drop = (b.y - a.y) * 0.55;
+        path += ` C ${a.x} ${a.y + drop}, ${b.x} ${b.y - drop}, ${b.x} ${b.y}`;
+      }
+      setD(path);
+    };
+    draw();
+    const watch = new ResizeObserver(draw);
+    watch.observe(box);
+    window.addEventListener("resize", draw);
+    return () => {
+      watch.disconnect();
+      window.removeEventListener("resize", draw);
+    };
+  }, []);
+
+  return (
+    <section id="how" className="overflow-hidden bg-paper py-16">
+      <div className="mx-auto max-w-3xl px-4">
+        <Reveal>
+          <h2 className="text-center text-3xl font-extrabold">How it works</h2>
+          <p className="mt-2 text-center text-sm font-medium text-muted">Three steps, then the shop is yours.</p>
+        </Reveal>
+        <div ref={root} className="relative mx-auto mt-14">
+          <svg className="how-snake pointer-events-none absolute inset-0 z-0 h-full w-full" aria-hidden="true">
+            {d ? <path d={d} fill="none" stroke="currentColor" strokeWidth="2.25" strokeDasharray="8 10" strokeLinecap="round" /> : null}
+          </svg>
+          <ol className="relative z-10 space-y-16 sm:space-y-24">
+            {steps.map((step, index) => {
+              const left = index % 2 === 0;
+              return (
+                <li key={step.title} className={`flex items-center gap-4 sm:gap-10 ${left ? "" : "flex-row-reverse"}`}>
+                  <div data-how-orb className="how-orb grid size-24 shrink-0 place-items-center rounded-full sm:size-40">
+                    <Glyph icon={step.icon} className="size-12 sm:size-20" />
+                  </div>
+                  <div className={`min-w-0 flex-1 ${left ? "text-left" : "text-center sm:text-right"}`}>
+                    <h3 className="text-2xl font-extrabold text-ink sm:text-4xl">{step.title}</h3>
+                    <p className="mt-2 text-sm font-medium leading-relaxed text-muted sm:text-base">{step.body}</p>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -164,29 +236,7 @@ function Home() {
         </div>
       </section>
 
-      <section id="how" className="bg-card py-14">
-        <div className="mx-auto max-w-6xl px-4">
-          <Reveal>
-            <h2 className="text-center text-3xl font-extrabold">How it works</h2>
-            <p className="mt-2 text-center text-sm font-medium text-muted">Three steps, then the shop is yours.</p>
-          </Reveal>
-          <div className="mt-8 grid gap-6 md:grid-cols-3">
-            {[
-              ["1", "Create account", "Sign up with email or Google. A Google account still confirms a name and phone."],
-              ["2", "Fund wallet", "Add naira. That balance is what you spend."],
-              ["3", "Buy", "Pick a server or a network. The number, code or recharge shows on the order."],
-            ].map(([n, t, b], i) => (
-              <Reveal key={n} delay={i * 90}>
-                <div className="text-center">
-                  <span className="mx-auto grid size-12 place-items-center rounded-full bg-primary text-sm font-extrabold text-on-primary">{n}</span>
-                  <h3 className="mt-3 text-lg font-extrabold">{t}</h3>
-                  <p className="mt-1 text-sm font-medium text-muted">{b}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
+      <HowItWorks />
 
       <Reveal>
         <section className="bg-deep py-16 text-center text-on-deep">
