@@ -76,6 +76,7 @@ const quick = [
   { to: "/dashboard/numbers", label: "USA", icon: glyph.flag, search: { server: "", country: "", kind: "usa", service: "" } },
   { to: "/dashboard/extra", label: "SMM", icon: glyph.file, hash: "smm" },
   { to: "/dashboard/extra", label: "Logs / VPN", icon: glyph.grid, hash: "random" },
+  { to: "/dashboard/telegram", label: "Telegram Premium", icon: glyph.send },
   { to: "/dashboard/rent", label: "Rent numbers", icon: glyph.crown },
   { to: "/dashboard/announcements", label: "Posts", icon: glyph.posts },
   { to: "/faq", label: "Tutorials", icon: glyph.play },
@@ -253,7 +254,7 @@ function DashHome() {
             const cls = "relative flex min-h-[5.4rem] flex-col items-center justify-center gap-2 rounded-2xl bg-[#E5F2F8] px-1 py-3 text-center";
             return (
               <Link key={q.label} to={q.to} search={"search" in q ? q.search : undefined} hash={"hash" in q ? q.hash : undefined} className={cls}>
-                {q.label === "Airtime" || q.label === "SMM" ? <span className="absolute right-1.5 top-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white">Soon</span> : null}
+                {q.label === "Airtime" || q.label === "SMM" || q.label === "Telegram Premium" ? <span className="absolute right-1.5 top-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white">Soon</span> : null}
                 {body}
               </Link>
             );

@@ -55,6 +55,7 @@ import { Route as DashboardProfileRouteImport } from './routes/dashboard/profile
 import { Route as DashboardReferRouteImport } from './routes/dashboard/refer'
 import { Route as DashboardRentRouteImport } from './routes/dashboard/rent'
 import { Route as DashboardSupportRouteImport } from './routes/dashboard/support'
+import { Route as DashboardTelegramRouteImport } from './routes/dashboard/telegram'
 import { Route as DashboardVpnRouteImport } from './routes/dashboard/vpn'
 import { Route as DashboardWalletRouteImport } from './routes/dashboard/wallet'
 import { Route as PurchaseResultOrderIdRouteImport } from './routes/purchase-result.$orderId'
@@ -294,6 +295,11 @@ const DashboardSupportRoute = DashboardSupportRouteImport.update({
   path: '/support',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardTelegramRoute = DashboardTelegramRouteImport.update({
+  id: '/telegram',
+  path: '/telegram',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardVpnRoute = DashboardVpnRouteImport.update({
   id: '/vpn',
   path: '/vpn',
@@ -380,6 +386,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/refer': typeof DashboardReferRoute
   '/dashboard/rent': typeof DashboardRentRoute
   '/dashboard/support': typeof DashboardSupportRoute
+  '/dashboard/telegram': typeof DashboardTelegramRoute
   '/dashboard/vpn': typeof DashboardVpnRoute
   '/dashboard/wallet': typeof DashboardWalletRoute
   '/purchase-result/$orderId': typeof PurchaseResultOrderIdRoute
@@ -434,6 +441,7 @@ export interface FileRoutesByTo {
   '/dashboard/refer': typeof DashboardReferRoute
   '/dashboard/rent': typeof DashboardRentRoute
   '/dashboard/support': typeof DashboardSupportRoute
+  '/dashboard/telegram': typeof DashboardTelegramRoute
   '/dashboard/vpn': typeof DashboardVpnRoute
   '/dashboard/wallet': typeof DashboardWalletRoute
   '/purchase-result/$orderId': typeof PurchaseResultOrderIdRoute
@@ -491,6 +499,7 @@ export interface FileRoutesById {
   '/dashboard/refer': typeof DashboardReferRoute
   '/dashboard/rent': typeof DashboardRentRoute
   '/dashboard/support': typeof DashboardSupportRoute
+  '/dashboard/telegram': typeof DashboardTelegramRoute
   '/dashboard/vpn': typeof DashboardVpnRoute
   '/dashboard/wallet': typeof DashboardWalletRoute
   '/purchase-result/$orderId': typeof PurchaseResultOrderIdRoute
@@ -549,6 +558,7 @@ export interface FileRouteTypes {
     | '/dashboard/refer'
     | '/dashboard/rent'
     | '/dashboard/support'
+    | '/dashboard/telegram'
     | '/dashboard/vpn'
     | '/dashboard/wallet'
     | '/purchase-result/$orderId'
@@ -603,6 +613,7 @@ export interface FileRouteTypes {
     | '/dashboard/refer'
     | '/dashboard/rent'
     | '/dashboard/support'
+    | '/dashboard/telegram'
     | '/dashboard/vpn'
     | '/dashboard/wallet'
     | '/purchase-result/$orderId'
@@ -659,6 +670,7 @@ export interface FileRouteTypes {
     | '/dashboard/refer'
     | '/dashboard/rent'
     | '/dashboard/support'
+    | '/dashboard/telegram'
     | '/dashboard/vpn'
     | '/dashboard/wallet'
     | '/purchase-result/$orderId'
@@ -1021,6 +1033,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardSupportRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/telegram': {
+      id: '/dashboard/telegram'
+      path: '/telegram'
+      fullPath: '/dashboard/telegram'
+      preLoaderRoute: typeof DashboardTelegramRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/vpn': {
       id: '/dashboard/vpn'
       path: '/vpn'
@@ -1134,6 +1153,7 @@ interface DashboardRouteChildren {
   DashboardReferRoute: typeof DashboardReferRoute
   DashboardRentRoute: typeof DashboardRentRoute
   DashboardSupportRoute: typeof DashboardSupportRoute
+  DashboardTelegramRoute: typeof DashboardTelegramRoute
   DashboardVpnRoute: typeof DashboardVpnRoute
   DashboardWalletRoute: typeof DashboardWalletRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
@@ -1151,6 +1171,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardReferRoute: DashboardReferRoute,
   DashboardRentRoute: DashboardRentRoute,
   DashboardSupportRoute: DashboardSupportRoute,
+  DashboardTelegramRoute: DashboardTelegramRoute,
   DashboardVpnRoute: DashboardVpnRoute,
   DashboardWalletRoute: DashboardWalletRoute,
   DashboardIndexRoute: DashboardIndexRoute,

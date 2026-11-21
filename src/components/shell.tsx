@@ -43,6 +43,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
     { to: "/dashboard/airtime", label: "Airtime", icon: glyph.phone },
     { to: "/dashboard/extra", label: "SMM", icon: glyph.megaphone, hash: "smm", match: "smm" },
     { to: "/dashboard/extra", label: "Logs / VPN", icon: glyph.grid, hash: "random", match: "random" },
+    { to: "/dashboard/telegram", label: "Telegram Premium", icon: glyph.send, match: "telegram" },
     { to: "/dashboard/announcements", label: "Announcements", icon: glyph.megaphone },
     { to: "/dashboard/refer", label: "Refer & earn", icon: glyph.users },
   ];
@@ -88,6 +89,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
     else if (item.match === "all") active = onNumbers && kind !== "usa";
     else if (item.match === "smm") active = path.startsWith("/dashboard/extra") && hash === "smm";
     else if (item.match === "random") active = path.startsWith("/dashboard/extra") && hash !== "smm";
+    else if (item.match === "telegram") active = path.startsWith("/dashboard/telegram");
     else if (item.match === "hist") active = path.startsWith("/dashboard/history");
     else if (item.end) active = path === item.to;
     else active = path === item.to || path.startsWith(item.to + "/");
@@ -101,7 +103,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
       >
         <Glyph icon={item.icon} className={`nav-glyph shrink-0 ${active ? "text-white" : "text-[#5b4cdb]"}`} />
         <span className="min-w-0 flex-1 whitespace-normal leading-snug">{item.label}</span>
-        {item.label === "Airtime" || item.label === "SMM" ? <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${active ? "bg-white text-[#174C70]" : "bg-amber-500 text-white"}`}>Soon</span> : null}
+        {item.label === "Airtime" || item.label === "SMM" || item.label === "Telegram Premium" ? <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${active ? "bg-white text-[#174C70]" : "bg-amber-500 text-white"}`}>Soon</span> : null}
       </Link>
     );
   };
