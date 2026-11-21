@@ -3,6 +3,7 @@ import { paystackSignatureOk } from "@/lib/paystack-sign";
 import { getSql } from "@/lib/db";
 import { freshData, normalizeData, quoteProduct, serverLabel, topupQuote, withAdminLogin, type Data, type Product, type SyncReport } from "@/lib/catalog";
 import { customerPrice, profitsOf, sellQuote, summarizeProfit } from "@/lib/pricing";
+import { rentCharge } from "@/lib/rent";
 import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, fiveSimImportPlan, shapeImport, attachVtuIds, vtuCatalogueUrl, discoverServiceNames, mergeServiceNames, type ImportKind, type ParsedItem } from "@/lib/categorize";
 import { applyCategoryLogo } from "@/lib/logo-discover";
 import { AIRTIME_CLOSED, BILL_CLOSED, SMM_CLOSED, airtimeSalesOpen, isRetiredBill, smmSalesOpen } from "@/lib/purchase-history";
@@ -792,9 +793,9 @@ function fiveSimProvider(doc: Data) {
 export async function buyRentNumber(offerId: string, idempotencyKey = "") {
   const session = await readSession();
   if (!session.userId) return { error: "Sign in first.", orderId: "", state: null as Data | null };
-  const { readRentOffer, rentCountryName } = await import("@/lib/rent.server");
+  const { readRentOffer, readRentPricing, rentCountryName, rentGroups } = await import("@/lib/rent.server");
   const { fiveSimBuyUrl } = await import("@/lib/rent");
-  const offer = await readRentOffer(offerId);
+  const offer = await resolveRentOffer(offerId, readRentOffer, rentGroups);
   if (!offer) return { error: "That rent option is no longer in the catalogue.", orderId: "", state: null };
   const doc = await loadLight();
   const provider = fiveSimProvider(doc);
@@ -802,18 +803,12 @@ export async function buyRentNumber(offerId: string, idempotencyKey = "") {
   if (!provider || !key) return { error: "FiveSim is not connected for Rent numbers. Nothing was sent.", orderId: "", state: null };
   const user = doc.users.find((item) => item.id === session.userId);
   if (!user) return { error: "Sign in first.", orderId: "", state: null };
-  const priced = sellQuote({
-    category: "numbers",
-    unitCost: offer.priceUsd,
-    currency: "USD",
-    usdRate: provider.usdRate || doc.settings.usdNgn,
-    profits: profitsOf({ general: doc.settings.generalProfit }),
-  });
-  if (!priced.ok) return { error: priced.error, orderId: "", state: null };
-  const charge = priced.charge;
+  const pricing = await readRentPricing();
+  const charge = rentCharge(offer.priceUsd, pricing);
+  if (charge == null) return { error: "This number cannot be bought right now.", orderId: "", state: null };
   const idem = String(idempotencyKey || "").replace(/[^a-zA-Z0-9:_-]/g, "").slice(0, 80);
   if (!idem) return { error: "Start the rental again. Nothing was sent.", orderId: "", state: null };
-  const gate = await beginPurchaseKey({ key: idem, userId: user.id, productId: `rent:${offerId}`.slice(0, 80) });
+  const gate = await beginPurchaseKey({ key: idem, userId: user.id, productId: `rent:${offer.id}`.slice(0, 80) });
   if (gate === "completed") {
     const sql = await getSql();
     const previous = await sql.query<{ order_id: string }>("select order_id from shop_idempotency where key = $1", [idem]);
@@ -851,17 +846,18 @@ export async function buyRentNumber(offerId: string, idempotencyKey = "") {
   }
   const ready = { ...doc, users: doc.users.map((item) => (item.id === user.id ? { ...item, balance: debited.balance + charge } : item)) };
   const bought = recordRentOrder(ready, user.id, {
-    offerId,
+    offerId: offer.id,
     title,
     country: countryName,
     service: offer.service,
     kind: offer.kind,
     phone,
     charge,
-    cost: priced.costNgn,
-    gain: priced.profit,
+    cost: Math.round(offer.priceUsd * pricing.usdNgn),
+    gain: charge - Math.round(offer.priceUsd * pricing.usdNgn),
     providerRef,
     providerStatus: String(json.status || "PENDING"),
+    providerUsd: offer.priceUsd,
   });
   if (bought.error || !("order" in bought) || !bought.order) {
     await markPurchaseKey(idem, "needs_reconcile", { providerOrderId: providerRef, amount: charge, detail: title });
@@ -942,32 +938,44 @@ export async function finishRentNumber(orderId: string) {
 
 export async function quoteRentServices(country: string) {
   const session = await readSession();
-  if (!session.userId) return { error: "Sign in first.", services: [] as { id: string; service: string; operator: string; kind: string; stock: number; price: number }[] };
-  const doc = await loadLight();
-  const provider = fiveSimProvider(doc);
-  const usdRate = provider?.usdRate || doc.settings.usdNgn;
-  const { rentServices } = await import("@/lib/rent.server");
-  const rows = await rentServices(country);
+  if (!session.userId) return { error: "Sign in first.", services: [] as { id: string; service: string; stock: number; price: number; rate: number | null }[] };
+  const { readRentPricing, rentGroups } = await import("@/lib/rent.server");
+  const { rentSlug } = await import("@/lib/rent");
+  const slug = rentSlug(country);
+  const pricing = await readRentPricing();
+  const groups = slug ? await rentGroups(slug) : [];
+  if (groups.length && rentCharge(groups[0].chosen.priceUsd, pricing) == null) {
+    return { error: "Prices are not available right now.", services: [] as { id: string; service: string; stock: number; price: number; rate: number | null }[] };
+  }
   const services = [];
-  for (const row of rows) {
-    const priced = sellQuote({
-      category: "numbers",
-      unitCost: Number(row.price_usd),
-      currency: "USD",
-      usdRate,
-      profits: profitsOf({ general: doc.settings.generalProfit }),
-    });
-    if (!priced.ok) continue;
+  for (const group of groups) {
+    const price = rentCharge(group.chosen.priceUsd, pricing);
+    if (price == null) continue;
     services.push({
-      id: row.id,
-      service: row.service,
-      operator: row.operator,
-      kind: row.kind,
-      stock: Number(row.stock) || 0,
-      price: priced.charge,
+      id: `group|${slug}|${group.key}`,
+      service: group.label,
+      stock: group.chosen.stock,
+      price,
+      rate: group.chosen.rate && group.chosen.rate > 0 ? group.chosen.rate : null,
     });
   }
   return { error: null as string | null, services };
+}
+
+async function resolveRentOffer(
+  offerId: string,
+  readRentOffer: (id: string) => Promise<{ id: string; country: string; service: string; operator: string; kind: "activation" | "hosting"; priceUsd: number; stock: number; rate?: number | null } | null>,
+  rentGroups: (country: string) => Promise<{ key: string; chosen: { id: string; country: string; service: string; operator: string; kind: "activation" | "hosting"; priceUsd: number; stock: number; rate?: number | null } }[]>,
+) {
+  if (offerId.startsWith("group|")) {
+    const rest = offerId.slice("group|".length);
+    const cut = rest.indexOf("|");
+    if (cut <= 0) return null;
+    const groups = await rentGroups(rest.slice(0, cut));
+    return groups.find((group) => group.key === rest.slice(cut + 1))?.chosen || null;
+  }
+  const row = await readRentOffer(offerId);
+  return row && row.stock > 0 ? row : null;
 }
 
 export async function rentLinkStatus() {

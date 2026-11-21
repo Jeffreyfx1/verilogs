@@ -588,6 +588,54 @@ export const importRentCountries = createServerFn({ method: "POST" }).handler(as
   return run();
 });
 
+export const saveRentPricing = createServerFn({ method: "POST" })
+  .validator((input: { usdNgn?: number; marginPerUsd?: number; marginEnabled?: boolean }) => ({
+    usdNgn: Number(input?.usdNgn) || 0,
+    marginPerUsd: Number(input?.marginPerUsd) || 0,
+    marginEnabled: !!input?.marginEnabled,
+  }))
+  .handler(async ({ data }) => {
+    await adminOnly();
+    const { saveRentPricing: save } = await import("@/lib/rent.server");
+    return save(data);
+  });
+
+export const saveRentLabel = createServerFn({ method: "POST" })
+  .validator((input: { service?: string; label?: string }) => ({
+    service: String(input?.service || "").slice(0, 80),
+    label: String(input?.label || "").slice(0, 80),
+  }))
+  .handler(async ({ data }) => {
+    await adminOnly();
+    const { saveRentLabel: save } = await import("@/lib/rent.server");
+    return save(data.service, data.label);
+  });
+
+export const searchRentCatalogue = createServerFn({ method: "POST" })
+  .validator((input: { query?: string }) => ({ query: String(input?.query || "").slice(0, 40) }))
+  .handler(async ({ data }) => {
+    await adminOnly();
+    const { searchRentCatalogue: search } = await import("@/lib/rent.server");
+    return search(data.query);
+  });
+
+export const rentVariantRows = createServerFn({ method: "POST" })
+  .validator((input: { country?: string; service?: string }) => ({
+    country: String(input?.country || "").slice(0, 80),
+    service: String(input?.service || "").slice(0, 80),
+  }))
+  .handler(async ({ data }) => {
+    await adminOnly();
+    const { rentVariantRows: rows, readRentPricing } = await import("@/lib/rent.server");
+    const { pickRentVariant, rentCharge } = await import("@/lib/rent");
+    const [variants, pricing] = await Promise.all([rows(data.country, data.service), readRentPricing()]);
+    const chosen = pickRentVariant(variants);
+    return {
+      variants: variants.map((row) => ({ ...row, price: rentCharge(row.priceUsd, pricing) })),
+      chosenId: chosen?.id || "",
+    };
+  });
+
 export const importRentServices = createServerFn({ method: "POST" })
   .validator((input: { country?: string }) => ({ country: String(input?.country || "").slice(0, 80) }))
   .handler(async ({ data }) => {
@@ -599,7 +647,7 @@ export const importRentServices = createServerFn({ method: "POST" })
 export const listRentCountries = createServerFn({ method: "GET" }).handler(async () => {
   const { sessionCustomer } = await core();
   const me = await sessionCustomer();
-  if (!me) return { error: "Sign in first.", countries: [] as { slug: string; name: string }[] };
+  if (!me) return { error: "Sign in first.", countries: [] as { slug: string; name: string; iso: string }[] };
   const { rentCountries } = await import("@/lib/rent.server");
   return { error: null as string | null, countries: await rentCountries() };
 });

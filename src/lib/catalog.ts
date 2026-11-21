@@ -99,6 +99,7 @@ export type Order = {
   delivery?: string;
   country?: string;
   service?: string;
+  providerUsd?: number;
   messages?: { at: string; sender: string; text: string; code: string }[];
 };
 

@@ -267,7 +267,7 @@ export function recordAirtimeOrder(data: Data, userId: string | null, input: { n
   return { error: null, data: next, order };
 }
 
-export function recordRentOrder(data: Data, userId: string | null, input: { offerId: string; title: string; country: string; service: string; kind: string; phone: string; charge: number; cost: number; gain: number; providerRef: string; providerStatus: string }) {
+export function recordRentOrder(data: Data, userId: string | null, input: { offerId: string; title: string; country: string; service: string; kind: string; phone: string; charge: number; cost: number; gain: number; providerRef: string; providerStatus: string; providerUsd?: number }) {
   const user = actor(data, userId);
   if (!user) return { error: "Sign in first.", data };
   const amount = Math.round(input.charge);
@@ -296,6 +296,7 @@ export function recordRentOrder(data: Data, userId: string | null, input: { offe
     providerStatus: input.providerStatus,
     country: input.country,
     service: input.service,
+    providerUsd: input.providerUsd && input.providerUsd > 0 ? input.providerUsd : undefined,
     delivery: "",
     messages: [],
   };

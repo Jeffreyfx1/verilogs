@@ -3,12 +3,14 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { buyRentNumber, cancelRentNumber, finishRentNumber, listRentCountries, listRentServices } from "@/lib/shop-fns";
 import { naira, when } from "@/lib/money";
+import { flagEmoji, rentSearchHit } from "@/lib/rent";
 import { useStore, useUser } from "@/lib/store";
+import { inputClass } from "@/components/ui";
 
 export const Route = createFileRoute("/dashboard/rent")({ component: RentPage });
 
-type Country = { slug: string; name: string };
-type Service = { id: string; service: string; operator: string; kind: string; stock: number; price: number };
+type Country = { slug: string; name: string; iso: string };
+type Service = { id: string; service: string; stock: number; price: number; rate: number | null };
 
 function RentPage() {
   const user = useUser();
@@ -22,12 +24,22 @@ function RentPage() {
   const nav = useNavigate();
   const [countries, setCountries] = useState<Country[]>([]);
   const [country, setCountry] = useState("");
+  const [countryQ, setCountryQ] = useState("");
+  const [countryOpen, setCountryOpen] = useState(false);
   const [services, setServices] = useState<Service[]>([]);
+  const [serviceId, setServiceId] = useState("");
+  const [serviceQ, setServiceQ] = useState("");
+  const [serviceOpen, setServiceOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingServices, setLoadingServices] = useState(false);
+  const [priceNote, setPriceNote] = useState("");
   const [buying, setBuying] = useState("");
   const [acting, setActing] = useState("");
   const keys = useRef(new Map<string, string>());
+  const shownCountries = countries.filter((row) => rentSearchHit(row.name, countryOpen ? countryQ : ""));
+  const shownServices = services.filter((row) => rentSearchHit(row.service, serviceOpen ? serviceQ : ""));
+  const selectedCountry = countries.find((row) => row.slug === country);
+  const selected = services.find((row) => row.id === serviceId);
 
   useEffect(() => {
     listRentCountries().then((res) => {
@@ -42,8 +54,10 @@ function RentPage() {
       return;
     }
     setLoadingServices(true);
+    setPriceNote("");
+    setServiceId("");
     listRentServices({ data: { country } }).then((res) => {
-      if (res.error) toast.error(res.error);
+      if (res.error) setPriceNote(res.error);
       setServices(res.services || []);
     }).catch(() => toast.error("Could not load services.")).finally(() => setLoadingServices(false));
   }, [country]);
@@ -103,30 +117,65 @@ function RentPage() {
         <h1 className="text-2xl font-extrabold">Rent number</h1>
         <p className="mt-1 text-sm text-muted">Choose a country, then a service.</p>
       </div>
-      <label className="block text-sm font-bold">
-        Country
-        <select className="mt-1 w-full rounded-xl border border-line bg-card px-3 py-3 text-base" value={country} onChange={(event) => setCountry(event.target.value)}>
-          <option value="">{loading ? "Loading countries…" : "Choose a country"}</option>
-          {countries.map((row) => <option key={row.slug} value={row.slug}>{row.name}</option>)}
-        </select>
-      </label>
-      {!loading && !countries.length ? <p className="rounded-2xl border border-line bg-card p-4 text-sm text-muted">Nothing is available right now.</p> : null}
+      <label className="block text-sm font-bold">Country</label>
+      <div className="relative">
+        <input
+          className={inputClass}
+          placeholder="Search country..."
+          value={countryOpen ? countryQ : selectedCountry ? `${flagEmoji(selectedCountry.iso)} ${selectedCountry.name}`.trim() : ""}
+          onFocus={() => { setCountryOpen(true); setCountryQ(""); }}
+          onBlur={() => window.setTimeout(() => setCountryOpen(false), 150)}
+          onChange={(event) => { setCountryQ(event.target.value); setCountryOpen(true); }}
+        />
+        {countryOpen ? (
+          <div className="absolute z-20 mt-1 max-h-80 w-full overflow-y-auto rounded-xl border border-line bg-card shadow-card">
+            {shownCountries.map((row) => (
+              <button key={row.slug} type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-primary hover:text-on-primary" onMouseDown={(event) => event.preventDefault()} onClick={() => { setCountry(row.slug); setCountryQ(""); setCountryOpen(false); setServiceId(""); setServiceQ(""); }}>
+                <span>{flagEmoji(row.iso) || "🌐"}</span>
+                <span>{row.name}</span>
+              </button>
+            ))}
+            {!loading && !shownCountries.length ? <p className="px-3 py-3 text-sm text-muted">{countryQ.trim() ? "No country matches that search." : "Nothing is available right now."}</p> : null}
+          </div>
+        ) : null}
+      </div>
       {country ? (
-        <div className="space-y-2">
-          {loadingServices ? <p className="text-sm text-muted">Loading services…</p> : null}
-          {!loadingServices && !services.length ? <p className="text-sm text-muted">Nothing is available for this country right now.</p> : null}
-          {services.map((offer) => (
-            <article key={offer.id} className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-card p-3">
-              <div>
-                <p className="font-extrabold">{offer.service}</p>
-                <p className="text-xs text-muted">{offer.kind} · stock {offer.stock} · operator {offer.operator}</p>
+        <>
+          <label className="block text-sm font-bold">Service</label>
+          <div className="relative">
+            <input
+              className={inputClass}
+              placeholder="Search service..."
+              value={serviceOpen ? serviceQ : selected?.service || ""}
+              onFocus={() => { setServiceOpen(true); setServiceQ(""); }}
+              onBlur={() => window.setTimeout(() => setServiceOpen(false), 150)}
+              onChange={(event) => { setServiceQ(event.target.value); setServiceOpen(true); setServiceId(""); }}
+            />
+            {serviceOpen ? (
+              <div className="absolute z-20 mt-1 max-h-80 w-full overflow-y-auto rounded-xl border border-line bg-card shadow-card">
+                {loadingServices ? <p className="px-3 py-3 text-sm text-muted">Loading services…</p> : null}
+                {shownServices.map((offer) => (
+                  <button key={offer.id} type="button" className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-primary hover:text-on-primary" onMouseDown={(event) => event.preventDefault()} onClick={() => { setServiceId(offer.id); setServiceQ(""); setServiceOpen(false); }}>
+                    <span>{offer.service}</span>
+                    <span className="text-xs">{naira(offer.price)}</span>
+                  </button>
+                ))}
+                {!loadingServices && !shownServices.length ? <p className="px-3 py-3 text-sm text-muted">{priceNote || (serviceQ.trim() ? "No service matches that search." : "Nothing is available for this country right now.")}</p> : null}
               </div>
-              <button type="button" className="rounded-xl bg-deep px-3 py-2 text-sm font-extrabold text-on-deep" disabled={!!buying} onClick={() => void buy(offer)}>
-                {buying === offer.id ? "Buying…" : naira(offer.price)}
+            ) : null}
+          </div>
+          {selected ? (
+            <article className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-card p-3">
+              <div>
+                <p className="font-extrabold">{selected.service}</p>
+                <p className="text-xs text-muted">Stock {selected.stock.toLocaleString("en-US")}{selected.rate ? ` · success ${selected.rate}%` : ""}</p>
+              </div>
+              <button type="button" className="rounded-xl bg-deep px-3 py-2 text-sm font-extrabold text-on-deep" disabled={!!buying} onClick={() => void buy(selected)}>
+                {buying === selected.id ? "Buying…" : naira(selected.price)}
               </button>
             </article>
-          ))}
-        </div>
+          ) : null}
+        </>
       ) : null}
       <section className="space-y-2">
         <h2 className="text-lg font-extrabold">Your Rent number orders</h2>
