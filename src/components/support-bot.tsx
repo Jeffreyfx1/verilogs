@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Glyph, glyph } from "@/components/icons";
-import { supportAsk } from "@/lib/shop-fns";
+import { supportAsk, supportFeedback } from "@/lib/shop-fns";
 import { useStore } from "@/lib/store";
 
 const QUICK = ["How do I buy a number?", "How do I fund my wallet?", "Refund a waiting number", "Talk to a person"];
+const THREAD_KEY = "vl_vera_thread";
 
 export function SupportBot() {
   const settings = useStore((s) => s.settings);
@@ -12,7 +13,32 @@ export function SupportBot() {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [threadId, setThreadId] = useState("");
+  const threadRef = useRef("");
+  const [rated, setRated] = useState("");
+  const [comment, setComment] = useState("");
   const [log, setLog] = useState<{ from: "me" | "vera"; text: string }[]>([]);
+
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(THREAD_KEY) || "";
+      threadRef.current = saved;
+      setThreadId(saved);
+    } catch {
+      setThreadId("");
+    }
+  }, []);
+
+  const remember = (id: string) => {
+    if (!id) return;
+    threadRef.current = id;
+    setThreadId(id);
+    try {
+      sessionStorage.setItem(THREAD_KEY, id);
+    } catch {
+      /* private mode can block storage; the thread id still stays in memory */
+    }
+  };
 
   const ask = async (question: string) => {
     const q = question.trim();
@@ -21,7 +47,8 @@ export function SupportBot() {
     setText("");
     setBusy(true);
     try {
-      const res = await supportAsk({ data: { question: q } });
+      const res = await supportAsk({ data: { question: q, threadId: threadRef.current } });
+      remember(res.threadId || "");
       setLog((prev) => [...prev, { from: "vera", text: res.text }]);
       if (/complaint|problem|not working|scam|charged/.test(q.toLowerCase()) && user) {
         await addTicket({ email: user.email, subject: "Chat complaint", body: q });
@@ -30,6 +57,18 @@ export function SupportBot() {
       setLog((prev) => [...prev, { from: "vera", text: "I could not answer just now. Use the Telegram channel and a person will pick it up." }]);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const rate = async (helpful: "yes" | "no") => {
+    if (!threadRef.current || rated === threadRef.current) return;
+    try {
+      const res = await supportFeedback({ data: { threadId: threadRef.current, helpful, comment } });
+      if (res.error) return;
+      setRated(threadRef.current);
+      setComment("");
+    } catch {
+      /* feedback is optional */
     }
   };
 
@@ -54,6 +93,16 @@ export function SupportBot() {
               </p>
             ))}
             {busy ? <p className="text-xs text-muted">Vera is typing…</p> : null}
+            {threadId && rated !== threadId && log.some((line) => line.from === "vera") && !busy ? (
+              <div className="rounded-xl bg-card px-3 py-2">
+                <p className="text-xs font-semibold">Was Vera helpful?</p>
+                <div className="mt-2 flex gap-2">
+                  <button type="button" className="rounded-full border border-line px-3 py-1 text-xs font-bold" onClick={() => void rate("yes")}>Yes</button>
+                  <button type="button" className="rounded-full border border-line px-3 py-1 text-xs font-bold" onClick={() => void rate("no")}>No</button>
+                </div>
+                <input className="mt-2 w-full rounded-lg border border-line bg-paper px-2 py-2 text-base" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Optional comment" />
+              </div>
+            ) : null}
           </div>
           <div className="flex gap-1 overflow-x-auto border-t border-line px-2 py-2">
             {QUICK.map((q) => (
@@ -69,7 +118,7 @@ export function SupportBot() {
               void ask(text);
             }}
           >
-            <input className="min-w-0 flex-1 rounded-xl border border-line bg-paper px-3 py-2 text-sm" value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask or describe a problem" />
+            <input className="min-w-0 flex-1 rounded-xl border border-line bg-paper px-3 py-2 text-base" value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask or describe a problem" />
             <button type="submit" className="rounded-xl bg-primary px-3 text-sm font-semibold text-on-primary">
               Send
             </button>

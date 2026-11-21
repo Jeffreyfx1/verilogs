@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Glyph, glyph } from "@/components/icons";
 import { NoticeBell } from "@/components/bell";
 import { AnnounceBar } from "@/components/announce-bar";
+import { CmsHtml } from "@/components/rich-text";
 import { Logo } from "@/components/ui";
+import { publicPage } from "@/lib/cms-fns";
 import { useStore, useUser } from "@/lib/store";
 
 const LINKS = [
@@ -81,26 +83,45 @@ export function PublicHeader() {
 
 export function PublicFooter() {
   const brand = useStore((s) => s.settings.brand);
+  const [blurb, setBlurb] = useState("");
+  useEffect(() => {
+    let live = true;
+    publicPage({ data: { slug: "footer" } })
+      .then((page) => {
+        if (live && page?.html) setBlurb(page.html);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
   return (
     <footer className="mt-auto border-t border-line bg-deep text-on-deep">
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:grid-cols-3">
         <div>
           <Logo />
-          <p className="mt-3 text-sm font-medium text-on-deep/80">Virtual numbers, data and digital services. Wallet in naira. Servers stay separate.</p>
+          <div className="mt-3 text-sm font-medium text-on-deep/80 [&_.cms-copy]:text-on-deep/80">
+            {blurb ? <CmsHtml html={blurb} /> : <p>Virtual numbers, data and digital services. Wallet in naira. Servers stay separate.</p>}
+          </div>
         </div>
         <div>
           <p className="text-sm font-semibold">Help</p>
           <div className="mt-3 flex flex-col gap-2 text-sm">
             <Link to="/faq" className="hover:underline">FAQ</Link>
             <Link to="/support" className="hover:underline">Support</Link>
+            <Link to="/help" className="hover:underline">Help</Link>
+            <Link to="/how" className="hover:underline">How it works</Link>
             <Link to="/community" className="hover:underline">Community</Link>
           </div>
         </div>
         <div>
           <p className="text-sm font-semibold">Legal</p>
           <div className="mt-3 flex flex-col gap-2 text-sm">
+            <Link to="/about" className="hover:underline">About</Link>
             <Link to="/terms" className="hover:underline">Terms</Link>
             <Link to="/privacy" className="hover:underline">Privacy</Link>
+            <Link to="/refund" className="hover:underline">Refunds</Link>
+            <Link to="/notices" className="hover:underline">Notices</Link>
           </div>
         </div>
       </div>

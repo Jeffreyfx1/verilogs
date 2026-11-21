@@ -421,6 +421,28 @@ export async function queryWhatsAppOffer(input: BrowseInput) {
   return rows.map((row) => ({ service: row.service, providerId: row.provider_id, cost: Number(row.cost) || 0, price: Number(row.price) || 0 }));
 }
 
+/** One stocked service row for a support lookup. Does not change the customer service list. */
+export async function queryStockedService(input: BrowseInput, slug: string) {
+  const safe = String(slug || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!safe) return [];
+  const sql = await getSql();
+  const values: unknown[] = [];
+  const where = filters({ ...input, service: "", q: "" }, values);
+  values.push(safe);
+  const rows = await sql.query<{ service: string; provider_id: string; cost: number; price: number }>(
+    `select service, provider_id, min(cost) as cost, min(price) as price
+     from shop_products
+     where ${where}
+       and stock > 0
+       and lower(regexp_replace(service, '[^a-zA-Z0-9]', '', 'g')) = $${values.length}
+     group by service, provider_id
+     order by service
+     limit 5`,
+    values,
+  );
+  return rows.map((row) => ({ service: row.service, providerId: row.provider_id, cost: Number(row.cost) || 0, price: Number(row.price) || 0 }));
+}
+
 export async function queryCountries(input: BrowseInput) {
   const sql = await getSql();
   const values: unknown[] = [];

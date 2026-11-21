@@ -258,10 +258,26 @@ export const openImportJobs = createServerFn({ method: "GET" }).handler(async ()
 });
 
 export const supportAsk = createServerFn({ method: "POST" })
-  .validator((input: { question: string }) => ({ question: String(input?.question || "").slice(0, 500) }))
+  .validator((input: { question: string; threadId?: string }) => ({
+    question: String(input?.question || "").slice(0, 500),
+    threadId: String(input?.threadId || "").slice(0, 80),
+  }))
   .handler(async ({ data }) => {
     const { askSupport } = await core();
-    return askSupport(data.question);
+    return askSupport(data.question, data.threadId);
+  });
+
+export const supportFeedback = createServerFn({ method: "POST" })
+  .validator((input: { threadId?: string; helpful?: string; comment?: string }) => ({
+    threadId: String(input?.threadId || "").slice(0, 80),
+    helpful: input?.helpful === "yes" ? "yes" as const : "no" as const,
+    comment: String(input?.comment || "").slice(0, 400),
+  }))
+  .handler(async ({ data }) => {
+    const { sessionCustomer } = await core();
+    const { recordVeraFeedback } = await import("@/lib/vera.server");
+    const me = await sessionCustomer();
+    return recordVeraFeedback({ threadId: data.threadId, userId: me?.id || "", helpful: data.helpful, comment: data.comment });
   });
 
 async function adminOnly() {

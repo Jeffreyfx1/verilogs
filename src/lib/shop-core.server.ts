@@ -16,6 +16,7 @@ import { fetchNote, probeProviderCatalogue, readCataloguePage, reportOf, savePro
 import { IMPORT_BATCH, importBatchCount, sliceImport } from "@/lib/import-batch";
 import { uid } from "@/lib/money";
 import { isFiveSimServer1, isWhatsAppService, preferWhatsApp, wantsWhatsAppLookup, finishServicePage } from "@/lib/whatsapp-availability";
+import { mentionedCountry, mentionedService } from "@/lib/vera-mind";
 import { placeOnProvider } from "@/lib/fulfill.server";
 import {
   clearProducts,
@@ -28,6 +29,7 @@ import {
   queryHidden,
   queryOperators,
   queryServices,
+  queryStockedService,
   queryWhatsAppOffer,
   queryShelf,
   catalogCounts,
@@ -1836,48 +1838,55 @@ export async function testInstakingKey(apiKey: string) {
   return { ok: true, error: "", balance: String(body.balance ?? ""), currency: instakingCurrency(body.currency) || String(body.currency || "") };
 }
 
-export async function askSupport(question: string) {
+export async function askSupport(question: string, threadId = "") {
   const q = question.trim().slice(0, 500);
-  if (!q) return { text: "Type a question first." };
+  if (!q) return { text: "Type a question first.", threadId: "", escalated: false, unanswered: false };
   const doc = await loadLight();
-  const faq = doc.faqs.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join("\n");
-  const local = localAnswer(q, doc);
-  const apiKey = process.env.XAI_API_KEY;
-  if (!apiKey) return { text: local };
-  try {
-    const res = await fetch("https://api.x.ai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: "grok-4.5",
-        max_tokens: 180,
-        messages: [
-          {
-            role: "system",
-            content: `You are Vera, the VeriLogs support guide. Answer in 2-4 short sentences. Naira wallet, virtual numbers on separate servers, data split by MTN Airtel Glo 9mobile Smile, Paystack top-ups, Telegram ${doc.settings.telegram}. Do not invent balances. If you cannot help, point them to Telegram. FAQs:\n${faq}`,
-          },
-          { role: "user", content: q },
-        ],
-      }),
-    });
-    if (!res.ok) return { text: local };
-    const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    return { text: body.choices?.[0]?.message?.content?.trim() || local };
-  } catch {
-    return { text: local };
-  }
+  const session = await readSession();
+  const me = doc.users.find((user) => user.id === session.userId) || null;
+  const facts = await supportFacts(doc, me, q);
+  const { answerVera } = await import("@/lib/vera.server");
+  return answerVera({
+    question: q,
+    threadId: threadId.slice(0, 80),
+    user: me ? { id: me.id } : null,
+    facts,
+    faqs: doc.faqs,
+    telegram: doc.settings.telegram,
+    welcome: doc.settings.supportWelcome,
+  });
 }
 
-function localAnswer(q: string, doc: Data) {
-  const s = q.toLowerCase();
-  const hit = doc.faqs.find((f) => s.split(/\s+/).some((w) => w.length > 3 && (f.question + f.answer).toLowerCase().includes(w)));
-  if (hit) return hit.answer;
-  if (/refund|cancel|sms|code/.test(s)) return "If a number is still waiting, open Virtual numbers and cancel it. The naira returns to your wallet. Codes show on that same card.";
-  if (/wallet|pay|fund|paystack/.test(s)) return "Open Fund wallet, pick an amount, and pay with Paystack. The balance updates after Paystack confirms it.";
-  if (/server|whatsapp|number/.test(s)) return "Open Buy a number, choose Server 1, Server 2 or Server 3, then the country and service.";
-  if (/mtn|airtel|glo|data|9mobile|smile/.test(s)) return "Open Data and pick the SIM first. MTN, Airtel, Glo, 9mobile and Smile are separate lists.";
-  if (/telegram|human|complaint|agent/.test(s)) return `A person can help on Telegram: ${doc.settings.telegram}`;
-  return `${doc.settings.supportWelcome} You can also open ${doc.settings.telegram}.`;
+async function supportFacts(doc: Data, user: Data["users"][number] | null, question: string) {
+  const lines = ["Server 1 is FiveSim. Server 2 and Server 3 are different providers. Do not mix their stock or prices."];
+  if (!user) lines.push("Customer is not signed in. Do not guess a balance, order or deposit.");
+  else {
+    lines.push(`Signed-in balance: ₦${user.balance}. Use this figure only.`);
+    const orders = doc.orders.filter((order) => order.userId === user.id).slice(0, 5);
+    lines.push(orders.length ? `Recent orders: ${orders.map((order) => `${order.title} (${order.status}, ₦${order.amount})`).join("; ")}` : "This account has no orders.");
+    const credits = doc.txns.filter((txn) => txn.userId === user.id && txn.kind === "topup").slice(0, 3);
+    lines.push(credits.length ? `Recent wallet credits: ${credits.map((txn) => `${txn.note} ₦${txn.amount}`).join("; ")}` : "No wallet credit is recorded on this account yet.");
+  }
+  const service = mentionedService(question);
+  const country = mentionedCountry(question);
+  if (service) {
+    const provider = doc.providers.find((item) => item.enabled && isFiveSimServer1(item));
+    if (!provider) lines.push("FiveSim Server 1 is not enabled in this shop.");
+    else if (!country) lines.push(`The customer asked about ${service} on FiveSim Server 1 but named no country. Ask which country. Do not claim one is available.`);
+    else {
+      const rows = await queryStockedService({ providerId: provider.id, category: "number", country, admin: false, enabledProviderIds: [provider.id] }, service);
+      const row = rows[0];
+      if (!row) lines.push(`No stocked ${service} row for ${country} on FiveSim Server 1.`);
+      else {
+        const price = quoteProduct(
+          { id: "", providerId: row.providerId, externalId: "", category: "number", name: row.service, service: row.service, country, network: "", price: row.price, cost: row.cost, stock: 1, operator: "", rate: -1, rates: "", enabled: true, validity: "", variable: false, description: "" },
+          doc,
+        ).price;
+        lines.push(price > 0 ? `${row.service} is stocked on FiveSim Server 1 for ${country}. Listed from ₦${price}.` : `${row.service} is stocked on FiveSim Server 1 for ${country}.`);
+      }
+    }
+  }
+  return lines.join("\n");
 }
 
 export function publicOrigin(request: Request) {

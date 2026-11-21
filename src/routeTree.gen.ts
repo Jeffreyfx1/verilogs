@@ -10,14 +10,19 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as CommunityRouteImport } from './routes/community'
 import { Route as CompleteRouteImport } from './routes/complete'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as FaqRouteImport } from './routes/faq'
 import { Route as ForgotRouteImport } from './routes/forgot'
+import { Route as HelpRouteImport } from './routes/help'
+import { Route as HowRouteImport } from './routes/how'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as NoticesRouteImport } from './routes/notices'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as RefundRouteImport } from './routes/refund'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as SupportRouteImport } from './routes/support'
 import { Route as TermsRouteImport } from './routes/terms'
@@ -32,6 +37,9 @@ import { Route as AdminImportRouteImport } from './routes/admin/import'
 import { Route as AdminLogosRouteImport } from './routes/admin/logos'
 import { Route as AdminOrdersRouteImport } from './routes/admin/orders'
 import { Route as AdminReferralsRouteImport } from './routes/admin/referrals'
+import { Route as AdminVeraRouteImport } from './routes/admin/vera'
+import { Route as AdminVeraAnalyticsRouteImport } from './routes/admin/vera-analytics'
+import { Route as AdminWebsiteRouteImport } from './routes/admin/website'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as DashboardAirtimeRouteImport } from './routes/dashboard/airtime'
 import { Route as DashboardAnnouncementsRouteImport } from './routes/dashboard/announcements'
@@ -52,6 +60,11 @@ import { Route as ApiPaystackWebhookRouteImport } from './routes/api/paystack/we
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -84,14 +97,34 @@ const ForgotRoute = ForgotRouteImport.update({
   path: '/forgot',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HelpRoute = HelpRouteImport.update({
+  id: '/help',
+  path: '/help',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HowRoute = HowRouteImport.update({
+  id: '/how',
+  path: '/how',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NoticesRoute = NoticesRouteImport.update({
+  id: '/notices',
+  path: '/notices',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RefundRoute = RefundRouteImport.update({
+  id: '/refund',
+  path: '/refund',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RegisterRoute = RegisterRouteImport.update({
@@ -162,6 +195,21 @@ const AdminOrdersRoute = AdminOrdersRouteImport.update({
 const AdminReferralsRoute = AdminReferralsRouteImport.update({
   id: '/referrals',
   path: '/referrals',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminVeraRoute = AdminVeraRouteImport.update({
+  id: '/vera',
+  path: '/vera',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminVeraAnalyticsRoute = AdminVeraAnalyticsRouteImport.update({
+  id: '/vera-analytics',
+  path: '/vera-analytics',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminWebsiteRoute = AdminWebsiteRouteImport.update({
+  id: '/website',
+  path: '/website',
   getParentRoute: () => AdminRoute,
 } as any)
 const DashboardIndexRoute = DashboardIndexRouteImport.update({
@@ -247,14 +295,19 @@ const ApiPaystackWebhookRoute = ApiPaystackWebhookRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/admin': typeof AdminRouteWithChildren
   '/community': typeof CommunityRoute
   '/complete': typeof CompleteRoute
   '/dashboard': typeof DashboardRouteWithChildren
   '/faq': typeof FaqRoute
   '/forgot': typeof ForgotRoute
+  '/help': typeof HelpRoute
+  '/how': typeof HowRoute
   '/login': typeof LoginRoute
+  '/notices': typeof NoticesRoute
   '/privacy': typeof PrivacyRoute
+  '/refund': typeof RefundRoute
   '/register': typeof RegisterRoute
   '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
@@ -268,6 +321,9 @@ export interface FileRoutesByFullPath {
   '/admin/logos': typeof AdminLogosRoute
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/referrals': typeof AdminReferralsRoute
+  '/admin/vera': typeof AdminVeraRoute
+  '/admin/vera-analytics': typeof AdminVeraAnalyticsRoute
+  '/admin/website': typeof AdminWebsiteRoute
   '/dashboard/airtime': typeof DashboardAirtimeRoute
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
   '/dashboard/bills': typeof DashboardBillsRoute
@@ -288,12 +344,17 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/community': typeof CommunityRoute
   '/complete': typeof CompleteRoute
   '/faq': typeof FaqRoute
   '/forgot': typeof ForgotRoute
+  '/help': typeof HelpRoute
+  '/how': typeof HowRoute
   '/login': typeof LoginRoute
+  '/notices': typeof NoticesRoute
   '/privacy': typeof PrivacyRoute
+  '/refund': typeof RefundRoute
   '/register': typeof RegisterRoute
   '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
@@ -307,6 +368,9 @@ export interface FileRoutesByTo {
   '/admin/logos': typeof AdminLogosRoute
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/referrals': typeof AdminReferralsRoute
+  '/admin/vera': typeof AdminVeraRoute
+  '/admin/vera-analytics': typeof AdminVeraAnalyticsRoute
+  '/admin/website': typeof AdminWebsiteRoute
   '/dashboard/airtime': typeof DashboardAirtimeRoute
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
   '/dashboard/bills': typeof DashboardBillsRoute
@@ -328,14 +392,19 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/admin': typeof AdminRouteWithChildren
   '/community': typeof CommunityRoute
   '/complete': typeof CompleteRoute
   '/dashboard': typeof DashboardRouteWithChildren
   '/faq': typeof FaqRoute
   '/forgot': typeof ForgotRoute
+  '/help': typeof HelpRoute
+  '/how': typeof HowRoute
   '/login': typeof LoginRoute
+  '/notices': typeof NoticesRoute
   '/privacy': typeof PrivacyRoute
+  '/refund': typeof RefundRoute
   '/register': typeof RegisterRoute
   '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
@@ -349,6 +418,9 @@ export interface FileRoutesById {
   '/admin/logos': typeof AdminLogosRoute
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/referrals': typeof AdminReferralsRoute
+  '/admin/vera': typeof AdminVeraRoute
+  '/admin/vera-analytics': typeof AdminVeraAnalyticsRoute
+  '/admin/website': typeof AdminWebsiteRoute
   '/dashboard/airtime': typeof DashboardAirtimeRoute
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
   '/dashboard/bills': typeof DashboardBillsRoute
@@ -371,14 +443,19 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/about'
     | '/admin'
     | '/community'
     | '/complete'
     | '/dashboard'
     | '/faq'
     | '/forgot'
+    | '/help'
+    | '/how'
     | '/login'
+    | '/notices'
     | '/privacy'
+    | '/refund'
     | '/register'
     | '/support'
     | '/terms'
@@ -392,6 +469,9 @@ export interface FileRouteTypes {
     | '/admin/logos'
     | '/admin/orders'
     | '/admin/referrals'
+    | '/admin/vera'
+    | '/admin/vera-analytics'
+    | '/admin/website'
     | '/dashboard/airtime'
     | '/dashboard/announcements'
     | '/dashboard/bills'
@@ -412,12 +492,17 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/about'
     | '/community'
     | '/complete'
     | '/faq'
     | '/forgot'
+    | '/help'
+    | '/how'
     | '/login'
+    | '/notices'
     | '/privacy'
+    | '/refund'
     | '/register'
     | '/support'
     | '/terms'
@@ -431,6 +516,9 @@ export interface FileRouteTypes {
     | '/admin/logos'
     | '/admin/orders'
     | '/admin/referrals'
+    | '/admin/vera'
+    | '/admin/vera-analytics'
+    | '/admin/website'
     | '/dashboard/airtime'
     | '/dashboard/announcements'
     | '/dashboard/bills'
@@ -451,14 +539,19 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/about'
     | '/admin'
     | '/community'
     | '/complete'
     | '/dashboard'
     | '/faq'
     | '/forgot'
+    | '/help'
+    | '/how'
     | '/login'
+    | '/notices'
     | '/privacy'
+    | '/refund'
     | '/register'
     | '/support'
     | '/terms'
@@ -472,6 +565,9 @@ export interface FileRouteTypes {
     | '/admin/logos'
     | '/admin/orders'
     | '/admin/referrals'
+    | '/admin/vera'
+    | '/admin/vera-analytics'
+    | '/admin/website'
     | '/dashboard/airtime'
     | '/dashboard/announcements'
     | '/dashboard/bills'
@@ -493,14 +589,19 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AboutRoute: typeof AboutRoute
   AdminRoute: typeof AdminRouteWithChildren
   CommunityRoute: typeof CommunityRoute
   CompleteRoute: typeof CompleteRoute
   DashboardRoute: typeof DashboardRouteWithChildren
   FaqRoute: typeof FaqRoute
   ForgotRoute: typeof ForgotRoute
+  HelpRoute: typeof HelpRoute
+  HowRoute: typeof HowRoute
   LoginRoute: typeof LoginRoute
+  NoticesRoute: typeof NoticesRoute
   PrivacyRoute: typeof PrivacyRoute
+  RefundRoute: typeof RefundRoute
   RegisterRoute: typeof RegisterRoute
   SupportRoute: typeof SupportRoute
   TermsRoute: typeof TermsRoute
@@ -516,6 +617,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -560,6 +668,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ForgotRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/help': {
+      id: '/help'
+      path: '/help'
+      fullPath: '/help'
+      preLoaderRoute: typeof HelpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/how': {
+      id: '/how'
+      path: '/how'
+      fullPath: '/how'
+      preLoaderRoute: typeof HowRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -567,11 +689,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/notices': {
+      id: '/notices'
+      path: '/notices'
+      fullPath: '/notices'
+      preLoaderRoute: typeof NoticesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/privacy': {
       id: '/privacy'
       path: '/privacy'
       fullPath: '/privacy'
       preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/refund': {
+      id: '/refund'
+      path: '/refund'
+      fullPath: '/refund'
+      preLoaderRoute: typeof RefundRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/register': {
@@ -670,6 +806,27 @@ declare module '@tanstack/react-router' {
       path: '/referrals'
       fullPath: '/admin/referrals'
       preLoaderRoute: typeof AdminReferralsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/vera': {
+      id: '/admin/vera'
+      path: '/vera'
+      fullPath: '/admin/vera'
+      preLoaderRoute: typeof AdminVeraRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/vera-analytics': {
+      id: '/admin/vera-analytics'
+      path: '/vera-analytics'
+      fullPath: '/admin/vera-analytics'
+      preLoaderRoute: typeof AdminVeraAnalyticsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/website': {
+      id: '/admin/website'
+      path: '/website'
+      fullPath: '/admin/website'
+      preLoaderRoute: typeof AdminWebsiteRouteImport
       parentRoute: typeof AdminRoute
     }
     '/dashboard/': {
@@ -798,6 +955,9 @@ interface AdminRouteChildren {
   AdminLogosRoute: typeof AdminLogosRoute
   AdminOrdersRoute: typeof AdminOrdersRoute
   AdminReferralsRoute: typeof AdminReferralsRoute
+  AdminVeraRoute: typeof AdminVeraRoute
+  AdminVeraAnalyticsRoute: typeof AdminVeraAnalyticsRoute
+  AdminWebsiteRoute: typeof AdminWebsiteRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
@@ -812,6 +972,9 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminLogosRoute: AdminLogosRoute,
   AdminOrdersRoute: AdminOrdersRoute,
   AdminReferralsRoute: AdminReferralsRoute,
+  AdminVeraRoute: AdminVeraRoute,
+  AdminVeraAnalyticsRoute: AdminVeraAnalyticsRoute,
+  AdminWebsiteRoute: AdminWebsiteRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 
@@ -855,14 +1018,19 @@ const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AboutRoute: AboutRoute,
   AdminRoute: AdminRouteWithChildren,
   CommunityRoute: CommunityRoute,
   CompleteRoute: CompleteRoute,
   DashboardRoute: DashboardRouteWithChildren,
   FaqRoute: FaqRoute,
   ForgotRoute: ForgotRoute,
+  HelpRoute: HelpRoute,
+  HowRoute: HowRoute,
   LoginRoute: LoginRoute,
+  NoticesRoute: NoticesRoute,
   PrivacyRoute: PrivacyRoute,
+  RefundRoute: RefundRoute,
   RegisterRoute: RegisterRoute,
   SupportRoute: SupportRoute,
   TermsRoute: TermsRoute,
