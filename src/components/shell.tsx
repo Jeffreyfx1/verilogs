@@ -43,7 +43,6 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
     { to: "/dashboard/airtime", label: "Airtime", icon: glyph.phone },
     { to: "/dashboard/extra", label: "SMM", icon: glyph.megaphone, hash: "smm", match: "smm" },
     { to: "/dashboard/extra", label: "Logs / VPN", icon: glyph.grid, hash: "random", match: "random" },
-    { to: "/dashboard/vpn", label: "VPN", icon: glyph.shield },
     { to: "/dashboard/announcements", label: "Announcements", icon: glyph.megaphone },
     { to: "/dashboard/refer", label: "Refer & earn", icon: glyph.users },
   ];

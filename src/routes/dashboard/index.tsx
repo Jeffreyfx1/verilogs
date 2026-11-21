@@ -81,7 +81,6 @@ const quick = [
   { to: "/dashboard/numbers", label: "Buy Number", icon: glyph.hash, search: buySearch },
   { to: "/dashboard/numbers", label: "USA", icon: glyph.flag, search: { server: "", country: "", kind: "usa", service: "" } },
   { to: "/dashboard/extra", label: "SMM", icon: glyph.file, hash: "smm" },
-  { to: "/dashboard/vpn", label: "VPN", icon: glyph.shield },
   { to: "/dashboard/extra", label: "Logs / VPN", icon: glyph.grid, hash: "random" },
   { to: "/dashboard/numbers", label: "Rent Number", icon: glyph.crown, search: rentSearch },
   { to: "/dashboard/announcements", label: "Posts", icon: glyph.posts },

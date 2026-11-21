@@ -15,6 +15,7 @@ import { applyFieldMap, getatextCatalogueUrl, looksLikePurchase, publicEndpoint,
 import { fetchNote, probeProviderCatalogue, readCataloguePage, reportOf, saveProviderFetch, loadProviderFetch, type FetchReport } from "@/lib/catalog-fetch.server";
 import { IMPORT_BATCH, importBatchCount, sliceImport } from "@/lib/import-batch";
 import { uid } from "@/lib/money";
+import { isFiveSimServer1, isWhatsAppService, preferWhatsApp, wantsWhatsAppLookup, finishServicePage } from "@/lib/whatsapp-availability";
 import { placeOnProvider } from "@/lib/fulfill.server";
 import {
   clearProducts,
@@ -27,6 +28,7 @@ import {
   queryHidden,
   queryOperators,
   queryServices,
+  queryWhatsAppOffer,
   queryShelf,
   catalogCounts,
   sampleProducts,
@@ -1614,17 +1616,27 @@ export async function browseNumbers(input: { providerId?: string; category?: str
   };
   if (!admin && input.providerId && !enabledProviderIds.includes(input.providerId)) return empty;
   const serviceList = async () => {
-    const rows = await queryServices(query);
-    const best = new Map<string, number>();
-    for (const row of rows) {
-      const price = quoteProduct(
-        { id: "", providerId: row.providerId, externalId: "", category: want, name: row.service, service: row.service, country: input.country || "", network: "", price: row.price, cost: row.cost, stock: 0, operator: "", rate: -1, rates: "", enabled: true, validity: "", variable: false, description: "" },
-        doc,
-      ).price;
-      const prev = best.get(row.service);
-      if (price > 0 && (prev == null || price < prev)) best.set(row.service, price);
-    }
-    return [...best.entries()].map(([service, price]) => ({ service, price })).sort((a, b) => a.service.localeCompare(b.service)).slice(0, want === "usa" ? 400 : 100);
+    const rank = (rows: { service: string; providerId: string; cost: number; price: number }[]) => {
+      const best = new Map<string, number>();
+      for (const row of rows) {
+        const price = quoteProduct(
+          { id: "", providerId: row.providerId, externalId: "", category: want, name: row.service, service: row.service, country: input.country || "", network: "", price: row.price, cost: row.cost, stock: 0, operator: "", rate: -1, rates: "", enabled: true, validity: "", variable: false, description: "" },
+          doc,
+        ).price;
+        const prev = best.get(row.service);
+        if (price > 0 && (prev == null || price < prev)) best.set(row.service, price);
+      }
+      return [...best.entries()].map(([service, price]) => ({ service, price })).sort((a, b) => a.service.localeCompare(b.service));
+    };
+    const ranked = rank(await queryServices(query));
+    const limit = want === "usa" ? 400 : 100;
+    const provider = doc.providers.find((item) => item.id === (input.providerId || ""));
+    const fiveSim = want === "number" && isFiveSimServer1(provider);
+    const preview = ranked.slice(0, limit);
+    const offer = fiveSim && wantsWhatsAppLookup(query.q) && !preview.some((row) => isWhatsAppService(row.service))
+      ? preferWhatsApp(rank(await queryWhatsAppOffer(query)))
+      : null;
+    return finishServicePage(ranked, limit, { fiveSim, q: query.q, offer });
   };
   if (input.list === "countries") {
     const countries = (await queryCountries({ ...query, service: "", q: "" })).map((row) => quoteProduct(row, doc)).sort((a, b) => a.price - b.price || a.country.localeCompare(b.country));
