@@ -7,15 +7,17 @@ test("maps nested provider fields and drops credential-looking text", () => {
     data: [
       { id: 12, title: "TikTok likes pack", description: "Delivered to the profile you choose.", price: "4.50", available_stock: 8, category: { title: "TikTok", image: "https://cdn.example.com/tiktok.png" }, subcategory: { title: "Likes" } },
       { id: 13, title: "Secret dump", description: "user@mail.com:hunter2 extra:secret", price: "1", available_stock: 1, category: { title: "Mail" } },
+      { id: 15, title: "TikTok account", description: "Aged account. Account format: Username : Password : Email. Password included.", price: "3", available_stock: 4, category: { title: "TikTok" } },
       { id: 14, title: "Has password", password: "nope", price: "2", category: { title: "Mail" } },
     ],
   }, ACCSZONE_MAP);
-  assert.equal(rows.length, 2);
+  assert.equal(rows.length, 3);
   assert.equal(rows[0]?.category, "TikTok");
   assert.equal(rows[0]?.subcategory, "Likes");
   assert.equal(rows[0]?.imageUrl, "https://cdn.example.com/tiktok.png");
   assert.equal(rows[0]?.description.includes("profile"), true);
   assert.equal(rows[1]?.description, "");
+  assert.equal(rows[2]?.description, "Account format: Username : Password : Email");
   assert.equal(rows[0]?.price, 4.5);
   assert.equal(rows[0]?.externalId, "12");
 });

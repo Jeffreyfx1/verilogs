@@ -1,4 +1,4 @@
-/** Turns a stored order into the purchase result. It never invents a phone, code, or credential. */
+import { hideSupplier, parseAccountDelivery, type ParsedAccount } from "@/lib/account-delivery";
 
 export type SmsMessage = { at: string; sender: string; text: string; code: string };
 
@@ -37,11 +37,13 @@ export type PurchaseView = {
   phone: string;
   reference: string;
   delivery: string[];
+  accounts: ParsedAccount[];
   messages: SmsMessage[];
   code: string;
   poll: boolean;
   note: string;
   createdAt: string;
+  admin: boolean;
 };
 
 const NUMBER = new Set(["number", "numbers", "rent", "usa"]);
@@ -120,42 +122,46 @@ function linesOf(value: string) {
   return String(value || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 }
 
-export function purchaseView(order: PurchaseOrder, messages: SmsMessage[] = []): PurchaseView {
+export function purchaseView(order: PurchaseOrder, messages: SmsMessage[] = [], options?: { admin?: boolean }): PurchaseView {
   const kind = purchaseKind(order.category);
+  const admin = !!options?.admin;
   const stored = mergeMessages(order.messages || [], messages);
   const deliverySource = order.delivery || (kind === "number" ? "" : order.code || "");
   const delivery = linesOf(deliverySource);
+  const accounts = kind === "logs" || kind === "vpn" ? parseAccountDelivery(deliverySource, `${order.title || ""}\n${order.detail || ""}`) : [];
   const code = kind === "number" ? (stored.map((item) => item.code).filter(Boolean).pop() || "") : "";
   const phone = String(order.phone || "").trim();
   const reference = String(order.providerOrderId || "").trim();
   const providerStatus = String(order.providerStatus || "");
   const finished = order.status === "received" || order.status === "completed" || order.status === "refunded" || /RECEIVED|CANCELED|CANCELLED|TIMEOUT|FINISHED|BANNED|complete|expire/i.test(providerStatus);
   const waiting = order.status === "waiting" && !finished;
+  const supplier = order.server || "";
+  const customerLogs = !admin && (kind === "logs" || kind === "vpn");
   const note = kind === "number"
-    ? (code ? "The code below is what the provider returned." : waiting ? "Waiting for the provider to send an SMS. Nothing is shown until it arrives." : "No SMS was stored for this order.")
-    : kind === "logs"
-      ? (delivery.length ? "These are the lines the provider returned with the purchase." : "The provider did not return delivery lines for this order.")
-      : kind === "vpn"
-        ? (delivery.length ? "These are the VPN details stored with the order." : "No VPN configuration was stored for this order.")
-        : (delivery.length ? "Stored delivery from the provider." : "No extra provider payload was stored for this order.");
+    ? (code ? "The code below is what was returned for this number." : waiting ? "Waiting for an SMS. Nothing is shown until it arrives." : "No SMS was stored for this order.")
+    : kind === "logs" || kind === "vpn"
+      ? (accounts.length ? "The account details from this purchase are below." : "No account details were stored for this order.")
+      : (delivery.length ? "Stored delivery for this order." : "No extra delivery was stored for this order.");
   return {
     orderId: order.id,
     kind,
-    title: order.title,
+    title: customerLogs ? hideSupplier(order.title, supplier) : order.title,
     amount: order.amount,
     status: order.status,
-    providerStatus,
-    server: order.server || "",
+    providerStatus: customerLogs ? "" : providerStatus,
+    server: customerLogs ? "" : (order.server || ""),
     country: order.country || "",
-    service: order.service || "",
-    network: order.network || "",
+    service: customerLogs ? hideSupplier(order.service || "", supplier) : (order.service || ""),
+    network: customerLogs ? hideSupplier(order.network || "", supplier) : (order.network || ""),
     phone: kind === "number" || kind === "data" ? phone : phone,
-    reference,
+    reference: customerLogs ? "" : reference,
     delivery: kind === "number" ? [] : delivery,
+    accounts,
     messages: stored,
     code,
     poll: kind === "number" && waiting && !!reference,
-    note,
+    note: customerLogs ? hideSupplier(note, supplier) : note,
     createdAt: order.createdAt || "",
+    admin,
   };
 }

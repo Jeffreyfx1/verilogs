@@ -1,4 +1,4 @@
-/** Map a provider JSON catalogue onto Logs products. No code from the admin is executed. */
+import { formatLabels } from "@/lib/account-delivery";
 
 export type FieldMap = {
   id: string;
@@ -185,8 +185,9 @@ export function inheritLogos<T extends { imageUrl: string; group: string }>(item
 function safeDescription(value: string) {
   const text = value.replace(/\s+/g, " ").trim().slice(0, 2000);
   if (!text) return "";
-  if (SECRET.test(text)) return "";
-  if ((text.match(/[^\s:]+:[^\s:]{4,}/g) || []).length >= 2) return "";
+  const labels = formatLabels(text);
+  const format = labels.length >= 2 ? `Account format: ${labels.join(" : ")}`.slice(0, 300) : "";
+  if (SECRET.test(text) || (text.match(/[^\s:]+:[^\s:]{4,}/g) || []).length >= 2) return format;
   return text;
 }
 

@@ -99,15 +99,36 @@ function ResultPage() {
             {view.reference ? <Row label="Order reference" value={view.reference} /> : null}
             {view.code ? <Row label="Verification code" value={view.code} onCopy={() => void copy(view.code, "Code")} /> : null}
           </dl>
-          {view.delivery.length ? (
+          {view.accounts.length ? (
             <div>
-              <p className="text-xs font-extrabold uppercase tracking-wide text-muted">Delivered by the provider</p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-extrabold uppercase tracking-wide text-muted">Account information</p>
+                <button type="button" className="text-xs font-extrabold text-primary" onClick={() => void copy(accountText(view.accounts), "Account details")}>Copy all</button>
+              </div>
+              <div className="mt-2 space-y-3">
+                {view.accounts.map((account, index) => (
+                  <div key={index} className="space-y-2">
+                    {view.accounts.length > 1 ? <p className="text-xs font-extrabold text-ink">Account {index + 1}</p> : null}
+                    {account.fields.map((field) => (
+                      <div key={`${field.label}-${field.value}`} className="rounded-xl bg-paper px-3 py-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-xs text-muted">{field.label}</p>
+                          <button type="button" className="shrink-0 text-xs font-extrabold text-primary" onClick={() => void copy(field.value, field.label)}>Copy</button>
+                        </div>
+                        <FieldValue value={field.value} />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {view.admin && view.delivery.length ? (
+            <div>
+              <p className="text-xs font-extrabold uppercase tracking-wide text-muted">Stored delivery</p>
               <ul className="mt-2 space-y-2">
                 {view.delivery.map((line) => (
-                  <li key={line} className="flex items-start justify-between gap-2 rounded-xl bg-paper px-3 py-2 font-mono text-sm">
-                    <span className="min-w-0 break-all">{line}</span>
-                    <button type="button" className="shrink-0 text-xs font-extrabold text-primary" onClick={() => void copy(line, "Delivery")}>Copy</button>
-                  </li>
+                  <li key={line} className="break-all rounded-xl bg-paper px-3 py-2 font-mono text-sm">{line}</li>
                 ))}
               </ul>
             </div>
@@ -145,6 +166,20 @@ function ResultPage() {
       ) : null}
     </div>
   );
+}
+
+function accountText(accounts: View["accounts"]) {
+  return accounts.flatMap((account, index) => [
+    accounts.length > 1 ? `Account ${index + 1}` : "",
+    ...account.fields.map((field) => `${field.label}: ${field.value}`),
+  ]).filter(Boolean).join("\n");
+}
+
+function FieldValue({ value }: { value: string }) {
+  const url = /^https:\/\/[^\s]+$/i.test(value) ? value : "";
+  return url
+    ? <a href={url} target="_blank" rel="noreferrer" className="mt-1 block break-all font-semibold text-primary underline">{value}</a>
+    : <p className="mt-1 break-all font-semibold">{value}</p>;
 }
 
 function Row({ label, value, onCopy }: { label: string; value: string; onCopy?: () => void }) {

@@ -1073,7 +1073,7 @@ export async function openPurchase(orderId: string, refresh: boolean) {
     providerOrderId: current.providerOrderId || row?.provider_ref || "",
     providerStatus,
     messages,
-  }, messages);
+  }, messages, { admin: me.role === "admin" });
   return { error: null as string | null, view: providerNote ? { ...view, note: providerNote } : view };
 }
 

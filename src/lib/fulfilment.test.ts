@@ -31,8 +31,16 @@ test("purchase view shows only stored provider data", () => {
   const done = purchaseView({ ...base, id: "c", providerStatus: "TIMEOUT" });
   assert.equal(done.poll, false);
 
-  const logs = purchaseView({ id: "d", category: "logs", title: "Gmail", amount: 900, status: "completed", delivery: "user@mail.com\nsecret-pass" });
-  assert.deepEqual(logs.delivery, ["user@mail.com", "secret-pass"]);
+  const logs = purchaseView({ id: "d", category: "logs", title: "AccsZone Gmail", amount: 900, status: "completed", server: "AccsZone", providerOrderId: "az-42", delivery: "user@mail.com:secret-pass", detail: "Account format: Email : Password" });
+  assert.deepEqual(logs.delivery, ["user@mail.com:secret-pass"]);
+  assert.equal(logs.server, "");
+  assert.equal(logs.reference, "");
+  assert.equal(logs.title, "Gmail");
+  assert.equal(logs.accounts[0]?.fields[0]?.label, "Email");
+  assert.equal(logs.accounts[0]?.fields[1]?.value, "secret-pass");
+  const admin = purchaseView({ id: "d2", category: "logs", title: "AccsZone Gmail", amount: 900, status: "completed", server: "AccsZone", providerOrderId: "az-42", delivery: "user@mail.com:secret-pass" }, [], { admin: true });
+  assert.equal(admin.server, "AccsZone");
+  assert.equal(admin.reference, "az-42");
   assert.equal(logs.poll, false);
 
   const fromCode = purchaseView({ id: "e", category: "data", title: "1GB", amount: 300, status: "completed", code: "VTU-REF-1" });
