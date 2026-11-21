@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { createFileRoute } from "@tanstack/react-router";
 import { Glyph, glyph, type GlyphIcon } from "@/components/icons";
@@ -8,13 +8,35 @@ import { publicSiteImages } from "@/lib/shop-fns";
 import { SITE_SLOTS, photoSlotFor, staticPhoto, type SiteSlot } from "@/lib/site-images";
 import { useStore } from "@/lib/store";
 
+type PhotoRow = { alt: string; desktop: string; mobile: string };
+type PhotoMap = Record<string, PhotoRow>;
+
+function photoMap(rows: { id: string; alt: string; desktop: string; mobile: string }[]): PhotoMap {
+  const photos: PhotoMap = {};
+  for (const row of rows) photos[row.id] = { alt: row.alt, desktop: row.desktop, mobile: row.mobile };
+  return photos;
+}
+
+function photoSrc(slot: SiteSlot, variant: "desktop" | "mobile", photos: PhotoMap) {
+  const row = photos[slot];
+  const stamp = variant === "mobile" ? row?.mobile || row?.desktop : row?.desktop;
+  if (!stamp) return staticPhoto(slot, variant);
+  return `/api/site-image/${slot}?variant=${variant}&v=${encodeURIComponent(stamp)}`;
+}
+
+function heroPreload(photos: PhotoMap) {
+  const desktop = photoSrc("hero", "desktop", photos);
+  const mobile = photoSrc("hero", "mobile", photos);
+  const links = [
+    { rel: "preload" as const, as: "image" as const, href: desktop, type: "image/webp", media: "(min-width: 768px)", fetchPriority: "high" as const },
+  ];
+  if (mobile !== desktop) links.push({ rel: "preload", as: "image", href: mobile, type: "image/webp", media: "(max-width: 767px)", fetchPriority: "high" });
+  return links;
+}
+
 export const Route = createFileRoute("/")({
-  head: () => ({
-    links: [
-      { rel: "preload", as: "image", href: "/photos/hero.webp", type: "image/webp", media: "(min-width: 768px)", fetchPriority: "high" },
-      { rel: "preload", as: "image", href: "/photos/hero-m.webp", type: "image/webp", media: "(max-width: 767px)", fetchPriority: "high" },
-    ],
-  }),
+  loader: () => publicSiteImages().then(photoMap).catch(() => ({}) as PhotoMap),
+  head: ({ loaderData }) => ({ links: heroPreload(loaderData || {}) }),
   component: Home,
 });
 
@@ -27,16 +49,7 @@ const why: { icon: GlyphIcon; title: string; body: string }[] = [
   { icon: glyph.globe, title: "Services in one place", body: "Numbers, data, logs and social services from your dashboard." },
 ];
 
-type PhotoRow = { alt: string; desktop: string; mobile: string };
-
-function photoSrc(slot: SiteSlot, variant: "desktop" | "mobile", photos: Record<string, PhotoRow>) {
-  const row = photos[slot];
-  const stamp = variant === "mobile" ? row?.mobile || row?.desktop : row?.desktop;
-  if (!stamp) return staticPhoto(slot, variant);
-  return `/api/site-image/${slot}?variant=${variant}&v=${encodeURIComponent(stamp)}`;
-}
-
-function SlotImage({ slot, alt, className, priority, photos, sizes }: { slot: SiteSlot; alt: string; className?: string; priority?: boolean; photos: Record<string, PhotoRow>; sizes: string }) {
+function SlotImage({ slot, alt, className, priority, photos, sizes }: { slot: SiteSlot; alt: string; className?: string; priority?: boolean; photos: PhotoMap; sizes: string }) {
   return (
     <picture>
       <source media="(max-width: 767px)" srcSet={photoSrc(slot, "mobile", photos)} type="image/webp" />
@@ -129,16 +142,9 @@ function HowItWorks() {
 
 function Home() {
   const home = useStore((s) => s.settings.home);
-  const [photos, setPhotos] = useState<Record<string, PhotoRow>>({});
+  const photos = Route.useLoaderData();
   const cards = (home.cards || []).filter((card) => !/\bbills?\b|cable|electricity|exam pin|gift card|betting/i.test(`${card.title} ${card.body}`));
   const altFor = (slot: SiteSlot) => photos[slot]?.alt || SITE_SLOTS.find((item) => item.id === slot)?.alt || "";
-  useEffect(() => {
-    publicSiteImages().then((rows) => {
-      const next: Record<string, PhotoRow> = {};
-      for (const row of rows) next[row.id] = { alt: row.alt, desktop: row.desktop, mobile: row.mobile };
-      setPhotos(next);
-    }).catch(() => undefined);
-  }, []);
   return (
     <PublicFrame>
       <section className="hero-wash relative overflow-hidden">
