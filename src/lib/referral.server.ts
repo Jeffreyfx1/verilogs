@@ -1,6 +1,6 @@
 import { getSql } from "@/lib/db";
 import { uid } from "@/lib/money";
-import { referralSettingsOf, rewardDecision } from "@/lib/referral";
+import { depositCashbackDecision, REFERRAL_CASHBACK_NOTE, referralSettingsOf, rewardDecision } from "@/lib/referral";
 import { creditBalance } from "@/lib/shop-wallet.server";
 
 type ReferralRow = {
@@ -95,6 +95,51 @@ export async function settleReferral(input: { buyerId: string; orderId: string; 
   if (!paid) return { awarded: false, reason: "Already rewarded." };
   await sql`update shop_referrals set status = 'rewarded', reward = ${decision.amount}, order_id = ${input.orderId}, rewarded_at = ${new Date().toISOString()} where id = ${row.id}`;
   return { awarded: true, amount: decision.amount };
+}
+
+/** Credit 5% of the first successful deposit to the referred user. The referrer's reward is untouched. */
+export async function settleDepositCashback(input: { userId: string; deposit: number; depositRef: string; status: string }) {
+  const none = { awarded: false as const, amount: 0, balance: 0 };
+  const decision = depositCashbackDecision({ deposit: input.deposit, status: input.status, referred: true, alreadyPaid: false });
+  const depositRef = String(input.depositRef || "").trim();
+  if (!decision.award || !input.userId || !depositRef) return none;
+  const sql = await getSql();
+  const ledgerRef = `referral-cashback:${input.userId}`;
+  try {
+    const rows = await sql.query<{ balance_after: number }>(
+      `with upd as (
+         update shop_balances
+         set balance = balance + $2, updated_at = now()
+         where user_id = $1
+           and $2 > 0
+           and not exists (select 1 from shop_referral_cashbacks where referred_id = $1)
+           and not exists (select 1 from shop_ledger where ref = $3)
+           and exists (
+             select 1 from shop_referrals
+             where referred_id = $1 and referrer_id <> '' and referrer_id <> referred_id
+           )
+         returning balance
+       ),
+       claim as (
+         insert into shop_referral_cashbacks (referred_id, deposit_ref, deposit_amount, amount, created_at)
+         select $1, $4, $5, $2, $6 from upd
+         returning referred_id
+       )
+       insert into shop_ledger (id, user_id, kind, amount, balance_after, note, ref)
+       select $7, $1, 'topup', $2, upd.balance, $8, $3
+       from upd
+       where exists (select 1 from claim)
+       returning balance_after`,
+      [input.userId, decision.amount, ledgerRef, depositRef, Math.round(input.deposit), new Date().toISOString(), uid("led"), REFERRAL_CASHBACK_NOTE],
+    );
+    if (!rows[0]) return none;
+    return { awarded: true as const, amount: decision.amount, balance: Number(rows[0].balance_after) || 0 };
+  } catch (err) {
+    const code = err && typeof err === "object" && "code" in err ? String((err as { code?: string }).code || "") : "";
+    const message = err instanceof Error ? err.message : String(err);
+    if (code === "23505" || /duplicate key|unique constraint/i.test(message)) return none;
+    throw err;
+  }
 }
 
 export async function reverseReferral(buyerId: string, orderId: string) {

@@ -55,6 +55,25 @@ export type RewardDecision =
   | { award: false; reason: string }
   | { award: true; amount: number };
 
+export const REFERRAL_CASHBACK_NOTE = "Referral Registration Cashback — 5%";
+
+/** 5% of the referred user's first successful deposit, in naira. */
+export function depositCashbackDecision(input: {
+  deposit: number;
+  status: string;
+  referred: boolean;
+  alreadyPaid: boolean;
+}): RewardDecision {
+  if (!input.referred) return { award: false, reason: "No referral." };
+  if (input.alreadyPaid) return { award: false, reason: "Already paid." };
+  if (input.status !== "success") return { award: false, reason: "Deposit is not successful." };
+  const deposit = Math.round(Number(input.deposit) || 0);
+  if (!(deposit > 0)) return { award: false, reason: "Deposit is empty." };
+  const amount = Math.round((deposit * 5) / 100);
+  if (!(amount > 0)) return { award: false, reason: "Cashback is zero." };
+  return { award: true, amount };
+}
+
 export function rewardDecision(input: {
   enabled: boolean;
   reward: number;

@@ -41,7 +41,8 @@ import {
 } from "@/lib/product-rows.server";
 import { catalogSplitVerified, ensureCatalogSplit } from "@/lib/catalog-split.server";
 import { beginPurchaseKey, creditBalance, debitBalance, markPurchaseKey, overlayBalances, reconcilePurchases } from "@/lib/shop-wallet.server";
-import { recordReferral, reverseReferral, settleReferral } from "@/lib/referral.server";
+import { recordReferral, reverseReferral, settleDepositCashback, settleReferral } from "@/lib/referral.server";
+import { REFERRAL_CASHBACK_NOTE } from "@/lib/referral";
 import {
   addAnnouncement,
   addTicket,
@@ -746,6 +747,21 @@ export async function completeAirtimePurchase(doc: Data, userId: string | null, 
   return { error: null, data };
 }
 
+async function withDepositCashback(doc: Data, userId: string, deposit: number, reference: string) {
+  try {
+    const paid = await settleDepositCashback({ userId, deposit, depositRef: reference, status: "success" });
+    if (!paid.awarded) return doc;
+    return {
+      ...doc,
+      users: doc.users.map((user) => (user.id === userId ? { ...user, balance: paid.balance } : user)),
+      txns: [{ id: uid("txn"), userId, kind: "topup" as const, amount: paid.amount, note: REFERRAL_CASHBACK_NOTE, createdAt: new Date().toISOString() }, ...doc.txns],
+    };
+  } catch (err) {
+    console.error("Referral deposit cashback skipped", err instanceof Error ? err.message : err);
+    return doc;
+  }
+}
+
 async function finishPaidNumber(doc: Data, userId: string, productId: string, reference = "") {
   if (!productId) return { data: doc, bought: false, error: null as string | null };
   const bought = await completePurchase(doc, userId, productId, { idempotencyKey: reference ? `paystack:${reference}` : "" });
@@ -819,6 +835,7 @@ export async function creditPaystack(reference: string, expectedUserId?: string 
       const moved = await creditBalance(userId, amount, "paystack:" + reference, "Paystack · " + reference, "topup");
       funded = { ...out.data, users: out.data.users.map((user) => (user.id === userId ? { ...user, balance: moved.balance } : user)) };
     }
+    funded = await withDepositCashback(funded, userId, amount, reference);
     const finished = await finishPaidNumber(funded, userId, body.data?.metadata?.productId || "", reference);
     await saveDoc(finished.data);
     await sendMail(out.mail);
@@ -859,6 +876,7 @@ export async function creditFromWebhook(raw: string, signature: string | null) {
         const moved = await creditBalance(paidUser, amount, "paystack:" + reference, "Paystack · " + reference, "topup");
         funded = { ...out.data, users: out.data.users.map((user) => (user.id === paidUser ? { ...user, balance: moved.balance } : user)) };
       }
+      funded = await withDepositCashback(funded, paidUser, amount, reference);
       const finished = await finishPaidNumber(funded, paidUser, productId, reference);
       await saveDoc(finished.data);
       await sendMail(out.mail);

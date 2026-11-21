@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { freshData } from "./catalog.ts";
-import { attributeReferral, makeReferralCode, normalizeReferralCode, rewardDecision } from "./referral.ts";
+import { attributeReferral, depositCashbackDecision, makeReferralCode, normalizeReferralCode, rewardDecision } from "./referral.ts";
 import { registerUser } from "./shop-logic.ts";
 
 test("referral codes stay unique", () => {
@@ -38,6 +38,25 @@ test("a reward is paid once and only when profit covers it", () => {
   assert.equal(rewardDecision({ ...base, alreadyRewarded: true }).award, false);
   assert.equal(rewardDecision({ ...base, status: "rewarded" }).award, false);
   assert.equal(rewardDecision({ ...base, enabled: false }).award, false);
+});
+
+test("first-deposit cashback is 5 percent and only for a successful referred deposit", () => {
+  const cases: Array<[number, number]> = [
+    [1000, 50],
+    [5000, 250],
+    [10000, 500],
+    [50000, 2500],
+    [100000, 5000],
+  ];
+  for (const [deposit, expected] of cases) {
+    const paid = depositCashbackDecision({ deposit, status: "success", referred: true, alreadyPaid: false });
+    assert.equal(paid.award, true);
+    if (paid.award) assert.equal(paid.amount, expected);
+  }
+  assert.equal(depositCashbackDecision({ deposit: 5000, status: "failed", referred: true, alreadyPaid: false }).award, false);
+  assert.equal(depositCashbackDecision({ deposit: 5000, status: "pending", referred: true, alreadyPaid: false }).award, false);
+  assert.equal(depositCashbackDecision({ deposit: 10000, status: "success", referred: false, alreadyPaid: false }).award, false);
+  assert.equal(depositCashbackDecision({ deposit: 1000, status: "success", referred: true, alreadyPaid: true }).award, false);
 });
 
 function shopWithReferrer() {
