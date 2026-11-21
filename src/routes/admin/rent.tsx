@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { importRentCountries, importRentServices, rentDesk } from "@/lib/shop-fns";
@@ -10,7 +10,8 @@ export const Route = createFileRoute("/admin/rent")({ component: RentAdmin });
 type Desk = Awaited<ReturnType<typeof rentDesk>>;
 
 function RentAdmin() {
-  const orders = useStore((s) => s.orders.filter((order) => order.server === "Rent number"));
+  const allOrders = useStore((s) => s.orders);
+  const orders = useMemo(() => allOrders.filter((order) => order.server === "Rent number"), [allOrders]);
   const users = useStore((s) => s.users);
   const [desk, setDesk] = useState<Desk | null>(null);
   const [country, setCountry] = useState("");

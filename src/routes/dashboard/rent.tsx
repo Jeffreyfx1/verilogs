@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { buyRentNumber, cancelRentNumber, finishRentNumber, listRentCountries, listRentServices } from "@/lib/shop-fns";
@@ -13,7 +13,12 @@ type Service = { id: string; service: string; operator: string; kind: string; st
 function RentPage() {
   const user = useUser();
   const adopt = useStore((s) => s.adopt);
-  const orders = useStore((s) => s.orders.filter((order) => order.userId === s.sessionUserId && order.server === "Rent number"));
+  const allOrders = useStore((s) => s.orders);
+  const session = useStore((s) => s.sessionUserId);
+  const orders = useMemo(
+    () => allOrders.filter((order) => order.userId === session && order.server === "Rent number"),
+    [allOrders, session],
+  );
   const nav = useNavigate();
   const [countries, setCountries] = useState<Country[]>([]);
   const [country, setCountry] = useState("");
