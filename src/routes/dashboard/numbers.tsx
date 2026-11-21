@@ -50,8 +50,8 @@ function NumbersPage() {
   const liveServers = servers.filter((s) => s.enabled);
   const allOrders = useStore((s) => s.orders);
   const session = useStore((s) => s.sessionUserId);
-  const orders = useMemo(() => allOrders.filter((o) => o.userId === session && (o.category === "numbers" || o.category === "rent" || o.category === "number" || o.category === "usa") && o.status === "waiting"), [allOrders, session]);
-  const bought = useMemo(() => allOrders.filter((o) => o.userId === session && (o.category === "numbers" || o.category === "rent" || o.category === "number" || o.category === "usa")).length, [allOrders, session]);
+  const orders = useMemo(() => allOrders.filter((o) => o.userId === session && o.server !== "Rent number" && (o.category === "numbers" || o.category === "rent" || o.category === "number" || o.category === "usa") && o.status === "waiting"), [allOrders, session]);
+  const bought = useMemo(() => allOrders.filter((o) => o.userId === session && o.server !== "Rent number" && (o.category === "numbers" || o.category === "rent" || o.category === "number" || o.category === "usa")).length, [allOrders, session]);
   const refund = useStore((s) => s.refund);
   const buy = useStore((s) => s.buy);
   const nav = useNavigate();
@@ -93,6 +93,11 @@ function NumbersPage() {
   };
 
   useEffect(() => {
+    if (kind !== "rent") return;
+    void nav({ to: "/dashboard/rent", replace: true });
+  }, [kind, nav]);
+
+  useEffect(() => {
     const slot = memory.current[slotKey] || { country: usa ? "usa" : "", service: "" };
     setCountryName(usa ? "usa" : slot.country);
     setService(slot.service);
@@ -112,7 +117,7 @@ function NumbersPage() {
 
   useEffect(() => {
     const token = ++countryGen.current;
-    if (usa) return;
+    if (usa || kind === "rent") return;
     browseNumbers({ data: { providerId: activeId, category: want, list: "countries" } })
       .then((res) => {
         if (token !== countryGen.current) return;
@@ -139,11 +144,11 @@ function NumbersPage() {
         setCountriesReady(true);
       });
     return () => { countryGen.current += 1; };
-  }, [activeId, want, usa, slotKey]);
+  }, [activeId, want, usa, slotKey, kind]);
 
   useEffect(() => {
     const token = ++serviceGen.current;
-    if (!countryName) {
+    if (kind === "rent" || !countryName) {
       setServices([]);
       setLoadingServices(false);
       return;
@@ -177,7 +182,7 @@ function NumbersPage() {
         });
     }, 200);
     return () => { serviceGen.current += 1; clearTimeout(timer); };
-  }, [activeId, want, countryName, serviceQ, slotKey, usa, service]);
+  }, [activeId, want, countryName, serviceQ, slotKey, usa, service, kind]);
 
   const runSelect = (nextCountry: string, nextService: string) => {
     if (!nextCountry || !nextService) {
@@ -215,6 +220,8 @@ function NumbersPage() {
       toast.error("Could not copy");
     }
   };
+
+  if (kind === "rent") return <p className="text-sm text-muted">Opening Rent numbers…</p>;
 
   const shownCountries = countries.filter((c) => countryHit(c.country, countryQ)).slice(0, 40);
   const title = usa ? "USA Services" : kind === "rent" ? "Rent a number" : "Buy a number";

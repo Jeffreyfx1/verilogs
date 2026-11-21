@@ -38,7 +38,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
     { to: "/dashboard/wallet", label: "Fund wallet", icon: glyph.wallet },
     { to: "/dashboard/numbers", label: "Buy Number", icon: glyph.hash, search: { server: "", country: "", kind: "", service: "" }, match: "all" },
     { to: "/dashboard/numbers", label: "USA", icon: glyph.flag, search: { server: "", country: "", kind: "usa", service: "" }, match: "usa" },
-    { to: "/dashboard/numbers", label: "Rent numbers", icon: glyph.crown, search: { server: "", country: "", kind: "rent", service: "" }, match: "rent" },
+    { to: "/dashboard/rent", label: "Rent numbers", icon: glyph.crown, match: "rent" },
     { to: "/dashboard/data", label: "Data", icon: glyph.data },
     { to: "/dashboard/airtime", label: "Airtime", icon: glyph.phone },
     { to: "/dashboard/extra", label: "SMM", icon: glyph.megaphone, hash: "smm", match: "smm" },
@@ -61,6 +61,8 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
     { to: "/admin/referrals", label: "Referrals", icon: glyph.users },
     { to: "/admin/content", label: "Content & settings", icon: glyph.settings },
     { to: "/admin/website", label: "Website content", icon: glyph.scroll },
+    { to: "/admin/website-images", label: "Website images", icon: glyph.store },
+    { to: "/admin/rent", label: "Rent numbers", icon: glyph.crown },
     { to: "/admin/vera", label: "Vera knowledge", icon: glyph.chat },
     { to: "/admin/vera-analytics", label: "Vera analytics", icon: glyph.posts },
     { to: "/admin/webhooks", label: "API webhook health", icon: glyph.settings },
@@ -82,8 +84,8 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
     let active = false;
     if (item.match === "dash") active = path === "/dashboard";
     else if (item.match === "usa") active = onNumbers && kind === "usa";
-    else if (item.match === "rent") active = onNumbers && kind === "rent";
-    else if (item.match === "all") active = onNumbers && kind !== "rent" && kind !== "usa";
+    else if (item.match === "rent") active = path.startsWith("/dashboard/rent");
+    else if (item.match === "all") active = onNumbers && kind !== "usa";
     else if (item.match === "smm") active = path.startsWith("/dashboard/extra") && hash === "smm";
     else if (item.match === "random") active = path.startsWith("/dashboard/extra") && hash !== "smm";
     else if (item.match === "hist") active = path.startsWith("/dashboard/history");

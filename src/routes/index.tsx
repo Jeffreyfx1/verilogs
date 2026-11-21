@@ -1,14 +1,14 @@
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { createFileRoute } from "@tanstack/react-router";
 import { Glyph, glyph, type GlyphIcon } from "@/components/icons";
 import { PublicFrame } from "@/components/chrome";
 import { Reveal } from "@/components/reveal";
-import { hero, sim } from "@/components/site-art";
+import { publicSiteImages } from "@/lib/shop-fns";
+import { SITE_SLOTS, photoSlotFor, type SiteSlot } from "@/lib/site-images";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/")({ component: Home });
-
-const fallbackArt = [hero, sim];
 
 const why: { icon: GlyphIcon; title: string; body: string }[] = [
   { icon: glyph.shield, title: "Wallet stays in naira", body: "Fund once. Spend on numbers, data and digital services." },
@@ -19,10 +19,28 @@ const why: { icon: GlyphIcon; title: string; body: string }[] = [
   { icon: glyph.globe, title: "Services in one place", body: "Numbers, data, logs and social services from your dashboard." },
 ];
 
+function SlotImage({ slot, alt, className }: { slot: SiteSlot; alt: string; className?: string }) {
+  const src = (variant: "desktop" | "mobile") => `/api/site-image/${slot}?variant=${variant}`;
+  return (
+    <picture>
+      <source media="(max-width: 767px)" srcSet={src("mobile")} />
+      <img src={src("desktop")} alt={alt} className={className} />
+    </picture>
+  );
+}
+
 function Home() {
   const home = useStore((s) => s.settings.home);
+  const [alts, setAlts] = useState<Record<string, string>>({});
   const cards = (home.cards || []).filter((card) => !/\bbills?\b|cable|electricity|exam pin|gift card|betting/i.test(`${card.title} ${card.body}`));
-  const picture = (image: string, index: number) => image || fallbackArt[index % fallbackArt.length];
+  const altFor = (slot: SiteSlot) => alts[slot] || SITE_SLOTS.find((item) => item.id === slot)?.alt || "";
+  useEffect(() => {
+    publicSiteImages().then((rows) => {
+      const next: Record<string, string> = {};
+      for (const row of rows) next[row.id] = row.alt;
+      setAlts(next);
+    }).catch(() => undefined);
+  }, []);
   return (
     <PublicFrame>
       <section className="hero-wash relative overflow-hidden">
@@ -43,24 +61,27 @@ function Home() {
               ))}
             </ul>
           </div>
-          <img src={picture(home.image, 0)} alt="" className="w-full rounded-card object-cover shadow-card" />
+          <SlotImage slot="hero" alt={altFor("hero")} className="w-full rounded-card object-cover shadow-card" />
         </div>
       </section>
 
       {cards.length ? (
       <section className="overflow-hidden py-6">
         <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1">
-          {cards.map((o, i) => (
+          {cards.map((o, i) => {
+            const slot = photoSlotFor(o.title);
+            return (
             <Reveal key={o.id} className="w-[85%] max-w-sm shrink-0 snap-start" delay={i * 90}>
               <Link to="/register" className="flex items-center gap-3 rounded-card border border-line bg-card p-3 shadow-card">
-                <img src={picture(o.image, i)} alt="" className="size-16 rounded-xl object-cover" />
+                <SlotImage slot={slot} alt={altFor(slot)} className="size-16 rounded-xl object-cover" />
                 <span>
                   <span className="block font-extrabold">{o.title}</span>
                   <span className="mt-1 block text-xs font-medium text-muted">{o.body}</span>
                 </span>
               </Link>
             </Reveal>
-          ))}
+            );
+          })}
         </div>
       </section>
       ) : null}
@@ -87,10 +108,12 @@ function Home() {
           <p className="mx-auto mt-2 max-w-xl text-center text-sm font-medium text-muted">Numbers, data, logs and social services, filed the way people buy them.</p>
         </Reveal>
         {cards.length ? <div className="mt-8 grid gap-4 md:grid-cols-3">
-          {cards.map((o, i) => (
+          {cards.map((o, i) => {
+            const slot = photoSlotFor(o.title);
+            return (
             <Reveal key={o.id} delay={i * 90}>
               <article className="overflow-hidden rounded-card border border-line bg-card shadow-card">
-                <img src={picture(o.image, i)} alt="" className="h-40 w-full object-cover" />
+                <SlotImage slot={slot} alt={altFor(slot)} className="h-40 w-full object-cover" />
                 <div className="p-5">
                   <h3 className="text-xl font-extrabold">{o.title}</h3>
                   <p className="mt-2 text-sm font-medium leading-relaxed text-muted">{o.body}</p>
@@ -98,7 +121,8 @@ function Home() {
                 </div>
               </article>
             </Reveal>
-          ))}
+            );
+          })}
         </div> : null}
       </section>
 

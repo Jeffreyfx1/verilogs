@@ -37,10 +37,12 @@ import { Route as AdminImportRouteImport } from './routes/admin/import'
 import { Route as AdminLogosRouteImport } from './routes/admin/logos'
 import { Route as AdminOrdersRouteImport } from './routes/admin/orders'
 import { Route as AdminReferralsRouteImport } from './routes/admin/referrals'
+import { Route as AdminRentRouteImport } from './routes/admin/rent'
 import { Route as AdminVeraRouteImport } from './routes/admin/vera'
 import { Route as AdminVeraAnalyticsRouteImport } from './routes/admin/vera-analytics'
 import { Route as AdminWebhooksRouteImport } from './routes/admin/webhooks'
 import { Route as AdminWebsiteRouteImport } from './routes/admin/website'
+import { Route as AdminWebsiteImagesRouteImport } from './routes/admin/website-images'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as DashboardAirtimeRouteImport } from './routes/dashboard/airtime'
 import { Route as DashboardAnnouncementsRouteImport } from './routes/dashboard/announcements'
@@ -51,6 +53,7 @@ import { Route as DashboardHistoryRouteImport } from './routes/dashboard/history
 import { Route as DashboardNumbersRouteImport } from './routes/dashboard/numbers'
 import { Route as DashboardProfileRouteImport } from './routes/dashboard/profile'
 import { Route as DashboardReferRouteImport } from './routes/dashboard/refer'
+import { Route as DashboardRentRouteImport } from './routes/dashboard/rent'
 import { Route as DashboardSupportRouteImport } from './routes/dashboard/support'
 import { Route as DashboardVpnRouteImport } from './routes/dashboard/vpn'
 import { Route as DashboardWalletRouteImport } from './routes/dashboard/wallet'
@@ -59,6 +62,7 @@ import { Route as ApiGetatextWebhookRouteImport } from './routes/api/getatext/we
 import { Route as ApiGoogleCallbackRouteImport } from './routes/api/google/callback'
 import { Route as ApiGoogleStartRouteImport } from './routes/api/google/start'
 import { Route as ApiPaystackWebhookRouteImport } from './routes/api/paystack/webhook'
+import { Route as ApiSiteImageSlotRouteImport } from './routes/api/site-image.$slot'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -200,6 +204,11 @@ const AdminReferralsRoute = AdminReferralsRouteImport.update({
   path: '/referrals',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminRentRoute = AdminRentRouteImport.update({
+  id: '/rent',
+  path: '/rent',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminVeraRoute = AdminVeraRouteImport.update({
   id: '/vera',
   path: '/vera',
@@ -218,6 +227,11 @@ const AdminWebhooksRoute = AdminWebhooksRouteImport.update({
 const AdminWebsiteRoute = AdminWebsiteRouteImport.update({
   id: '/website',
   path: '/website',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminWebsiteImagesRoute = AdminWebsiteImagesRouteImport.update({
+  id: '/website-images',
+  path: '/website-images',
   getParentRoute: () => AdminRoute,
 } as any)
 const DashboardIndexRoute = DashboardIndexRouteImport.update({
@@ -270,6 +284,11 @@ const DashboardReferRoute = DashboardReferRouteImport.update({
   path: '/refer',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardRentRoute = DashboardRentRouteImport.update({
+  id: '/rent',
+  path: '/rent',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardSupportRoute = DashboardSupportRouteImport.update({
   id: '/support',
   path: '/support',
@@ -310,6 +329,11 @@ const ApiPaystackWebhookRoute = ApiPaystackWebhookRouteImport.update({
   path: '/api/paystack/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiSiteImageSlotRoute = ApiSiteImageSlotRouteImport.update({
+  id: '/api/site-image/$slot',
+  path: '/api/site-image/$slot',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -339,10 +363,12 @@ export interface FileRoutesByFullPath {
   '/admin/logos': typeof AdminLogosRoute
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/referrals': typeof AdminReferralsRoute
+  '/admin/rent': typeof AdminRentRoute
   '/admin/vera': typeof AdminVeraRoute
   '/admin/vera-analytics': typeof AdminVeraAnalyticsRoute
   '/admin/webhooks': typeof AdminWebhooksRoute
   '/admin/website': typeof AdminWebsiteRoute
+  '/admin/website-images': typeof AdminWebsiteImagesRoute
   '/dashboard/airtime': typeof DashboardAirtimeRoute
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
   '/dashboard/bills': typeof DashboardBillsRoute
@@ -352,6 +378,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/numbers': typeof DashboardNumbersRoute
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/refer': typeof DashboardReferRoute
+  '/dashboard/rent': typeof DashboardRentRoute
   '/dashboard/support': typeof DashboardSupportRoute
   '/dashboard/vpn': typeof DashboardVpnRoute
   '/dashboard/wallet': typeof DashboardWalletRoute
@@ -362,6 +389,7 @@ export interface FileRoutesByFullPath {
   '/api/google/callback': typeof ApiGoogleCallbackRoute
   '/api/google/start': typeof ApiGoogleStartRoute
   '/api/paystack/webhook': typeof ApiPaystackWebhookRoute
+  '/api/site-image/$slot': typeof ApiSiteImageSlotRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -389,10 +417,12 @@ export interface FileRoutesByTo {
   '/admin/logos': typeof AdminLogosRoute
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/referrals': typeof AdminReferralsRoute
+  '/admin/rent': typeof AdminRentRoute
   '/admin/vera': typeof AdminVeraRoute
   '/admin/vera-analytics': typeof AdminVeraAnalyticsRoute
   '/admin/webhooks': typeof AdminWebhooksRoute
   '/admin/website': typeof AdminWebsiteRoute
+  '/admin/website-images': typeof AdminWebsiteImagesRoute
   '/dashboard/airtime': typeof DashboardAirtimeRoute
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
   '/dashboard/bills': typeof DashboardBillsRoute
@@ -402,6 +432,7 @@ export interface FileRoutesByTo {
   '/dashboard/numbers': typeof DashboardNumbersRoute
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/refer': typeof DashboardReferRoute
+  '/dashboard/rent': typeof DashboardRentRoute
   '/dashboard/support': typeof DashboardSupportRoute
   '/dashboard/vpn': typeof DashboardVpnRoute
   '/dashboard/wallet': typeof DashboardWalletRoute
@@ -412,6 +443,7 @@ export interface FileRoutesByTo {
   '/api/google/callback': typeof ApiGoogleCallbackRoute
   '/api/google/start': typeof ApiGoogleStartRoute
   '/api/paystack/webhook': typeof ApiPaystackWebhookRoute
+  '/api/site-image/$slot': typeof ApiSiteImageSlotRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -442,10 +474,12 @@ export interface FileRoutesById {
   '/admin/logos': typeof AdminLogosRoute
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/referrals': typeof AdminReferralsRoute
+  '/admin/rent': typeof AdminRentRoute
   '/admin/vera': typeof AdminVeraRoute
   '/admin/vera-analytics': typeof AdminVeraAnalyticsRoute
   '/admin/webhooks': typeof AdminWebhooksRoute
   '/admin/website': typeof AdminWebsiteRoute
+  '/admin/website-images': typeof AdminWebsiteImagesRoute
   '/dashboard/airtime': typeof DashboardAirtimeRoute
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
   '/dashboard/bills': typeof DashboardBillsRoute
@@ -455,6 +489,7 @@ export interface FileRoutesById {
   '/dashboard/numbers': typeof DashboardNumbersRoute
   '/dashboard/profile': typeof DashboardProfileRoute
   '/dashboard/refer': typeof DashboardReferRoute
+  '/dashboard/rent': typeof DashboardRentRoute
   '/dashboard/support': typeof DashboardSupportRoute
   '/dashboard/vpn': typeof DashboardVpnRoute
   '/dashboard/wallet': typeof DashboardWalletRoute
@@ -465,6 +500,7 @@ export interface FileRoutesById {
   '/api/google/callback': typeof ApiGoogleCallbackRoute
   '/api/google/start': typeof ApiGoogleStartRoute
   '/api/paystack/webhook': typeof ApiPaystackWebhookRoute
+  '/api/site-image/$slot': typeof ApiSiteImageSlotRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -496,10 +532,12 @@ export interface FileRouteTypes {
     | '/admin/logos'
     | '/admin/orders'
     | '/admin/referrals'
+    | '/admin/rent'
     | '/admin/vera'
     | '/admin/vera-analytics'
     | '/admin/webhooks'
     | '/admin/website'
+    | '/admin/website-images'
     | '/dashboard/airtime'
     | '/dashboard/announcements'
     | '/dashboard/bills'
@@ -509,6 +547,7 @@ export interface FileRouteTypes {
     | '/dashboard/numbers'
     | '/dashboard/profile'
     | '/dashboard/refer'
+    | '/dashboard/rent'
     | '/dashboard/support'
     | '/dashboard/vpn'
     | '/dashboard/wallet'
@@ -519,6 +558,7 @@ export interface FileRouteTypes {
     | '/api/google/callback'
     | '/api/google/start'
     | '/api/paystack/webhook'
+    | '/api/site-image/$slot'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -546,10 +586,12 @@ export interface FileRouteTypes {
     | '/admin/logos'
     | '/admin/orders'
     | '/admin/referrals'
+    | '/admin/rent'
     | '/admin/vera'
     | '/admin/vera-analytics'
     | '/admin/webhooks'
     | '/admin/website'
+    | '/admin/website-images'
     | '/dashboard/airtime'
     | '/dashboard/announcements'
     | '/dashboard/bills'
@@ -559,6 +601,7 @@ export interface FileRouteTypes {
     | '/dashboard/numbers'
     | '/dashboard/profile'
     | '/dashboard/refer'
+    | '/dashboard/rent'
     | '/dashboard/support'
     | '/dashboard/vpn'
     | '/dashboard/wallet'
@@ -569,6 +612,7 @@ export interface FileRouteTypes {
     | '/api/google/callback'
     | '/api/google/start'
     | '/api/paystack/webhook'
+    | '/api/site-image/$slot'
   id:
     | '__root__'
     | '/'
@@ -598,10 +642,12 @@ export interface FileRouteTypes {
     | '/admin/logos'
     | '/admin/orders'
     | '/admin/referrals'
+    | '/admin/rent'
     | '/admin/vera'
     | '/admin/vera-analytics'
     | '/admin/webhooks'
     | '/admin/website'
+    | '/admin/website-images'
     | '/dashboard/airtime'
     | '/dashboard/announcements'
     | '/dashboard/bills'
@@ -611,6 +657,7 @@ export interface FileRouteTypes {
     | '/dashboard/numbers'
     | '/dashboard/profile'
     | '/dashboard/refer'
+    | '/dashboard/rent'
     | '/dashboard/support'
     | '/dashboard/vpn'
     | '/dashboard/wallet'
@@ -621,6 +668,7 @@ export interface FileRouteTypes {
     | '/api/google/callback'
     | '/api/google/start'
     | '/api/paystack/webhook'
+    | '/api/site-image/$slot'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -646,6 +694,7 @@ export interface RootRouteChildren {
   ApiGoogleCallbackRoute: typeof ApiGoogleCallbackRoute
   ApiGoogleStartRoute: typeof ApiGoogleStartRoute
   ApiPaystackWebhookRoute: typeof ApiPaystackWebhookRoute
+  ApiSiteImageSlotRoute: typeof ApiSiteImageSlotRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -846,6 +895,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminReferralsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/rent': {
+      id: '/admin/rent'
+      path: '/rent'
+      fullPath: '/admin/rent'
+      preLoaderRoute: typeof AdminRentRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/vera': {
       id: '/admin/vera'
       path: '/vera'
@@ -872,6 +928,13 @@ declare module '@tanstack/react-router' {
       path: '/website'
       fullPath: '/admin/website'
       preLoaderRoute: typeof AdminWebsiteRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/website-images': {
+      id: '/admin/website-images'
+      path: '/website-images'
+      fullPath: '/admin/website-images'
+      preLoaderRoute: typeof AdminWebsiteImagesRouteImport
       parentRoute: typeof AdminRoute
     }
     '/dashboard/': {
@@ -944,6 +1007,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardReferRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/rent': {
+      id: '/dashboard/rent'
+      path: '/rent'
+      fullPath: '/dashboard/rent'
+      preLoaderRoute: typeof DashboardRentRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/support': {
       id: '/dashboard/support'
       path: '/support'
@@ -1000,6 +1070,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPaystackWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/site-image/$slot': {
+      id: '/api/site-image/$slot'
+      path: '/api/site-image/$slot'
+      fullPath: '/api/site-image/$slot'
+      preLoaderRoute: typeof ApiSiteImageSlotRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -1014,10 +1091,12 @@ interface AdminRouteChildren {
   AdminLogosRoute: typeof AdminLogosRoute
   AdminOrdersRoute: typeof AdminOrdersRoute
   AdminReferralsRoute: typeof AdminReferralsRoute
+  AdminRentRoute: typeof AdminRentRoute
   AdminVeraRoute: typeof AdminVeraRoute
   AdminVeraAnalyticsRoute: typeof AdminVeraAnalyticsRoute
   AdminWebhooksRoute: typeof AdminWebhooksRoute
   AdminWebsiteRoute: typeof AdminWebsiteRoute
+  AdminWebsiteImagesRoute: typeof AdminWebsiteImagesRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
@@ -1032,10 +1111,12 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminLogosRoute: AdminLogosRoute,
   AdminOrdersRoute: AdminOrdersRoute,
   AdminReferralsRoute: AdminReferralsRoute,
+  AdminRentRoute: AdminRentRoute,
   AdminVeraRoute: AdminVeraRoute,
   AdminVeraAnalyticsRoute: AdminVeraAnalyticsRoute,
   AdminWebhooksRoute: AdminWebhooksRoute,
   AdminWebsiteRoute: AdminWebsiteRoute,
+  AdminWebsiteImagesRoute: AdminWebsiteImagesRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 
@@ -1051,6 +1132,7 @@ interface DashboardRouteChildren {
   DashboardNumbersRoute: typeof DashboardNumbersRoute
   DashboardProfileRoute: typeof DashboardProfileRoute
   DashboardReferRoute: typeof DashboardReferRoute
+  DashboardRentRoute: typeof DashboardRentRoute
   DashboardSupportRoute: typeof DashboardSupportRoute
   DashboardVpnRoute: typeof DashboardVpnRoute
   DashboardWalletRoute: typeof DashboardWalletRoute
@@ -1067,6 +1149,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardNumbersRoute: DashboardNumbersRoute,
   DashboardProfileRoute: DashboardProfileRoute,
   DashboardReferRoute: DashboardReferRoute,
+  DashboardRentRoute: DashboardRentRoute,
   DashboardSupportRoute: DashboardSupportRoute,
   DashboardVpnRoute: DashboardVpnRoute,
   DashboardWalletRoute: DashboardWalletRoute,
@@ -1100,6 +1183,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGoogleCallbackRoute: ApiGoogleCallbackRoute,
   ApiGoogleStartRoute: ApiGoogleStartRoute,
   ApiPaystackWebhookRoute: ApiPaystackWebhookRoute,
+  ApiSiteImageSlotRoute: ApiSiteImageSlotRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

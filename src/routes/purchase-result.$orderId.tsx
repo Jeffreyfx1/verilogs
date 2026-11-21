@@ -3,8 +3,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Guard } from "@/components/guard";
 import { Glyph, glyph } from "@/components/icons";
-import { purchaseResult } from "@/lib/shop-fns";
+import { purchaseResult, cancelRentNumber, finishRentNumber } from "@/lib/shop-fns";
 import { naira, when } from "@/lib/money";
+import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/purchase-result/$orderId")({
   component: () => (
@@ -18,9 +19,11 @@ type View = NonNullable<Awaited<ReturnType<typeof purchaseResult>>["view"]>;
 
 function ResultPage() {
   const { orderId } = Route.useParams();
+  const adopt = useStore((s) => s.adopt);
   const [view, setView] = useState<View | null>(null);
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
+  const [acting, setActing] = useState("");
 
   const load = async (refresh: boolean) => {
     setChecking(true);
@@ -47,6 +50,23 @@ function ResultPage() {
     const timer = window.setInterval(() => { void load(true); }, 8000);
     return () => window.clearInterval(timer);
   }, [view?.poll, orderId]);
+
+  const rentAct = async (action: "cancel" | "finish") => {
+    setActing(action);
+    try {
+      const res = action === "cancel" ? await cancelRentNumber({ data: { orderId } }) : await finishRentNumber({ data: { orderId } });
+      if (res.error) toast.error(res.error);
+      else {
+        if (res.state) adopt(res.state);
+        toast.success(action === "cancel" ? "Rental cancelled." : "Rental finished.");
+        await load(true);
+      }
+    } catch {
+      toast.error("Could not update this rental.");
+    } finally {
+      setActing("");
+    }
+  };
 
   const copy = async (value: string, label: string) => {
     try {
@@ -111,6 +131,12 @@ function ResultPage() {
             </div>
           ) : null}
           <p className="text-sm text-muted">{view.note}</p>
+          {view.server === "Rent number" && view.status === "waiting" ? (
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="rounded-xl border border-line px-3 py-2 text-sm font-extrabold" disabled={!!acting} onClick={() => void rentAct("cancel")}>{acting === "cancel" ? "Cancelling…" : "Cancel rental"}</button>
+              <button type="button" className="rounded-xl border border-line px-3 py-2 text-sm font-extrabold" disabled={!!acting} onClick={() => void rentAct("finish")}>{acting === "finish" ? "Finishing…" : "Finish rental"}</button>
+            </div>
+          ) : null}
           <button type="button" className="inline-flex items-center gap-2 rounded-xl border border-line px-3 py-2 text-sm font-extrabold" onClick={() => void load(true)}>
             <Glyph icon={glyph.history} className="size-4" />
             {checking ? "Checking…" : "Refresh"}

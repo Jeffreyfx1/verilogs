@@ -524,3 +524,114 @@ export const deleteAirtimeNetwork = createServerFn({ method: "POST" })
     return removeAdminAirtimeNetwork(data.id);
   });
 
+export const publicSiteImages = createServerFn({ method: "GET" }).handler(async () => {
+  const { listSiteImages } = await import("@/lib/site-images.server");
+  const rows = await listSiteImages();
+  return rows.map((row) => ({ id: row.id, alt: row.alt }));
+});
+
+export const siteImageDesk = createServerFn({ method: "GET" }).handler(async () => {
+  await adminOnly();
+  const { listSiteImages } = await import("@/lib/site-images.server");
+  return listSiteImages();
+});
+
+export const saveSiteImage = createServerFn({ method: "POST" })
+  .validator((input: { slot?: string; variant?: string; base64?: string; alt?: string }) => {
+    const base64 = String(input?.base64 || "");
+    if (base64.length > 2_100_000) throw new Error("That image is over 1.5 MB.");
+    return {
+      slot: String(input?.slot || "").slice(0, 20),
+      variant: String(input?.variant || "").slice(0, 10),
+      base64,
+      alt: String(input?.alt || "").slice(0, 160),
+    };
+  })
+  .handler(async ({ data }) => {
+    await adminOnly();
+    const { saveSiteImage: save } = await import("@/lib/site-images.server");
+    return save(data);
+  });
+
+export const deleteSiteImage = createServerFn({ method: "POST" })
+  .validator((input: { slot?: string; variant?: string }) => ({
+    slot: String(input?.slot || "").slice(0, 20),
+    variant: String(input?.variant || "").slice(0, 10),
+  }))
+  .handler(async ({ data }) => {
+    await adminOnly();
+    const { deleteSiteImage: remove } = await import("@/lib/site-images.server");
+    return remove(data.slot, data.variant);
+  });
+
+export const restoreSiteImage = createServerFn({ method: "POST" })
+  .validator((input: { slot?: string; variant?: string }) => ({
+    slot: String(input?.slot || "").slice(0, 20),
+    variant: String(input?.variant || "").slice(0, 10),
+  }))
+  .handler(async ({ data }) => {
+    await adminOnly();
+    const { restoreSiteImage: restore } = await import("@/lib/site-images.server");
+    return restore(data.slot, data.variant);
+  });
+
+export const rentDesk = createServerFn({ method: "GET" }).handler(async () => {
+  await adminOnly();
+  const { rentLinkStatus } = await core();
+  const { rentDesk: desk } = await import("@/lib/rent.server");
+  return { link: await rentLinkStatus(), ...(await desk()) };
+});
+
+export const importRentCountries = createServerFn({ method: "POST" }).handler(async () => {
+  await adminOnly();
+  const { importRentCountries: run } = await import("@/lib/rent.server");
+  return run();
+});
+
+export const importRentServices = createServerFn({ method: "POST" })
+  .validator((input: { country?: string }) => ({ country: String(input?.country || "").slice(0, 80) }))
+  .handler(async ({ data }) => {
+    await adminOnly();
+    const { importRentServices: run } = await import("@/lib/rent.server");
+    return run(data.country);
+  });
+
+export const listRentCountries = createServerFn({ method: "GET" }).handler(async () => {
+  const { sessionCustomer } = await core();
+  const me = await sessionCustomer();
+  if (!me) return { error: "Sign in first.", countries: [] as { slug: string; name: string }[] };
+  const { rentCountries } = await import("@/lib/rent.server");
+  return { error: null as string | null, countries: await rentCountries() };
+});
+
+export const listRentServices = createServerFn({ method: "POST" })
+  .validator((input: { country?: string }) => ({ country: String(input?.country || "").slice(0, 80) }))
+  .handler(async ({ data }) => {
+    const { quoteRentServices } = await core();
+    return quoteRentServices(data.country);
+  });
+
+export const buyRentNumber = createServerFn({ method: "POST" })
+  .validator((input: { offerId?: string; idempotencyKey?: string }) => ({
+    offerId: String(input?.offerId || "").slice(0, 180),
+    idempotencyKey: String(input?.idempotencyKey || "").slice(0, 80),
+  }))
+  .handler(async ({ data }) => {
+    const { buyRentNumber: buy } = await core();
+    return buy(data.offerId, data.idempotencyKey);
+  });
+
+export const cancelRentNumber = createServerFn({ method: "POST" })
+  .validator((input: { orderId?: string }) => ({ orderId: String(input?.orderId || "").slice(0, 80) }))
+  .handler(async ({ data }) => {
+    const { cancelRentNumber: cancel } = await core();
+    return cancel(data.orderId);
+  });
+
+export const finishRentNumber = createServerFn({ method: "POST" })
+  .validator((input: { orderId?: string }) => ({ orderId: String(input?.orderId || "").slice(0, 80) }))
+  .handler(async ({ data }) => {
+    const { finishRentNumber: finish } = await core();
+    return finish(data.orderId);
+  });
+

@@ -61,6 +61,7 @@ import {
   refundOrder,
   registerUser,
   recordAirtimeOrder,
+  recordRentOrder,
   resetPassword,
   resetShop,
   saveFaqs,
@@ -781,6 +782,205 @@ export async function completeAirtimePurchase(doc: Data, userId: string | null, 
   if (key) await markPurchaseKey(key, "completed", { orderId: bought.order.id, providerOrderId: providerRef, amount: charge, detail: reconcileDetail });
   await settleReferral({ buyerId: user.id, orderId: bought.order.id, amount: charge, profit: priced.profit, orderStatus: "completed" });
   return { error: null, data };
+}
+
+function fiveSimProvider(doc: Data) {
+  const rows = doc.providers.filter((item) => item.enabled && /5sim\.net/i.test(item.baseUrl || ""));
+  return rows.find((item) => item.serverId === "1") || rows[0] || null;
+}
+
+export async function buyRentNumber(offerId: string, idempotencyKey = "") {
+  const session = await readSession();
+  if (!session.userId) return { error: "Sign in first.", orderId: "", state: null as Data | null };
+  const { readRentOffer, rentCountryName } = await import("@/lib/rent.server");
+  const { fiveSimBuyUrl } = await import("@/lib/rent");
+  const offer = await readRentOffer(offerId);
+  if (!offer) return { error: "That rent option is no longer in the catalogue.", orderId: "", state: null };
+  const doc = await loadLight();
+  const provider = fiveSimProvider(doc);
+  const key = provider ? await readProviderKey(provider.id) : "";
+  if (!provider || !key) return { error: "FiveSim is not connected for Rent numbers. Nothing was sent.", orderId: "", state: null };
+  const user = doc.users.find((item) => item.id === session.userId);
+  if (!user) return { error: "Sign in first.", orderId: "", state: null };
+  const priced = sellQuote({
+    category: "numbers",
+    unitCost: offer.priceUsd,
+    currency: "USD",
+    usdRate: provider.usdRate || doc.settings.usdNgn,
+    profits: profitsOf({ general: doc.settings.generalProfit }),
+  });
+  if (!priced.ok) return { error: priced.error, orderId: "", state: null };
+  const charge = priced.charge;
+  const idem = String(idempotencyKey || "").replace(/[^a-zA-Z0-9:_-]/g, "").slice(0, 80);
+  if (!idem) return { error: "Start the rental again. Nothing was sent.", orderId: "", state: null };
+  const gate = await beginPurchaseKey({ key: idem, userId: user.id, productId: `rent:${offerId}`.slice(0, 80) });
+  if (gate === "completed") {
+    const sql = await getSql();
+    const previous = await sql.query<{ order_id: string }>("select order_id from shop_idempotency where key = $1", [idem]);
+    return { error: null as string | null, orderId: previous[0]?.order_id || "", state: projectShop(doc, session.userId, session.draft) };
+  }
+  if (gate === "busy") return { error: "This rental is already processing.", orderId: "", state: null };
+  if (user.balance < charge) {
+    await markPurchaseKey(idem, "failed");
+    return { error: "Insufficient balance. Top up your balance to make this purchase.", orderId: "", state: null };
+  }
+  let res: Response;
+  try {
+    res = await fetch(fiveSimBuyUrl(offer), { headers: { Authorization: "Bearer " + key, Accept: "application/json" }, signal: AbortSignal.timeout(20000) });
+  } catch {
+    await markPurchaseKey(idem, "failed");
+    return { error: "FiveSim could not be reached. The wallet was not charged.", orderId: "", state: null };
+  }
+  const text = await res.text();
+  let json: Record<string, unknown> = {};
+  try { json = JSON.parse(text) as Record<string, unknown>; } catch { json = {}; }
+  const phone = typeof json.phone === "string" ? json.phone : "";
+  const providerRef = String(json.id || "");
+  if (!res.ok || !phone || !providerRef) {
+    await markPurchaseKey(idem, "failed");
+    const raw = String(json.message || text || "FiveSim refused the rental.").slice(0, 180);
+    return { error: raw || "FiveSim refused the rental. The wallet was not charged.", orderId: "", state: null };
+  }
+  const countryName = (await rentCountryName(offer.country)) || offer.country;
+  const title = `Rent number · ${offer.service} · ${countryName}`;
+  const ledgerRef = "purchase:" + idem;
+  const debited = await debitBalance(user.id, charge, ledgerRef, title);
+  if (!debited.ok) {
+    await markPurchaseKey(idem, "needs_reconcile", { providerOrderId: providerRef, amount: charge, detail: title });
+    return { error: "FiveSim accepted the rental, but the wallet update did not finish. It is flagged for reconciliation and will not be charged twice.", orderId: "", state: null };
+  }
+  const ready = { ...doc, users: doc.users.map((item) => (item.id === user.id ? { ...item, balance: debited.balance + charge } : item)) };
+  const bought = recordRentOrder(ready, user.id, {
+    offerId,
+    title,
+    country: countryName,
+    service: offer.service,
+    kind: offer.kind,
+    phone,
+    charge,
+    cost: priced.costNgn,
+    gain: priced.profit,
+    providerRef,
+    providerStatus: String(json.status || "PENDING"),
+  });
+  if (bought.error || !("order" in bought) || !bought.order) {
+    await markPurchaseKey(idem, "needs_reconcile", { providerOrderId: providerRef, amount: charge, detail: title });
+    return { error: "FiveSim accepted the rental. The wallet debit is recorded and the order will be reconciled.", orderId: "", state: null };
+  }
+  const data = { ...bought.data, users: bought.data.users.map((item) => (item.id === user.id ? { ...item, balance: debited.balance } : item)) };
+  await markPurchaseKey(idem, "completed", { orderId: bought.order.id, providerOrderId: providerRef, amount: charge, detail: title });
+  try {
+    const { rememberFulfilment } = await import("@/lib/fulfilment.server");
+    await rememberFulfilment({
+      orderId: bought.order.id,
+      userId: user.id,
+      category: "rent",
+      title,
+      providerId: provider.id,
+      provider: "5sim.net",
+      providerRef,
+      phone,
+      country: countryName,
+      service: offer.service,
+      delivery: "",
+      status: "waiting",
+    });
+  } catch (err) {
+    console.error("rent fulfilment skipped", err instanceof Error ? err.message : err);
+  }
+  await saveDoc(data);
+  return { error: null as string | null, orderId: bought.order.id, state: projectShop(data, session.userId, session.draft) };
+}
+
+async function fiveSimOrderCall(orderId: string, action: "cancel" | "finish") {
+  const session = await readSession();
+  if (!session.userId) return { error: "Sign in first." as string, state: null as Data | null };
+  const doc = await loadLight();
+  const me = doc.users.find((user) => user.id === session.userId);
+  const order = doc.orders.find((item) => item.id === orderId);
+  if (!me || !order || (order.userId !== me.id && me.role !== "admin") || order.server !== "Rent number") return { error: "That rental was not found.", state: null };
+  const provider = fiveSimProvider(doc);
+  const key = provider ? await readProviderKey(provider.id) : "";
+  const ref = String(order.providerOrderId || "").replace(/[^\d]/g, "");
+  if (!key || !ref) return { error: "This rental has no FiveSim reference.", state: null };
+  let res: Response;
+  try {
+    res = await fetch(`https://5sim.net/v1/user/${action}/${ref}`, { headers: { Authorization: "Bearer " + key, Accept: "application/json" }, signal: AbortSignal.timeout(20000) });
+  } catch {
+    return { error: "FiveSim could not be reached.", state: null };
+  }
+  const text = await res.text();
+  if (!res.ok) return { error: text.slice(0, 180) || "FiveSim refused that request.", state: null };
+  return { error: null as string | null, state: doc, order, session };
+}
+
+export async function cancelRentNumber(orderId: string) {
+  const called = await fiveSimOrderCall(orderId, "cancel");
+  if (called.error || !called.order || !called.state) return { error: called.error || "Could not cancel.", state: null as Data | null };
+  const before = called.order;
+  const out = refundOrder(called.state, called.session?.userId || null, before.id);
+  if (out.error) return { error: out.error, state: null };
+  const moved = await creditBalance(before.userId, before.amount, "refund:" + before.id, "Refund · " + before.title, "refund");
+  const data = { ...out.data, users: out.data.users.map((user) => (user.id === before.userId ? { ...user, balance: moved.balance } : user)) };
+  await reverseReferral(before.userId, before.id);
+  await saveDoc(data);
+  const session = await readSession();
+  return { error: null as string | null, state: projectShop(data, session.userId, session.draft) };
+}
+
+export async function finishRentNumber(orderId: string) {
+  const called = await fiveSimOrderCall(orderId, "finish");
+  if (called.error || !called.order || !called.state) return { error: called.error || "Could not finish.", state: null as Data | null };
+  const data = {
+    ...called.state,
+    orders: called.state.orders.map((order) => order.id === called.order?.id ? { ...order, status: "completed" as const, providerStatus: "FINISHED" } : order),
+  };
+  await saveDoc(data);
+  const session = await readSession();
+  return { error: null as string | null, state: projectShop(data, session.userId, session.draft) };
+}
+
+export async function quoteRentServices(country: string) {
+  const session = await readSession();
+  if (!session.userId) return { error: "Sign in first.", services: [] as { id: string; service: string; operator: string; kind: string; stock: number; price: number }[] };
+  const doc = await loadLight();
+  const provider = fiveSimProvider(doc);
+  const usdRate = provider?.usdRate || doc.settings.usdNgn;
+  const { rentServices } = await import("@/lib/rent.server");
+  const rows = await rentServices(country);
+  const services = [];
+  for (const row of rows) {
+    const priced = sellQuote({
+      category: "numbers",
+      unitCost: Number(row.price_usd),
+      currency: "USD",
+      usdRate,
+      profits: profitsOf({ general: doc.settings.generalProfit }),
+    });
+    if (!priced.ok) continue;
+    services.push({
+      id: row.id,
+      service: row.service,
+      operator: row.operator,
+      kind: row.kind,
+      stock: Number(row.stock) || 0,
+      price: priced.charge,
+    });
+  }
+  return { error: null as string | null, services };
+}
+
+export async function rentLinkStatus() {
+  const doc = await loadLight();
+  const provider = fiveSimProvider(doc);
+  const key = provider ? await readProviderKey(provider.id) : "";
+  let host = "";
+  try {
+    host = provider?.baseUrl ? new URL(provider.baseUrl).host : "";
+  } catch {
+    host = "";
+  }
+  return { connected: Boolean(provider && key), host, serverId: provider?.serverId || "", name: provider?.name || "" };
 }
 
 async function withDepositCashback(doc: Data, userId: string, deposit: number, reference: string) {

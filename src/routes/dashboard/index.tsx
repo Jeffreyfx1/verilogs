@@ -20,7 +20,6 @@ const ukSearch = { server: "", country: "United Kingdom", kind: "", service: "Wh
 const usSearch = { server: "", country: "United States", kind: "", service: "WhatsApp" } as const;
 const waSearch = { server: "", country: "", kind: "", service: "WhatsApp" } as const;
 const tgSearch = { server: "", country: "", kind: "", service: "Telegram" } as const;
-const rentSearch = { server: "", country: "", kind: "rent", service: "" } as const;
 const buySearch = { server: "", country: "", kind: "", service: "" } as const;
 
 const slides = [
@@ -31,6 +30,7 @@ const slides = [
     text: "Fast UK numbers for verification at the best rates.",
     icon: glyph.bolt,
     image: UK_IMAGE,
+    to: "/dashboard/numbers",
     search: ukSearch,
   },
   {
@@ -40,6 +40,7 @@ const slides = [
     text: "Reliable US numbers for every app you verify.",
     icon: glyph.flag,
     image: null,
+    to: "/dashboard/numbers",
     search: usSearch,
   },
   {
@@ -49,6 +50,7 @@ const slides = [
     text: "Instant OTP for WhatsApp, from any country.",
     icon: glyph.chat,
     image: null,
+    to: "/dashboard/numbers",
     search: waSearch,
   },
   {
@@ -58,16 +60,18 @@ const slides = [
     text: "Verify Telegram accounts in seconds.",
     icon: glyph.send,
     image: null,
+    to: "/dashboard/numbers",
     search: tgSearch,
   },
   {
     id: "rent",
     tone: "sky",
-    title: "Rent a Number",
-    text: "Keep a number longer for repeat logins.",
+    title: "Rent numbers",
+    text: "A separate FiveSim catalogue. Not Server 1, 2, or 3.",
     icon: glyph.crown,
     image: null,
-    search: rentSearch,
+    to: "/dashboard/rent",
+    search: undefined,
   },
 ] as const;
 
@@ -82,7 +86,7 @@ const quick = [
   { to: "/dashboard/numbers", label: "USA", icon: glyph.flag, search: { server: "", country: "", kind: "usa", service: "" } },
   { to: "/dashboard/extra", label: "SMM", icon: glyph.file, hash: "smm" },
   { to: "/dashboard/extra", label: "Logs / VPN", icon: glyph.grid, hash: "random" },
-  { to: "/dashboard/numbers", label: "Rent Number", icon: glyph.crown, search: rentSearch },
+  { to: "/dashboard/rent", label: "Rent numbers", icon: glyph.crown },
   { to: "/dashboard/announcements", label: "Posts", icon: glyph.posts },
   { to: "/faq", label: "Tutorials", icon: glyph.play },
   { to: "/community", label: "Channel", icon: glyph.send },
@@ -140,7 +144,7 @@ function PromoCarousel() {
         {slides.map((s) => (
           <Link
             key={s.id}
-            to="/dashboard/numbers"
+            to={s.to}
             search={s.search}
             className={`promo-slide slide-${s.tone} relative flex min-h-[8.75rem] w-full min-w-full max-w-full shrink-0 basis-full snap-start items-center gap-3 overflow-hidden rounded-[1.4rem] p-4 md:min-w-0 md:max-w-none md:basis-auto md:w-[calc(50%-0.375rem)] xl:w-[calc(33.333%-0.5rem)]`}
           >
