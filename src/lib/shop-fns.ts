@@ -15,7 +15,7 @@ export type ImportStep = {
   fetchNote?: string;
 };
 
-type ShopPayload = { error: string | null; state: Data; report: SyncReport | null };
+type ShopPayload = { error: string | null; state: Data; report: SyncReport | null; orderId?: string };
 
 type SetupDraft = {
   method?: string;
@@ -72,6 +72,21 @@ export const beginPaystack = createServerFn({ method: "POST" })
     const { startPaystack } = await core();
     return startPaystack(data.amount, data.productId);
   });
+
+export const purchaseResult = createServerFn({ method: "POST" })
+  .validator((input: { orderId?: string; refresh?: boolean }) => ({ orderId: String(input?.orderId || "").slice(0, 80), refresh: input?.refresh !== false }))
+  .handler(async ({ data }) => {
+    const { openPurchase } = await core();
+    return openPurchase(data.orderId, data.refresh);
+  });
+
+export const webhookDesk = createServerFn({ method: "GET" }).handler(async () => {
+  const { adminContext } = await core();
+  const admin = await adminContext();
+  if (!admin) return { error: "Only an admin can do that.", rows: [], log: [] };
+  const { webhookHealth, webhookLog } = await import("@/lib/fulfilment.server");
+  return { error: null as string | null, rows: await webhookHealth(), log: await webhookLog() };
+});
 
 export const purchasePreview = createServerFn({ method: "POST" })
   .validator((input: { productId: string }) => ({ productId: String(input?.productId || "") }))

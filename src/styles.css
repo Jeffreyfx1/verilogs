@@ -338,8 +338,77 @@ html[data-form="phone"] .stat-row {
 }
 
 .chat-panel {
-  width: min(20rem, calc(100vw - 2rem));
-  height: 24rem;
+  width: min(24rem, calc(100vw - 1.25rem));
+  height: min(34rem, calc(100svh - 8rem));
+}
+
+.vera-fab {
+  position: relative;
+  display: grid;
+  height: 3.75rem;
+  width: 3.75rem;
+  place-items: center;
+  border-radius: 999px;
+  background: linear-gradient(145deg, #1a6f93, #08324a);
+  color: white;
+  box-shadow: 0 10px 24px rgba(8, 50, 74, 0.35), 0 0 0 6px rgba(18, 181, 201, 0.18);
+  animation: vera-float 2.8s ease-in-out infinite;
+}
+
+.vera-fab-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 999px;
+  border: 2px solid rgba(18, 181, 201, 0.45);
+  animation: vera-pulse 2.8s ease-out infinite;
+}
+
+.vera-avatar {
+  display: grid;
+  height: 2.25rem;
+  width: 2.25rem;
+  flex: none;
+  place-items: center;
+  border-radius: 999px;
+  background: linear-gradient(145deg, #12b5c9, #0b6e8a);
+  color: white;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.vera-dot {
+  height: 0.55rem;
+  width: 0.55rem;
+  border-radius: 999px;
+  background: #3ddc97;
+  box-shadow: 0 0 0 3px rgba(61, 220, 151, 0.25);
+}
+
+.vera-typing span {
+  display: inline-block;
+  height: 0.4rem;
+  width: 0.4rem;
+  border-radius: 999px;
+  background: #0b6e8a;
+  animation: vera-bounce 1s infinite;
+}
+
+.vera-typing span:nth-child(2) { animation-delay: 0.15s; }
+.vera-typing span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes vera-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes vera-pulse {
+  0% { transform: scale(0.92); opacity: 0.7; }
+  100% { transform: scale(1.12); opacity: 0; }
+}
+
+@keyframes vera-bounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-3px); }
 }
 
 .notice-pop {

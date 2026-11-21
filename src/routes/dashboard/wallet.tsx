@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
 import { naira, when } from "@/lib/money";
@@ -18,6 +18,7 @@ function WalletPage() {
   const settings = useStore((s) => s.settings);
   const adopt = useStore((s) => s.adopt);
   const buy = useStore((s) => s.buy);
+  const nav = useNavigate();
   const txns = useMemo(() => allTxns.filter((t) => t.userId === session && t.kind === "topup"), [allTxns, session]);
   const [amount, setAmount] = useState(5000);
   const [custom, setCustom] = useState("");
@@ -48,11 +49,11 @@ function WalletPage() {
       .then((res) => {
         if ("state" in res && res.state) adopt(res.state);
         if ("error" in res && res.error) toast.error(res.error);
-        else if ("bought" in res && res.bought) {
-          toast.success("Paid. The number is in Active numbers.");
-          window.location.href = "/dashboard/numbers";
+        else if ("bought" in res && res.bought && "orderId" in res && res.orderId) {
+          nav({ to: "/purchase-result/$orderId", params: { orderId: res.orderId } });
           return;
-        } else toast.success("Paystack confirmed the top up");
+        } else if ("bought" in res && res.bought) toast.success("Paid. The number is in Active numbers.");
+        else toast.success("Paystack confirmed the top up");
         window.history.replaceState({}, "", id ? `/dashboard/wallet?product=${encodeURIComponent(id)}` : "/dashboard/wallet");
       })
       .catch(() => toast.error("Could not confirm the Paystack payment."));
@@ -75,12 +76,10 @@ function WalletPage() {
   const payFromWallet = async () => {
     setBusy(true);
     try {
-      const err = await buy(productId, {});
-      if (err) toast.error(err);
-      else {
-        toast.success("Number reserved. The code appears on the card.");
-        window.location.href = "/dashboard/numbers";
-      }
+      const res = await buy(productId, {});
+      if (res.error) toast.error(res.error);
+      else if (res.orderId) nav({ to: "/purchase-result/$orderId", params: { orderId: res.orderId } });
+      else toast.success("Number reserved.");
     } catch {
       toast.error("Could not place that order.");
     } finally {

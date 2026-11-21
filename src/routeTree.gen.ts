@@ -39,6 +39,7 @@ import { Route as AdminOrdersRouteImport } from './routes/admin/orders'
 import { Route as AdminReferralsRouteImport } from './routes/admin/referrals'
 import { Route as AdminVeraRouteImport } from './routes/admin/vera'
 import { Route as AdminVeraAnalyticsRouteImport } from './routes/admin/vera-analytics'
+import { Route as AdminWebhooksRouteImport } from './routes/admin/webhooks'
 import { Route as AdminWebsiteRouteImport } from './routes/admin/website'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as DashboardAirtimeRouteImport } from './routes/dashboard/airtime'
@@ -53,6 +54,8 @@ import { Route as DashboardReferRouteImport } from './routes/dashboard/refer'
 import { Route as DashboardSupportRouteImport } from './routes/dashboard/support'
 import { Route as DashboardVpnRouteImport } from './routes/dashboard/vpn'
 import { Route as DashboardWalletRouteImport } from './routes/dashboard/wallet'
+import { Route as PurchaseResultOrderIdRouteImport } from './routes/purchase-result.$orderId'
+import { Route as ApiGetatextWebhookRouteImport } from './routes/api/getatext/webhook'
 import { Route as ApiGoogleCallbackRouteImport } from './routes/api/google/callback'
 import { Route as ApiGoogleStartRouteImport } from './routes/api/google/start'
 import { Route as ApiPaystackWebhookRouteImport } from './routes/api/paystack/webhook'
@@ -207,6 +210,11 @@ const AdminVeraAnalyticsRoute = AdminVeraAnalyticsRouteImport.update({
   path: '/vera-analytics',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminWebhooksRoute = AdminWebhooksRouteImport.update({
+  id: '/webhooks',
+  path: '/webhooks',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminWebsiteRoute = AdminWebsiteRouteImport.update({
   id: '/website',
   path: '/website',
@@ -277,6 +285,16 @@ const DashboardWalletRoute = DashboardWalletRouteImport.update({
   path: '/wallet',
   getParentRoute: () => DashboardRoute,
 } as any)
+const PurchaseResultOrderIdRoute = PurchaseResultOrderIdRouteImport.update({
+  id: '/purchase-result/$orderId',
+  path: '/purchase-result/$orderId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGetatextWebhookRoute = ApiGetatextWebhookRouteImport.update({
+  id: '/api/getatext/webhook',
+  path: '/api/getatext/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiGoogleCallbackRoute = ApiGoogleCallbackRouteImport.update({
   id: '/api/google/callback',
   path: '/api/google/callback',
@@ -323,6 +341,7 @@ export interface FileRoutesByFullPath {
   '/admin/referrals': typeof AdminReferralsRoute
   '/admin/vera': typeof AdminVeraRoute
   '/admin/vera-analytics': typeof AdminVeraAnalyticsRoute
+  '/admin/webhooks': typeof AdminWebhooksRoute
   '/admin/website': typeof AdminWebsiteRoute
   '/dashboard/airtime': typeof DashboardAirtimeRoute
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
@@ -336,8 +355,10 @@ export interface FileRoutesByFullPath {
   '/dashboard/support': typeof DashboardSupportRoute
   '/dashboard/vpn': typeof DashboardVpnRoute
   '/dashboard/wallet': typeof DashboardWalletRoute
+  '/purchase-result/$orderId': typeof PurchaseResultOrderIdRoute
   '/admin/': typeof AdminIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
+  '/api/getatext/webhook': typeof ApiGetatextWebhookRoute
   '/api/google/callback': typeof ApiGoogleCallbackRoute
   '/api/google/start': typeof ApiGoogleStartRoute
   '/api/paystack/webhook': typeof ApiPaystackWebhookRoute
@@ -370,6 +391,7 @@ export interface FileRoutesByTo {
   '/admin/referrals': typeof AdminReferralsRoute
   '/admin/vera': typeof AdminVeraRoute
   '/admin/vera-analytics': typeof AdminVeraAnalyticsRoute
+  '/admin/webhooks': typeof AdminWebhooksRoute
   '/admin/website': typeof AdminWebsiteRoute
   '/dashboard/airtime': typeof DashboardAirtimeRoute
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
@@ -383,8 +405,10 @@ export interface FileRoutesByTo {
   '/dashboard/support': typeof DashboardSupportRoute
   '/dashboard/vpn': typeof DashboardVpnRoute
   '/dashboard/wallet': typeof DashboardWalletRoute
+  '/purchase-result/$orderId': typeof PurchaseResultOrderIdRoute
   '/admin': typeof AdminIndexRoute
   '/dashboard': typeof DashboardIndexRoute
+  '/api/getatext/webhook': typeof ApiGetatextWebhookRoute
   '/api/google/callback': typeof ApiGoogleCallbackRoute
   '/api/google/start': typeof ApiGoogleStartRoute
   '/api/paystack/webhook': typeof ApiPaystackWebhookRoute
@@ -420,6 +444,7 @@ export interface FileRoutesById {
   '/admin/referrals': typeof AdminReferralsRoute
   '/admin/vera': typeof AdminVeraRoute
   '/admin/vera-analytics': typeof AdminVeraAnalyticsRoute
+  '/admin/webhooks': typeof AdminWebhooksRoute
   '/admin/website': typeof AdminWebsiteRoute
   '/dashboard/airtime': typeof DashboardAirtimeRoute
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
@@ -433,8 +458,10 @@ export interface FileRoutesById {
   '/dashboard/support': typeof DashboardSupportRoute
   '/dashboard/vpn': typeof DashboardVpnRoute
   '/dashboard/wallet': typeof DashboardWalletRoute
+  '/purchase-result/$orderId': typeof PurchaseResultOrderIdRoute
   '/admin/': typeof AdminIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
+  '/api/getatext/webhook': typeof ApiGetatextWebhookRoute
   '/api/google/callback': typeof ApiGoogleCallbackRoute
   '/api/google/start': typeof ApiGoogleStartRoute
   '/api/paystack/webhook': typeof ApiPaystackWebhookRoute
@@ -471,6 +498,7 @@ export interface FileRouteTypes {
     | '/admin/referrals'
     | '/admin/vera'
     | '/admin/vera-analytics'
+    | '/admin/webhooks'
     | '/admin/website'
     | '/dashboard/airtime'
     | '/dashboard/announcements'
@@ -484,8 +512,10 @@ export interface FileRouteTypes {
     | '/dashboard/support'
     | '/dashboard/vpn'
     | '/dashboard/wallet'
+    | '/purchase-result/$orderId'
     | '/admin/'
     | '/dashboard/'
+    | '/api/getatext/webhook'
     | '/api/google/callback'
     | '/api/google/start'
     | '/api/paystack/webhook'
@@ -518,6 +548,7 @@ export interface FileRouteTypes {
     | '/admin/referrals'
     | '/admin/vera'
     | '/admin/vera-analytics'
+    | '/admin/webhooks'
     | '/admin/website'
     | '/dashboard/airtime'
     | '/dashboard/announcements'
@@ -531,8 +562,10 @@ export interface FileRouteTypes {
     | '/dashboard/support'
     | '/dashboard/vpn'
     | '/dashboard/wallet'
+    | '/purchase-result/$orderId'
     | '/admin'
     | '/dashboard'
+    | '/api/getatext/webhook'
     | '/api/google/callback'
     | '/api/google/start'
     | '/api/paystack/webhook'
@@ -567,6 +600,7 @@ export interface FileRouteTypes {
     | '/admin/referrals'
     | '/admin/vera'
     | '/admin/vera-analytics'
+    | '/admin/webhooks'
     | '/admin/website'
     | '/dashboard/airtime'
     | '/dashboard/announcements'
@@ -580,8 +614,10 @@ export interface FileRouteTypes {
     | '/dashboard/support'
     | '/dashboard/vpn'
     | '/dashboard/wallet'
+    | '/purchase-result/$orderId'
     | '/admin/'
     | '/dashboard/'
+    | '/api/getatext/webhook'
     | '/api/google/callback'
     | '/api/google/start'
     | '/api/paystack/webhook'
@@ -605,6 +641,8 @@ export interface RootRouteChildren {
   RegisterRoute: typeof RegisterRoute
   SupportRoute: typeof SupportRoute
   TermsRoute: typeof TermsRoute
+  PurchaseResultOrderIdRoute: typeof PurchaseResultOrderIdRoute
+  ApiGetatextWebhookRoute: typeof ApiGetatextWebhookRoute
   ApiGoogleCallbackRoute: typeof ApiGoogleCallbackRoute
   ApiGoogleStartRoute: typeof ApiGoogleStartRoute
   ApiPaystackWebhookRoute: typeof ApiPaystackWebhookRoute
@@ -822,6 +860,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminVeraAnalyticsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/webhooks': {
+      id: '/admin/webhooks'
+      path: '/webhooks'
+      fullPath: '/admin/webhooks'
+      preLoaderRoute: typeof AdminWebhooksRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/website': {
       id: '/admin/website'
       path: '/website'
@@ -920,6 +965,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardWalletRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/purchase-result/$orderId': {
+      id: '/purchase-result/$orderId'
+      path: '/purchase-result/$orderId'
+      fullPath: '/purchase-result/$orderId'
+      preLoaderRoute: typeof PurchaseResultOrderIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/getatext/webhook': {
+      id: '/api/getatext/webhook'
+      path: '/api/getatext/webhook'
+      fullPath: '/api/getatext/webhook'
+      preLoaderRoute: typeof ApiGetatextWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/google/callback': {
       id: '/api/google/callback'
       path: '/api/google/callback'
@@ -957,6 +1016,7 @@ interface AdminRouteChildren {
   AdminReferralsRoute: typeof AdminReferralsRoute
   AdminVeraRoute: typeof AdminVeraRoute
   AdminVeraAnalyticsRoute: typeof AdminVeraAnalyticsRoute
+  AdminWebhooksRoute: typeof AdminWebhooksRoute
   AdminWebsiteRoute: typeof AdminWebsiteRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
@@ -974,6 +1034,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminReferralsRoute: AdminReferralsRoute,
   AdminVeraRoute: AdminVeraRoute,
   AdminVeraAnalyticsRoute: AdminVeraAnalyticsRoute,
+  AdminWebhooksRoute: AdminWebhooksRoute,
   AdminWebsiteRoute: AdminWebsiteRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
@@ -1034,6 +1095,8 @@ const rootRouteChildren: RootRouteChildren = {
   RegisterRoute: RegisterRoute,
   SupportRoute: SupportRoute,
   TermsRoute: TermsRoute,
+  PurchaseResultOrderIdRoute: PurchaseResultOrderIdRoute,
+  ApiGetatextWebhookRoute: ApiGetatextWebhookRoute,
   ApiGoogleCallbackRoute: ApiGoogleCallbackRoute,
   ApiGoogleStartRoute: ApiGoogleStartRoute,
   ApiPaystackWebhookRoute: ApiPaystackWebhookRoute,

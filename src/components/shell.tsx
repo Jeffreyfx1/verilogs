@@ -63,6 +63,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
     { to: "/admin/website", label: "Website content", icon: glyph.scroll },
     { to: "/admin/vera", label: "Vera knowledge", icon: glyph.chat },
     { to: "/admin/vera-analytics", label: "Vera analytics", icon: glyph.posts },
+    { to: "/admin/webhooks", label: "API webhook health", icon: glyph.settings },
     { to: "/admin/brand", label: "Homepage & logo", icon: glyph.store },
     { to: "/admin/hosting", label: "Hosting & payments", icon: glyph.settings },
     { to: "/dashboard", label: "Open shop", icon: glyph.store },

@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { normalizeData, defaultSettings, serverSlots, type Announcement, type Data, type Faq, type Provider, type SyncReport } from "@/lib/catalog";
 import { pullShop, shopAct } from "@/lib/shop-fns";
 
-type ShopState = { error: string | null; state: Data; report: SyncReport | null };
+type ShopState = { error: string | null; state: Data; report: SyncReport | null; orderId?: string };
 
 async function act(op: string, payload?: Record<string, unknown>): Promise<ShopState> {
   return shopAct({ data: { op, payload } });
@@ -20,7 +20,7 @@ type Actions = {
   resetPassword: (email: string, password: string) => Promise<string | null>;
   updateProfile: (input: { name: string; phone: string }) => Promise<string | null>;
   changePassword: (oldPw: string, next: string) => Promise<string | null>;
-  buy: (productId: string, extra: { phone?: string; amount?: number; detail?: string }) => Promise<string | null>;
+  buy: (productId: string, extra: { phone?: string; amount?: number; detail?: string }) => Promise<{ error: string | null; orderId: string }>;
   buyAirtime: (networkId: string, extra: { phone: string; amount: number }) => Promise<string | null>;
   refund: (orderId: string) => Promise<string | null>;
   tickWaiting: () => void;
@@ -100,7 +100,7 @@ export const useStore = create<Store>((set) => {
       }
       const res = await run("buy", { productId, phone: extra.phone, amount: extra.amount, detail: extra.detail, idempotencyKey: key });
       if (!res.error || !/already processing|reconciliation|reconciled/i.test(res.error)) purchaseKeys.delete(slot);
-      return res.error;
+      return { error: res.error, orderId: res.orderId || "" };
     },
     buyAirtime: async (networkId, extra) => {
       const slot = `airtime|${networkId}|${extra.phone}|${extra.amount}`;

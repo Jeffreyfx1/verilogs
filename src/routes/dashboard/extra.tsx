@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, createFileRoute, useRouterState } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Glyph, glyph } from "@/components/icons";
 import { ProductSkeletons } from "@/components/product-skeletons";
 import { BtnSpinner } from "@/components/ui";
@@ -89,6 +89,7 @@ export function Marketplace({ kind }: { kind: Shelf }) {
   const all = useStore((s) => s.products);
   const providers = useStore((s) => s.providers);
   const buy = useStore((s) => s.buy);
+  const nav = useNavigate();
   const settings = useStore((s) => s.settings);
   const [q, setQ] = useState("");
   const [sub, setSub] = useState("All");
@@ -231,20 +232,26 @@ export function Marketplace({ kind }: { kind: Shelf }) {
     const total = orderTotal(row, qty, comments, Number(smax) || 0, Number(posts) || 0, settings, rateFor(row).currency, rateFor(row).usdRate).price;
     if ((user?.balance || 0) < total) return;
     setBuying(row.id);
-    let err: string | null = null;
-    if (row.category === "smm") err = await buy(row.id, { amount: qty, detail });
-    else {
+    let err = "";
+    let lastId = "";
+    if (row.category === "smm") {
+      const res = await buy(row.id, { amount: qty, detail });
+      err = res.error || "";
+      lastId = res.orderId;
+    } else {
       for (let i = 0; i < qty; i += 1) {
-        err = await buy(row.id, {});
-        if (err) break;
+        const res = await buy(row.id, {});
+        if (res.error) {
+          err = res.error;
+          break;
+        }
+        if (res.orderId) lastId = res.orderId;
       }
     }
     setBuying("");
     if (err) toast.error(err);
-    else {
-      toast.success(qty > 1 && row.category !== "smm" ? `${qty} orders placed` : "Order placed");
-      setOpen(null);
-    }
+    else if (lastId) nav({ to: "/purchase-result/$orderId", params: { orderId: lastId } });
+    else toast.success("Order placed");
   };
 
   const topUp = async (row: Product) => {

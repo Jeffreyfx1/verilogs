@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { createFileRoute, useRouterState } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouterState } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { BtnSpinner } from "@/components/ui";
 import { naira, when } from "@/lib/money";
@@ -64,6 +64,7 @@ function HistoryPage() {
               <span className="text-muted">Qty {orderQuantity(order.detail || "")}</span>
             </div>
             <p className="mt-2 break-words text-xs leading-relaxed text-muted">{[order.server, order.network, order.phone, order.code && `code ${order.code}`, order.providerStatus, order.detail && !order.detail.startsWith("{") ? order.detail : ""].filter(Boolean).join(" · ")}</p>
+            <Link to="/purchase-result/$orderId" params={{ orderId: order.id }} className="mt-2 inline-block text-xs font-extrabold text-primary">Open delivery</Link>
             {order.category === "smm" && order.refillAvailable && order.providerOrderId && order.status !== "refunded" ? (
               <button
                 type="button"

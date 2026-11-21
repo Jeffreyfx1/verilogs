@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Glyph, glyph } from "@/components/icons";
 import { toast } from "sonner";
 import { BtnSpinner, inputClass } from "@/components/ui";
@@ -54,6 +54,7 @@ function NumbersPage() {
   const bought = useMemo(() => allOrders.filter((o) => o.userId === session && (o.category === "numbers" || o.category === "rent" || o.category === "number" || o.category === "usa")).length, [allOrders, session]);
   const refund = useStore((s) => s.refund);
   const buy = useStore((s) => s.buy);
+  const nav = useNavigate();
   const [buying, setBuying] = useState("");
   const usa = kind === "usa";
   const activeId = usa ? "" : liveServers.some((s) => s.id === server) ? server : liveServers[0]?.id || "";
@@ -330,10 +331,11 @@ function NumbersPage() {
                     return;
                   }
                   setBuying(op.id);
-                  void buy(op.id, {}).then((err) => {
+                  void buy(op.id, {}).then((res) => {
                     setBuying("");
-                    if (err) toast.error(err);
-                    else toast.success("Number reserved. Waiting for the SMS.");
+                    if (res.error) toast.error(res.error);
+                    else if (res.orderId) nav({ to: "/purchase-result/$orderId", params: { orderId: res.orderId } });
+                    else toast.success("Number reserved.");
                   });
                 }}>
                   {buying === op.id ? <BtnSpinner /> : <Glyph icon={glyph.cart} className="size-4" />} {buying === op.id ? "Buying" : "BUY"}
@@ -358,6 +360,7 @@ function NumbersPage() {
               <div className="mt-2 flex flex-wrap gap-2">
                 <button type="button" className="inline-flex items-center gap-1 text-xs font-extrabold text-primary" onClick={() => copy(o.phone)}><Glyph icon={glyph.copy} className="size-3" /> Copy number</button>
                 {o.code ? <button type="button" className="text-xs font-extrabold text-primary" onClick={() => copy(o.code)}>Code {o.code}</button> : <span className="text-xs text-muted">Waiting for SMS…</span>}
+                <Link to="/purchase-result/$orderId" params={{ orderId: o.id }} className="text-xs font-extrabold text-primary">Open delivery</Link>
               </div>
               <p className="mt-1 text-xs text-muted">{when(o.createdAt)} · {naira(o.amount)}</p>
               <button type="button" className="mt-2 text-xs font-extrabold text-danger" onClick={async () => { const err = await refund(o.id); if (err) toast.error(err); else toast.success("Refunded to wallet"); }}>Cancel and refund</button>

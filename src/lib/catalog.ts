@@ -96,6 +96,10 @@ export type Order = {
   providerStatus?: string;
   refillId?: string;
   refillAvailable?: boolean;
+  delivery?: string;
+  country?: string;
+  service?: string;
+  messages?: { at: string; sender: string; text: string; code: string }[];
 };
 
 export type Txn = {

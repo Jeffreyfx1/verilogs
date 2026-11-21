@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
 import type { Product } from "@/lib/catalog";
@@ -47,6 +47,7 @@ function networksOf(plans: Product[]) {
 
 function DataPage() {
   const buy = useStore((s) => s.buy);
+  const nav = useNavigate();
   const [plans, setPlans] = useState<Product[]>([]);
   const [phone, setPhone] = useState("");
   const [q, setQ] = useState("");
@@ -79,9 +80,10 @@ function DataPage() {
     if (buying) return;
     if (phone.trim().length < 8) return toast.error("Enter the phone number that should receive the data.");
     setBuying(id);
-    const err = await buy(id, { phone });
+    const res = await buy(id, { phone });
     setBuying("");
-    if (err) toast.error(err);
+    if (res.error) toast.error(res.error);
+    else if (res.orderId) nav({ to: "/purchase-result/$orderId", params: { orderId: res.orderId } });
     else toast.success("Data order placed");
   };
 

@@ -42,13 +42,6 @@ function pushNote(data: Data, userId: string, title: string, body: string, kind:
   return { ...data, notifications: [item, ...(data.notifications || [])].slice(0, 200) };
 }
 
-function virtualPhone(country: string) {
-  const prefix = country === "Nigeria" ? "+234" : country === "United States" ? "+1" : country === "United Kingdom" ? "+44" : country === "Canada" ? "+1" : "+";
-  let rest = "";
-  for (let i = 0; i < 10; i++) rest += Math.floor(Math.random() * 10);
-  return prefix + rest;
-}
-
 export function projectShop(doc: Data, userId: string | null, draft: Draft | null): Data {
   const clean = normalizeData(doc);
   const me = actor(clean, userId);
@@ -176,7 +169,7 @@ export async function changePassword(data: Data, userId: string | null, oldPw: s
   return { error: null, data: { ...data, users } };
 }
 
-export function buyProduct(data: Data, userId: string | null, productId: string, extra: { phone?: string; amount?: number; detail?: string; cost?: number; gain?: number; code?: string; status?: Order["status"]; charge?: number; providerOrderId?: string; providerStatus?: string; refillAvailable?: boolean }) {
+export function buyProduct(data: Data, userId: string | null, productId: string, extra: { phone?: string; amount?: number; detail?: string; cost?: number; gain?: number; code?: string; status?: Order["status"]; charge?: number; providerOrderId?: string; providerStatus?: string; refillAvailable?: boolean; delivery?: string; country?: string; service?: string }) {
   const user = actor(data, userId);
   if (!user) return { error: "Sign in first.", data };
   const product = data.products.find((p) => p.id === productId && p.enabled);
@@ -203,7 +196,7 @@ export function buyProduct(data: Data, userId: string | null, productId: string,
     server,
     network: product.network,
     amount,
-    phone: (extra.phone || "").trim() || (number ? virtualPhone(product.country) : ""),
+    phone: (extra.phone || "").trim(),
     code: extra.code || "",
     status: extra.status || (number ? "waiting" : "completed"),
     detail: extra.detail || product.description,
@@ -213,6 +206,10 @@ export function buyProduct(data: Data, userId: string | null, productId: string,
     providerOrderId: extra.providerOrderId || "",
     providerStatus: extra.providerStatus || "",
     refillAvailable: !!extra.refillAvailable,
+    delivery: extra.delivery || "",
+    country: extra.country || product.country || "",
+    service: extra.service || product.service || "",
+    messages: [],
   };
   let next: Data = {
     ...data,

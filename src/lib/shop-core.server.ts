@@ -1,5 +1,5 @@
 import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/react-start/server";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { paystackSignatureOk } from "@/lib/paystack-sign";
 import { getSql } from "@/lib/db";
 import { freshData, normalizeData, quoteProduct, serverLabel, topupQuote, withAdminLogin, type Data, type Product, type SyncReport } from "@/lib/catalog";
 import { customerPrice, profitsOf, sellQuote, summarizeProfit } from "@/lib/pricing";
@@ -79,7 +79,7 @@ import {
 const COOKIE = "vl_session";
 
 type Mail = { to: string; subject: string; text: string };
-type ApplyResult = { error: string | null; state: Data; report: SyncReport | null };
+type ApplyResult = { error: string | null; state: Data; report: SyncReport | null; orderId?: string };
 
 let writeChain: Promise<unknown> = Promise.resolve();
 
@@ -327,6 +327,7 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
     let error: string | null = null;
     let report: SyncReport | null = null;
     let mail: Mail | Mail[] | undefined;
+    let orderId = "";
 
     const str = (k: string) => (typeof payload[k] === "string" ? (payload[k] as string) : "");
     const num = (k: string) => (typeof payload[k] === "number" ? (payload[k] as number) : Number(payload[k]));
@@ -388,6 +389,7 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
       const out = await completePurchase(doc, userId, str("productId"), { phone: str("phone"), amount: num("amount"), detail: str("detail"), idempotencyKey: str("idempotencyKey") });
       doc = out.data;
       error = out.error;
+      orderId = out.orderId || "";
     } else if (op === "buyAirtime") {
       const out = await completeAirtimePurchase(doc, userId, { networkId: str("networkId"), phone: str("phone"), amount: num("amount"), idempotencyKey: str("idempotencyKey") });
       doc = out.data;
@@ -547,7 +549,7 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
       const mailError = await sendMail(mail);
       if (mailError) error = `Saved in the app. Email failed: ${mailError}`;
     }
-    return result(doc, userId, draft, error, report);
+    return { ...result(doc, userId, draft, error, report), orderId };
   }
 
 export async function connectGoogle(profile: { email: string; name: string }) {
@@ -608,7 +610,11 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
   const key = (extra.idempotencyKey || "").slice(0, 80);
   if (key) {
     const gate = await beginPurchaseKey({ key, userId: user.id, productId: quoted.id });
-    if (gate === "completed") return { error: null, data: doc };
+    if (gate === "completed") {
+      const sql = await getSql();
+      const previous = await sql.query<{ order_id: string }>("select order_id from shop_idempotency where key = $1", [key]);
+      return { error: null, data: doc, orderId: previous[0]?.order_id || "" };
+    }
     if (gate === "busy") return { error: "This purchase is already processing.", data: doc };
   }
   if (user.balance < charge) {
@@ -643,6 +649,9 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
     if (key) await markPurchaseKey(key, "needs_reconcile", { providerOrderId: placed.ref, amount: charge, detail: reconcileDetail });
     return { error: "The provider accepted the order, but the wallet update did not finish. It is flagged for reconciliation and will not be charged twice.", data: doc };
   }
+  const numberLike = quoted.category === "number" || quoted.category === "numbers" || quoted.category === "rent" || quoted.category === "usa";
+  const delivery = placed.delivery || "";
+  const providerRef = placed.providerRef || (numberLike ? placed.ref : "");
   const ready = { ...doc, products: [quoted], users: doc.users.map((item) => (item.id === user.id ? { ...item, balance: debited.balance + charge } : item)) };
   const bought = buyProduct(ready, userId, quoted.id, {
     phone: placed.phone || extra.phone,
@@ -651,11 +660,14 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
     detail: extra.detail,
     cost,
     gain: charge - cost,
-    code: quoted.category === "smm" ? "" : placed.ref,
-    providerOrderId: quoted.category === "smm" ? placed.ref : "",
+    code: numberLike || quoted.category === "smm" ? "" : delivery || placed.ref,
+    providerOrderId: quoted.category === "smm" ? placed.ref : providerRef,
     providerStatus: quoted.category === "smm" ? "Pending" : "",
     refillAvailable: !!quoted.smmRefill,
     status: placed.waiting ? "waiting" : "completed",
+    delivery,
+    country: quoted.country,
+    service: quoted.service,
   });
   if (bought.error) {
     if (key) await markPurchaseKey(key, "needs_reconcile", { providerOrderId: placed.ref, amount: charge, detail: reconcileDetail });
@@ -669,10 +681,32 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
   if (key) await markPurchaseKey(key, "completed", { orderId: data.orders[0]?.id || "", providerOrderId: placed.ref, amount: charge, detail: reconcileDetail });
   await decrementStock(quoted.id);
   const order = data.orders[0];
+  if (order) {
+    try {
+      const host = (() => { try { return new URL(provider.baseUrl).hostname; } catch { return provider.name; } })();
+      const { rememberFulfilment } = await import("@/lib/fulfilment.server");
+      await rememberFulfilment({
+        orderId: order.id,
+        userId: user.id,
+        category: order.category,
+        title: order.title,
+        providerId: provider.id,
+        provider: host,
+        providerRef: order.providerOrderId || "",
+        phone: order.phone || "",
+        country: order.country || "",
+        service: order.service || "",
+        delivery: order.delivery || order.code || "",
+        status: order.status,
+      });
+    } catch (err) {
+      console.error("fulfilment save skipped", err instanceof Error ? err.message : err);
+    }
+  }
   if (order && order.status === "completed") {
     await settleReferral({ buyerId: user.id, orderId: order.id, amount: charge, profit: gain, orderStatus: order.status });
   }
-  return { error: null, data };
+  return { error: null, data, orderId: order?.id || "" };
 }
 
 export async function completeAirtimePurchase(doc: Data, userId: string | null, input: { networkId: string; phone: string; amount: number; idempotencyKey?: string }) {
@@ -765,10 +799,69 @@ async function withDepositCashback(doc: Data, userId: string, deposit: number, r
 }
 
 async function finishPaidNumber(doc: Data, userId: string, productId: string, reference = "") {
-  if (!productId) return { data: doc, bought: false, error: null as string | null };
+  if (!productId) return { data: doc, bought: false, error: null as string | null, orderId: "" };
   const bought = await completePurchase(doc, userId, productId, { idempotencyKey: reference ? `paystack:${reference}` : "" });
-  if (bought.error) return { data: doc, bought: false, error: `Payment is in your wallet. ${bought.error}` };
-  return { data: bought.data, bought: true, error: null };
+  if (bought.error) return { data: doc, bought: false, error: `Payment is in your wallet. ${bought.error}`, orderId: "" };
+  return { data: bought.data, bought: true, error: null, orderId: bought.orderId || "" };
+}
+
+export async function openPurchase(orderId: string, refresh: boolean) {
+  const session = await readSession();
+  if (!session.userId) return { error: "Sign in first.", view: null };
+  const doc = await loadLight();
+  const me = doc.users.find((user) => user.id === session.userId);
+  if (!me) return { error: "Sign in first.", view: null };
+  let order = doc.orders.find((item) => item.id === orderId);
+  if (!order || (order.userId !== me.id && me.role !== "admin")) return { error: "That purchase was not found on this account.", view: null };
+  const { messagesFrom, pullProviderSms, readFulfilment, saveFulfilmentMessages } = await import("@/lib/fulfilment.server");
+  const { mergeMessages, purchaseView } = await import("@/lib/fulfilment");
+  const row = await readFulfilment(orderId).catch(() => null);
+  let messages = mergeMessages(order.messages || [], row ? messagesFrom(row.messages) : []);
+  let providerNote = "";
+  let providerStatus = order.providerStatus || "";
+  const numberLike = order.category === "number" || order.category === "numbers" || order.category === "rent" || order.category === "usa";
+  const reference = order.providerOrderId || row?.provider_ref || "";
+  let terminal = /RECEIVED|CANCELED|CANCELLED|TIMEOUT|FINISHED|BANNED|complete|expire/i.test(providerStatus);
+  if (refresh && numberLike && order.status === "waiting" && reference && !terminal) {
+    const key = row?.provider_id ? await readProviderKey(row.provider_id) : "";
+    const pulled = await pullProviderSms({ provider: row?.provider || "", apiKey: key, providerRef: reference });
+    providerNote = pulled.supported ? pulled.error : "";
+    if (pulled.messages.length || pulled.phone || pulled.status) {
+      messages = mergeMessages(messages, pulled.messages);
+      if (pulled.status) providerStatus = pulled.status;
+      terminal = pulled.terminal;
+    }
+  }
+  const code = messages.map((item) => item.code).filter(Boolean).pop() || "";
+  const nextStatus = numberLike && code && terminal ? "received" : order.status;
+  const phone = order.phone || row?.phone || "";
+  const changed = code !== (order.code || "") || nextStatus !== order.status || providerStatus !== (order.providerStatus || "") || messages.length !== (order.messages || []).length || (!!row?.phone && !order.phone);
+  let current = order;
+  if (changed) {
+    current = {
+      ...order,
+      phone,
+      code: numberLike ? code : order.code,
+      status: nextStatus,
+      providerStatus,
+      messages,
+    };
+    const saved = current;
+    const next = { ...doc, orders: doc.orders.map((item) => (item.id === saved.id ? saved : item)) };
+    await saveDoc(next);
+    if (row) await saveFulfilmentMessages(saved.id, messages, { phone: saved.phone, status: saved.status }).catch(() => undefined);
+  }
+  const view = purchaseView({
+    ...current,
+    phone: current.phone || row?.phone || "",
+    country: current.country || row?.country || "",
+    service: current.service || row?.service || "",
+    delivery: current.delivery || row?.delivery || "",
+    providerOrderId: current.providerOrderId || row?.provider_ref || "",
+    providerStatus,
+    messages,
+  }, messages);
+  return { error: null as string | null, view: providerNote ? { ...view, note: providerNote } : view };
 }
 
 export async function purchasePreview(productId: string) {
@@ -842,17 +935,21 @@ export async function creditPaystack(reference: string, expectedUserId?: string 
     await saveDoc(finished.data);
     await sendMail(out.mail);
     const session = await readSession();
-    return { error: finished.error, bought: finished.bought, state: projectShop(finished.data, session.userId, session.draft) };
+    return { error: finished.error, bought: finished.bought, orderId: finished.orderId, state: projectShop(finished.data, session.userId, session.draft) };
   });
 }
 
 export async function creditFromWebhook(raw: string, signature: string | null) {
   const secret = process.env.PAYSTACK_SECRET_KEY;
-  if (!secret || !signature) return false;
-  const digest = createHmac("sha512", secret).update(raw).digest("hex");
-  const a = Buffer.from(digest);
-  const b = Buffer.from(signature);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return false;
+  if (!paystackSignatureOk(raw, signature, secret || "")) {
+    try {
+      const { recordWebhook } = await import("@/lib/fulfilment.server");
+      await recordWebhook({ provider: "paystack", eventKey: `rejected:${Date.now().toString(36)}`, status: "rejected", summary: "Rejected signature", error: secret ? "Bad signature" : "Secret missing" });
+    } catch {
+      /* logging must not change the rejection */
+    }
+    return false;
+  }
   let event: { event?: string; data?: { reference?: string; status?: string; currency?: string; amount?: number; metadata?: { userId?: string; credit?: number; productId?: string } } };
   try {
     event = JSON.parse(raw) as typeof event;
@@ -869,21 +966,28 @@ export async function creditFromWebhook(raw: string, signature: string | null) {
   const reference = event.data.reference;
   const paidUser = event.data.metadata.userId;
   const productId = event.data.metadata.productId || "";
+  let logged: "ok" | "failed" = "failed";
   await locked(async () => {
     const doc = await loadLight();
     const out = creditVerified(doc, paidUser, amount, reference);
-    if (!out.error) {
-      let funded = out.data;
-      if (!("already" in out) || !out.already) {
-        const moved = await creditBalance(paidUser, amount, "paystack:" + reference, "Paystack · " + reference, "topup");
-        funded = { ...out.data, users: out.data.users.map((user) => (user.id === paidUser ? { ...user, balance: moved.balance } : user)) };
-      }
-      funded = await withDepositCashback(funded, paidUser, amount, reference);
-      const finished = await finishPaidNumber(funded, paidUser, productId, reference);
-      await saveDoc(finished.data);
-      await sendMail(out.mail);
+    if (out.error) return;
+    logged = "ok";
+    let funded = out.data;
+    if (!("already" in out) || !out.already) {
+      const moved = await creditBalance(paidUser, amount, "paystack:" + reference, "Paystack · " + reference, "topup");
+      funded = { ...out.data, users: out.data.users.map((user) => (user.id === paidUser ? { ...user, balance: moved.balance } : user)) };
     }
+    funded = await withDepositCashback(funded, paidUser, amount, reference);
+    const finished = await finishPaidNumber(funded, paidUser, productId, reference);
+    await saveDoc(finished.data);
+    await sendMail(out.mail);
   });
+  try {
+    const { recordWebhook } = await import("@/lib/fulfilment.server");
+    await recordWebhook({ provider: "paystack", eventKey: reference, status: logged, summary: `charge.success ${reference}`, error: logged === "failed" ? "Not credited" : "" });
+  } catch (err) {
+    console.error("paystack webhook log skipped", err instanceof Error ? err.message : err);
+  }
   return true;
 }
 

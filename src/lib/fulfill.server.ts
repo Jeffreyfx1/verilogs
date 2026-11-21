@@ -3,7 +3,7 @@ import { instakingOrderFields, instakingPost, isInstakingHost, readSmmDetail } f
 import { SMM_CLOSED, smmSalesOpen } from "@/lib/purchase-history";
 
 export type Placement =
-  | { ok: true; phone: string; ref: string; waiting: boolean; cost: number }
+  | { ok: true; phone: string; ref: string; waiting: boolean; cost: number; delivery?: string; providerRef?: string }
   | { ok: false; error: string };
 
 const FIVE: Record<string, string> = {
@@ -115,7 +115,7 @@ export async function placeOnProvider(input: { product: Product; provider: Provi
       if (/balance|funds|money/i.test(raw)) return { ok: false, error: "The API wallet is empty. Top up that API, then try again." };
       return { ok: false, error: raw || "The number API refused the order. The wallet was not charged." };
     }
-    return { ok: true, phone, ref: String(json.id || ""), waiting: true, cost };
+    return { ok: true, phone, ref: String(json.id || ""), waiting: true, cost, providerRef: String(json.id || "") };
   }
 
   if (/(^|\.)getatext\.com$/i.test(host) && product.category === "usa") {
@@ -138,7 +138,7 @@ export async function placeOnProvider(input: { product: Product; provider: Provi
     }
     const phone = String(json.number || "");
     if (!phone) return { ok: false, error: "GetaText did not return a number. The wallet was not charged." };
-    return { ok: true, phone, ref: String(json.id || ""), waiting: true, cost };
+    return { ok: true, phone, ref: String(json.id || ""), waiting: true, cost, providerRef: String(json.id || "") };
   }
 
   if (sme && product.category === "airtime") {
@@ -196,7 +196,8 @@ export async function placeOnProvider(input: { product: Product; provider: Provi
       const raw = String(json.message || data.message || text || "AccsZone refused the order.").replace(/accounts?/gi, "order").slice(0, 180);
       return { ok: false, error: raw || "AccsZone refused the order. The wallet was not charged." };
     }
-    return { ok: true, phone: "", ref: accounts.join("\n"), waiting: false, cost };
+    const orderId = String(data.order_id || "");
+    return { ok: true, phone: "", ref: accounts.join("\n"), waiting: false, cost, delivery: accounts.join("\n"), providerRef: orderId };
   }
 
   return { ok: false, error: "This API is connected for prices, but the buy call is not set yet. The wallet was not charged." };
