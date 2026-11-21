@@ -63,16 +63,6 @@ const slides = [
     to: "/dashboard/numbers",
     search: tgSearch,
   },
-  {
-    id: "rent",
-    tone: "sky",
-    title: "Rent numbers",
-    text: "A separate FiveSim catalogue. Not Server 1, 2, or 3.",
-    icon: glyph.crown,
-    image: null,
-    to: "/dashboard/rent",
-    search: undefined,
-  },
 ] as const;
 
 /* ======================================
