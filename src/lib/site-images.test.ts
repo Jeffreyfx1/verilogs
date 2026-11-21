@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fallbackPhoto, imageKind, photoSlotFor, siteSlot } from "./site-images.ts";
+import { fallbackPhoto, imageCacheControl, imageKind, photoSlotFor, siteSlot, staticPhoto } from "./site-images.ts";
 
 test("image kind accepts photos and rejects other files", () => {
   const jpeg = new Uint8Array(32);
@@ -33,4 +33,8 @@ test("homepage cards map onto the real photo slots", () => {
   assert.equal(siteSlot("hero"), "hero");
   assert.equal(siteSlot("banner"), null);
   assert.equal(fallbackPhoto("numbers"), "/photos/numbers.webp");
+  assert.equal(staticPhoto("hero", "mobile"), "/photos/hero-m.webp");
+  assert.equal(staticPhoto("missing", "desktop"), "/photos/hero.webp");
+  assert.equal(imageCacheControl("2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z"), "public, max-age=31536000, immutable");
+  assert.equal(imageCacheControl("", "2026-01-01T00:00:00.000Z"), "public, max-age=300");
 });

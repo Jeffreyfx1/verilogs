@@ -8,9 +8,9 @@ export const Route = createFileRoute("/admin/website-images")({ component: Websi
 
 type Slot = Awaited<ReturnType<typeof siteImageDesk>>[number];
 
-async function fileToWebp(file: File) {
+async function fileToWebp(file: File, variant: SiteVariant) {
   const bitmap = await createImageBitmap(file);
-  const max = 1600;
+  const max = variant === "mobile" ? 750 : 1200;
   const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
   const width = Math.max(1, Math.round(bitmap.width * scale));
   const height = Math.max(1, Math.round(bitmap.height * scale));
@@ -20,7 +20,7 @@ async function fileToWebp(file: File) {
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not read that image.");
   ctx.drawImage(bitmap, 0, 0, width, height);
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.82));
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.8));
   bitmap.close();
   if (!blob) throw new Error("Could not prepare that image.");
   if (blob.size > 1_500_000) throw new Error("That image is still over 1.5 MB after resizing.");
@@ -52,7 +52,7 @@ function WebsiteImages() {
     const key = `${slot.id}:${variant}`;
     setBusy(key);
     try {
-      const base64 = await fileToWebp(file);
+      const base64 = await fileToWebp(file, variant);
       const saved = await saveSiteImage({ data: { slot: slot.id, variant, base64, alt: alts[slot.id] || slot.alt } });
       if (saved.error) toast.error(saved.error);
       else {
@@ -110,7 +110,7 @@ function WebsiteImages() {
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-extrabold">Website images</h1>
-        <p className="mt-1 text-sm text-muted">Upload a photo from this device. Saving publishes it on the homepage. No code deploy. JPEG, PNG, WebP, and AVIF only, under 1.5 MB. If a slot is empty, the built-in photograph is used.</p>
+        <p className="mt-1 text-sm text-muted">Upload a photo from this device. Saving publishes it on the homepage. The site resizes it to WebP. Desktop is kept near 1200px wide and mobile near 750px. No code deploy. JPEG, PNG, WebP, and AVIF only, under 1.5 MB. If a slot is empty, the built-in photograph is used.</p>
       </div>
       {slots.map((slot) => (
         <article key={slot.id} className="space-y-3 rounded-2xl border border-line bg-card p-4">

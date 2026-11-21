@@ -5,10 +5,18 @@ import { Glyph, glyph, type GlyphIcon } from "@/components/icons";
 import { PublicFrame } from "@/components/chrome";
 import { Reveal } from "@/components/reveal";
 import { publicSiteImages } from "@/lib/shop-fns";
-import { SITE_SLOTS, photoSlotFor, type SiteSlot } from "@/lib/site-images";
+import { SITE_SLOTS, photoSlotFor, staticPhoto, type SiteSlot } from "@/lib/site-images";
 import { useStore } from "@/lib/store";
 
-export const Route = createFileRoute("/")({ component: Home });
+export const Route = createFileRoute("/")({
+  head: () => ({
+    links: [
+      { rel: "preload", as: "image", href: "/photos/hero.webp", type: "image/webp", media: "(min-width: 768px)", fetchPriority: "high" },
+      { rel: "preload", as: "image", href: "/photos/hero-m.webp", type: "image/webp", media: "(max-width: 767px)", fetchPriority: "high" },
+    ],
+  }),
+  component: Home,
+});
 
 const why: { icon: GlyphIcon; title: string; body: string }[] = [
   { icon: glyph.shield, title: "Wallet stays in naira", body: "Fund once. Spend on numbers, data and digital services." },
@@ -19,12 +27,30 @@ const why: { icon: GlyphIcon; title: string; body: string }[] = [
   { icon: glyph.globe, title: "Services in one place", body: "Numbers, data, logs and social services from your dashboard." },
 ];
 
-function SlotImage({ slot, alt, className }: { slot: SiteSlot; alt: string; className?: string }) {
-  const src = (variant: "desktop" | "mobile") => `/api/site-image/${slot}?variant=${variant}`;
+type PhotoRow = { alt: string; desktop: string; mobile: string };
+
+function photoSrc(slot: SiteSlot, variant: "desktop" | "mobile", photos: Record<string, PhotoRow>) {
+  const row = photos[slot];
+  const stamp = variant === "mobile" ? row?.mobile || row?.desktop : row?.desktop;
+  if (!stamp) return staticPhoto(slot, variant);
+  return `/api/site-image/${slot}?variant=${variant}&v=${encodeURIComponent(stamp)}`;
+}
+
+function SlotImage({ slot, alt, className, priority, photos, sizes }: { slot: SiteSlot; alt: string; className?: string; priority?: boolean; photos: Record<string, PhotoRow>; sizes: string }) {
   return (
     <picture>
-      <source media="(max-width: 767px)" srcSet={src("mobile")} />
-      <img src={src("desktop")} alt={alt} className={className} />
+      <source media="(max-width: 767px)" srcSet={photoSrc(slot, "mobile", photos)} type="image/webp" />
+      <img
+        src={photoSrc(slot, "desktop", photos)}
+        alt={alt}
+        width={1400}
+        height={933}
+        sizes={sizes}
+        decoding="async"
+        loading={priority ? "eager" : "lazy"}
+        fetchPriority={priority ? "high" : "low"}
+        className={`bg-paper ${className || ""}`}
+      />
     </picture>
   );
 }
@@ -103,14 +129,14 @@ function HowItWorks() {
 
 function Home() {
   const home = useStore((s) => s.settings.home);
-  const [alts, setAlts] = useState<Record<string, string>>({});
+  const [photos, setPhotos] = useState<Record<string, PhotoRow>>({});
   const cards = (home.cards || []).filter((card) => !/\bbills?\b|cable|electricity|exam pin|gift card|betting/i.test(`${card.title} ${card.body}`));
-  const altFor = (slot: SiteSlot) => alts[slot] || SITE_SLOTS.find((item) => item.id === slot)?.alt || "";
+  const altFor = (slot: SiteSlot) => photos[slot]?.alt || SITE_SLOTS.find((item) => item.id === slot)?.alt || "";
   useEffect(() => {
     publicSiteImages().then((rows) => {
-      const next: Record<string, string> = {};
-      for (const row of rows) next[row.id] = row.alt;
-      setAlts(next);
+      const next: Record<string, PhotoRow> = {};
+      for (const row of rows) next[row.id] = { alt: row.alt, desktop: row.desktop, mobile: row.mobile };
+      setPhotos(next);
     }).catch(() => undefined);
   }, []);
   return (
@@ -133,7 +159,7 @@ function Home() {
               ))}
             </ul>
           </div>
-          <SlotImage slot="hero" alt={altFor("hero")} className="w-full rounded-card object-cover shadow-card" />
+          <SlotImage slot="hero" alt={altFor("hero")} priority photos={photos} sizes="(min-width: 1024px) 560px, 100vw" className="aspect-[3/2] w-full rounded-card object-cover shadow-card" />
         </div>
       </section>
 
@@ -145,7 +171,7 @@ function Home() {
             return (
             <Reveal key={o.id} className="w-[85%] max-w-sm shrink-0 snap-start" delay={i * 90}>
               <Link to="/register" className="flex items-center gap-3 rounded-card border border-line bg-card p-3 shadow-card">
-                <SlotImage slot={slot} alt={altFor(slot)} className="size-16 rounded-xl object-cover" />
+                <SlotImage slot={slot} alt={altFor(slot)} photos={photos} sizes="64px" className="size-16 rounded-xl object-cover" />
                 <span>
                   <span className="block font-extrabold">{o.title}</span>
                   <span className="mt-1 block text-xs font-medium text-muted">{o.body}</span>
@@ -185,7 +211,7 @@ function Home() {
             return (
             <Reveal key={o.id} delay={i * 90}>
               <article className="overflow-hidden rounded-card border border-line bg-card shadow-card">
-                <SlotImage slot={slot} alt={altFor(slot)} className="h-40 w-full object-cover" />
+                <SlotImage slot={slot} alt={altFor(slot)} photos={photos} sizes="(min-width: 768px) 33vw, 100vw" className="h-40 w-full object-cover" />
                 <div className="p-5">
                   <h3 className="text-xl font-extrabold">{o.title}</h3>
                   <p className="mt-2 text-sm font-medium leading-relaxed text-muted">{o.body}</p>

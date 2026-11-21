@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { useRouterState } from "@tanstack/react-router";
 import { WelcomeModal } from "@/components/welcome-modal";
 import { BrandLoader } from "@/components/brand-loader";
 import { SiteTheme } from "@/components/site-theme";
@@ -8,10 +9,11 @@ export function AppBoot({ children }: { children: ReactNode }) {
   const boot = useStore((s) => s.boot);
   const ready = useStore((s) => s.ready);
   const bootError = useStore((s) => s.bootError);
+  const path = useRouterState({ select: (s) => s.location.pathname });
   useEffect(() => {
     boot();
   }, [boot]);
-  if (!ready) {
+  if (!ready && path !== "/") {
     return (
       <>
         <BrandLoader caption={bootError || undefined} />
@@ -29,7 +31,7 @@ export function AppBoot({ children }: { children: ReactNode }) {
     <>
       {children}
       <SiteTheme />
-      <WelcomeModal />
+      {ready ? <WelcomeModal /> : null}
     </>
   );
 }

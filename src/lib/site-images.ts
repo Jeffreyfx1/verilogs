@@ -21,7 +21,18 @@ export function siteVariant(value: string): SiteVariant {
 }
 
 export function fallbackPhoto(slot: string) {
-  return siteSlot(slot) ? `/photos/${slot}.webp` : "/photos/hero.webp";
+  return staticPhoto(slot, "desktop");
+}
+
+export function staticPhoto(slot: string, variant: SiteVariant = "desktop") {
+  const safe = siteSlot(slot) || "hero";
+  return variant === "mobile" ? `/photos/${safe}-m.webp` : `/photos/${safe}.webp`;
+}
+
+/** Versioned admin uploads can be cached for a year. A new upload changes the version. */
+export function imageCacheControl(version: string, updatedAt: string) {
+  if (version && updatedAt && version === updatedAt) return "public, max-age=31536000, immutable";
+  return "public, max-age=300";
 }
 
 export function photoSlotFor(title: string): SiteSlot {

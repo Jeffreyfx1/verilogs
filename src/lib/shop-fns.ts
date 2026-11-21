@@ -527,7 +527,7 @@ export const deleteAirtimeNetwork = createServerFn({ method: "POST" })
 export const publicSiteImages = createServerFn({ method: "GET" }).handler(async () => {
   const { listSiteImages } = await import("@/lib/site-images.server");
   const rows = await listSiteImages();
-  return rows.map((row) => ({ id: row.id, alt: row.alt }));
+  return rows.map((row) => ({ id: row.id, alt: row.alt, desktop: row.desktop, mobile: row.mobile }));
 });
 
 export const siteImageDesk = createServerFn({ method: "GET" }).handler(async () => {
