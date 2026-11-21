@@ -175,7 +175,7 @@ export async function placeOnProvider(input: { product: Product; provider: Provi
     return { ok: true, phone, ref: String(json.ident || json.ref || ref), waiting: false, cost };
   }
 
-  if (/(^|\.)accszone\.com$/i.test(host) && product.category === "logs") {
+  if (/(^|\.)accszone\.com$/i.test(host) && (product.category === "logs" || product.category === "vpn")) {
     const adId = Number(product.externalId);
     if (!Number.isInteger(adId) || adId <= 0) return { ok: false, error: "This listing has no AccsZone id, so it was not sent." };
     let res: Response;

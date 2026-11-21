@@ -83,6 +83,22 @@ function publicRow(row: LogRow) {
   };
 }
 
+export async function readLogKeyForShopProvider(providerId: string) {
+  if (!providerId) return "";
+  const sql = await getSql();
+  const rows = await sql<{ api_key: string }>`select api_key from shop_log_providers where provider_id = ${providerId} and enabled = true`;
+  return String(rows[0]?.api_key || "").trim();
+}
+
+async function mirrorProviderKey(providerId: string, apiKey: string) {
+  const key = apiKey.trim();
+  if (!providerId || !key) return;
+  const sql = await getSql();
+  const rows = await sql`select provider_id from provider_keys where provider_id = ${providerId}`;
+  if (rows[0]) await sql`update provider_keys set api_key = ${key} where provider_id = ${providerId}`;
+  else await sql`insert into provider_keys (provider_id, api_key) values (${providerId}, ${key})`;
+}
+
 async function readRow(id: string) {
   const sql = await getSql();
   const rows = await sql<LogRow>`select * from shop_log_providers where id = ${id}`;
@@ -132,6 +148,7 @@ export async function saveLogProvider(input: LogProviderInput) {
       values (${id}, ${name}, ${baseUrl}, ${apiKey}, ${input.productsPath.slice(0, 160)}, ${method}, ${auth}, ${header}, ${input.extraHeaders.slice(0, 2000)}, ${input.queryJson.slice(0, 2000)}, ${input.bodyJson.slice(0, 2000)}, ${JSON.stringify(page)}, ${JSON.stringify(fields)}, ${!!input.enabled}, ${currency}, ${usdRate}, ${now})`;
   }
   const saved = await readRow(id);
+  if (saved?.provider_id && saved.api_key) await mirrorProviderKey(saved.provider_id, saved.api_key);
   return { error: null as string | null, provider: saved ? publicRow(saved) : null };
 }
 
@@ -198,6 +215,7 @@ async function ensureShopProvider(row: LogRow) {
     }
   }
   await sql`update shop_log_providers set provider_id = ${id} where id = ${row.id}`;
+  if (row.api_key) await mirrorProviderKey(id, row.api_key);
   return id;
 }
 

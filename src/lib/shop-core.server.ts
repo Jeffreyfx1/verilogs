@@ -569,7 +569,6 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
   const provider = quoted && doc.providers.find((item) => item.id === quoted.providerId && item.enabled);
   if (!quoted?.enabled || !provider) return { error: "That service is not available.", data: doc };
   if (quoted.category === "airtime") return { error: "Airtime is sold from the network list, not from the catalogue. Nothing was sent.", data: doc };
-  if (quoted.category === "vpn") return { error: "VPN is coming soon.", data: doc };
   if (!smmSalesOpen() && quoted.category === "smm") return { error: SMM_CLOSED, data: doc };
   if (isRetiredBill(quoted.category)) return { error: BILL_CLOSED, data: doc };
   const sticker = quoted.price;
@@ -624,7 +623,13 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
     return { error: "Insufficient balance. Top up your balance to make this purchase.", data: doc };
   }
   const providerAmount = quoted.variable ? face : quantity;
-  const placed = await placeOnProvider({ product: quoted, provider, apiKey: await readProviderKey(provider.id), phone: extra.phone || "", amount: providerAmount, detail: extra.detail || "", clientReference: key });
+  let apiKey = await readProviderKey(provider.id);
+  if (!apiKey && (quoted.category === "logs" || quoted.category === "vpn")) {
+    const { readLogKeyForShopProvider } = await import("@/lib/logs-import.server");
+    apiKey = await readLogKeyForShopProvider(provider.id);
+  }
+  if (quoted.category === "vpn" && !apiKey) return { error: "VPN is coming soon.", data: doc };
+  const placed = await placeOnProvider({ product: quoted, provider, apiKey, phone: extra.phone || "", amount: providerAmount, detail: extra.detail || "", clientReference: key });
   if (!placed.ok) {
     if (key) await markPurchaseKey(key, "failed");
     return { error: placed.error, data: doc };
