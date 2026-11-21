@@ -94,6 +94,7 @@ function AdminHome() {
                   {p.enabled ? "Disable provider" : "Enable provider"}
                 </button>
               </div>
+              {p.importType === "NUMBER_IMPORT" && !label ? <p className="mt-2 text-xs text-muted">Not one of Server 1, Server 2 or Server 3. Its products and past orders were kept and were not moved.</p> : null}
               {p.lastSync ? (
                 <p className="mt-2 text-xs text-muted">
                   Last sync {when(p.lastSync.at)} · {p.lastSync.imported} read · {p.lastSync.created} new · {p.lastSync.updated} updated

@@ -524,41 +524,47 @@ export function numberServerProviders(providers: Provider[]) {
 }
 
 /**
- * One slot per number provider. A unique stored server id is kept.
- * A repeated id (every provider saved as Server 1) is not reused:
- * a name such as "Server 2" wins, then the next free slot in creation order.
- * A single provider stays one server. Nothing here invents extra buttons.
+ * One provider per Server 1, 2 and 3. A stored server id wins.
+ * A repeated id is not given a new number: a name such as "Server 2" can
+ * fill an empty slot, and every other provider stays off the number servers.
  */
 export function serverSlots(providers: Provider[]) {
-  const list = numberServerProviders(providers)
+  const ranked = providers
     .slice()
     .sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || "") || a.id.localeCompare(b.id));
-  const explicit = list.map((provider) => cleanServerId(provider.serverId));
-  const uniqueExplicit = explicit.length > 0 && explicit.every((id) => id === "1" || id === "2" || id === "3") && new Set(explicit).size === explicit.length;
   const slotOf = new Map<string, string>();
-  if (uniqueExplicit) {
-    list.forEach((provider, index) => slotOf.set(provider.id, explicit[index]));
-    return slotOf;
-  }
-  const used = new Set<number>();
-  const pending: Provider[] = [];
-  for (const provider of list) {
-    const named = namedServerSlot(provider.name);
-    const stored = cleanServerId(provider.serverId);
-    const hint = named || (stored === "1" || stored === "2" || stored === "3" ? Number(stored) : 0);
-    if (hint && !used.has(hint) && !slotOf.has(provider.id)) {
-      slotOf.set(provider.id, String(hint));
-      used.add(hint);
-    } else pending.push(provider);
-  }
-  let next = 1;
-  for (const provider of pending) {
-    if (slotOf.has(provider.id)) continue;
-    while (used.has(next)) next += 1;
-    slotOf.set(provider.id, String(next));
-    used.add(next);
+  for (const id of ["1", "2", "3"]) {
+    const stored = ranked.find((provider) => numberServerCandidate(provider) && cleanServerId(provider.serverId) === id && !slotOf.has(provider.id));
+    const named = ranked.find((provider) => numberServerCandidate(provider) && namedServerSlot(provider.name) === Number(id) && !slotOf.has(provider.id));
+    const chosen = stored || named;
+    if (chosen) slotOf.set(chosen.id, id);
   }
   return slotOf;
+}
+
+function numberServerCandidate(provider: Provider) {
+  if (cleanServerId(provider.serverId) === "usa" || provider.importType === "USA_IMPORT") return false;
+  if (provider.importType === "VTU_IMPORT" || provider.importType === "SMM_IMPORT" || provider.importType === "RANDOM_IMPORT") {
+    const stored = cleanServerId(provider.serverId);
+    return stored === "1" || stored === "2" || stored === "3";
+  }
+  const stored = cleanServerId(provider.serverId);
+  return provider.servesNumbers || provider.importType === "NUMBER_IMPORT" || stored === "1" || stored === "2" || stored === "3" || namedServerSlot(provider.name) > 0;
+}
+
+export function resolveNumberServer(providers: Provider[], serverId: "1" | "2" | "3", providerId = "") {
+  const holder = [...serverSlots(providers).entries()].find(([, slot]) => slot === serverId)?.[0] || "";
+  if (providerId) {
+    const chosen = providers.find((provider) => provider.id === providerId);
+    if (!chosen) return { error: "That provider was not found. Nothing was imported." };
+    const current = serverSlots(providers).get(chosen.id) || "";
+    if (current && current !== serverId) return { error: `That provider is Server ${current}. The import was not moved.` };
+    if (holder && holder !== providerId) return { error: `That provider is not Server ${serverId}. The import was not moved.` };
+    if (!current && chosen.importType && chosen.importType !== "NUMBER_IMPORT") return { error: "That provider is not a number server. Nothing was imported." };
+    return { providerId, create: false as const };
+  }
+  if (holder) return { providerId: holder, create: false as const };
+  return { providerId: "", create: true as const };
 }
 
 export function serverLabel(providers: Provider[], id: string) {
@@ -567,10 +573,6 @@ export function serverLabel(providers: Provider[], id: string) {
   const provider = providers.find((item) => item.id === id);
   if (!provider) return null;
   if (cleanServerId(provider.serverId) === "usa" || provider.importType === "USA_IMPORT") return "USA";
-  const named = namedServerSlot(provider.name);
-  if (named) return `Server ${named}`;
-  const stored = cleanServerId(provider.serverId);
-  if (stored === "1" || stored === "2" || stored === "3") return `Server ${stored}`;
   return null;
 }
 

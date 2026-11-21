@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
 import { PricingAdmin } from "@/components/pricing-admin";
 import { LogsApiAdmin } from "@/components/logs-api-admin";
-import { CATEGORY_LABEL } from "@/lib/catalog";
+import { CATEGORY_LABEL, serverSlots } from "@/lib/catalog";
 import { extractCatalog, shapeImport, type ImportKind } from "@/lib/categorize";
 import { IMPORT_CARDS } from "@/lib/import-source";
 import { batchWindow } from "@/lib/import-batch";
@@ -282,7 +282,10 @@ function ImportPage() {
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         {IMPORT_CARDS.map((card) => {
-          const provider = providers.find((item) => item.importType && item.name === card.providerName) || providers.find((item) => item.serverId && item.serverId === (card.kind === "numbers" ? "1" : card.kind === "server2" ? "2" : card.kind === "server3" ? "3" : card.kind === "usa" ? "usa" : ""));
+          const numberSlot = card.kind === "numbers" ? "1" : card.kind === "server2" ? "2" : card.kind === "server3" ? "3" : "";
+          const provider = numberSlot
+            ? providers.find((item) => item.id === [...serverSlots(providers).entries()].find(([, slot]) => slot === numberSlot)?.[0])
+            : providers.find((item) => item.importType && item.name === card.providerName) || providers.find((item) => item.serverId && item.serverId === (card.kind === "usa" ? "usa" : ""));
           const sync = provider?.lastSync;
           return (
             <article key={card.kind} className={`rounded-card border bg-card p-4 shadow-card ${kind === card.kind ? "border-primary" : "border-line"}`}>
@@ -294,7 +297,7 @@ function ImportPage() {
                 <Button tone="soft" onClick={() => {
                   setKind(card.kind);
                   setName(card.providerName);
-                  setProviderId("");
+                  setProviderId(numberSlot ? provider?.id || "" : "");
                   setApiUrl(card.kind === "vtu-airtime" ? "" : card.url);
                   setBaseUrl(card.kind === "vtu-airtime" ? "https://" : card.url || "https://");
                   setCurrency(card.currency);
@@ -401,10 +404,14 @@ function ImportPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="space-y-3 rounded-card border border-line bg-card p-4 shadow-card">
           <Field label="Add to">
+            {kind === "numbers" || kind === "server2" || kind === "server3" ? (
+              <p className="rounded-xl border border-line bg-paper px-3 py-2 text-sm">Server {kind === "numbers" ? "1" : kind === "server2" ? "2" : "3"} only. This cannot create another number server.</p>
+            ) : (
             <select className={inputClass} value={providerId} onChange={(e) => setProviderId(e.target.value)}>
               <option value="">New provider</option>
               {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
+            )}
           </Field>
           {!providerId ? (
             <>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { freshData, serverLabel, serverSlots, type Provider } from "./catalog.ts";
+import { freshData, resolveNumberServer, serverLabel, serverSlots, type Provider } from "./catalog.ts";
 import { projectShop } from "./shop-logic.ts";
 
 function provider(patch: Partial<Provider> & Pick<Provider, "id" | "name" | "createdAt">): Provider {
@@ -84,4 +84,30 @@ test("a customer still receives a distinct server id after the provider name is 
   assert.equal(view.providers.find((item) => item.id === "b")?.name, "");
   assert.equal(serverLabel(view.providers, "b"), "Server 2");
   assert.equal(serverLabel(view.providers, "c"), "Server 3");
+});
+
+test("a fourth number provider is not given Server 4", () => {
+  const providers = [
+    provider({ id: "a", name: "5sim", serverId: "1", createdAt: "2026-01-01T00:00:00.000Z" }),
+    provider({ id: "b", name: "Server 2", serverId: "2", createdAt: "2026-01-02T00:00:00.000Z" }),
+    provider({ id: "c", name: "Server 3", serverId: "3", createdAt: "2026-01-03T00:00:00.000Z" }),
+    provider({ id: "d", name: "5sim again", serverId: "1", createdAt: "2026-01-04T00:00:00.000Z" }),
+    provider({ id: "rent", name: "Rent number", serverId: "", importType: "RANDOM_IMPORT", servesNumbers: false, createdAt: "2026-01-04T00:00:00.000Z" }),
+  ];
+  const slots = [...serverSlots(providers).values()];
+  assert.deepEqual(slots.sort(), ["1", "2", "3"]);
+  assert.equal(serverSlots(providers).has("d"), false);
+  assert.equal(serverSlots(providers).has("rent"), false);
+  assert.equal(serverLabel(providers, "d"), null);
+  const same = resolveNumberServer(providers, "2", "a");
+  const extra = resolveNumberServer(providers, "1", "d");
+  assert.equal("error" in same ? same.error : "", "That provider is Server 1. The import was not moved.");
+  assert.equal("error" in extra ? extra.error : "", "That provider is not Server 1. The import was not moved.");
+  const open = [
+    provider({ id: "a", name: "5sim", serverId: "1", createdAt: "2026-01-01T00:00:00.000Z" }),
+  ];
+  const created = resolveNumberServer(open, "2");
+  const kept = resolveNumberServer(open, "1");
+  assert.equal("create" in created && created.create, true);
+  assert.equal("providerId" in kept ? kept.providerId : "", "a");
 });

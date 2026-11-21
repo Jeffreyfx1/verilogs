@@ -1,7 +1,7 @@
 import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/react-start/server";
 import { paystackSignatureOk } from "@/lib/paystack-sign";
 import { getSql } from "@/lib/db";
-import { freshData, normalizeData, quoteProduct, serverLabel, topupQuote, withAdminLogin, type Data, type Product, type SyncReport } from "@/lib/catalog";
+import { freshData, normalizeData, quoteProduct, resolveNumberServer, serverLabel, topupQuote, withAdminLogin, type Data, type Product, type SyncReport } from "@/lib/catalog";
 import { customerPrice, profitsOf, sellQuote, summarizeProfit } from "@/lib/pricing";
 import { rentCharge } from "@/lib/rent";
 import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, fiveSimImportPlan, shapeImport, attachVtuIds, vtuCatalogueUrl, discoverServiceNames, mergeServiceNames, type ImportKind, type ParsedItem } from "@/lib/categorize";
@@ -1691,19 +1691,63 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
   return { error: null, jobId, total: items.length, saved: 0, batch: 0, batches: batches.length, batchSize: IMPORT_BATCH, done: false, report: null, state: null, fetchNote: noted };
 }
 
-function withProvider(doc: Data, meta: ImportMeta, providerId: string) {
+function withProvider(doc: Data, meta: ImportMeta, providerId: string): { doc: Data; provider: import("@/lib/catalog").Provider } | { error: string } {
   const now = new Date().toISOString();
   const providers = doc.providers.map((provider) => ({ ...provider }));
   let provider = providerId ? providers.find((item) => item.id === providerId) : undefined;
   const five = /5sim\.net/i.test(meta.baseUrl);
   const dest = destinationOf(meta.kind);
+  const slot = dest?.serverId === "1" || dest?.serverId === "2" || dest?.serverId === "3" ? dest.serverId : "";
+  if (slot) {
+    const resolved = resolveNumberServer(providers, slot, providerId);
+    if ("error" in resolved && resolved.error) return { error: resolved.error };
+    if (resolved.create) {
+      provider = {
+        id: uid("prov"),
+        name: meta.name || `Server ${slot}`,
+        baseUrl: meta.baseUrl,
+        hasKey: meta.hasKey,
+        servesNumbers: true,
+        enabled: true,
+        currency: meta.currency,
+        usdRate: meta.usdRate > 0 ? meta.usdRate : five ? 2646 : doc.settings.usdNgn,
+        markup: 1,
+        markupPercent: meta.markup > 0 ? meta.markup : 0,
+        importType: "NUMBER_IMPORT",
+        serverId: slot,
+        operatorMarkups: {},
+        operatorPrices: {},
+        createdAt: now,
+        lastSync: null,
+      };
+      providers.push(provider);
+    } else {
+      provider = providers.find((item) => item.id === resolved.providerId);
+      if (!provider) return { error: `Server ${slot} was not found. Nothing was imported.` };
+      provider.name = meta.name || provider.name;
+      provider.baseUrl = meta.baseUrl || provider.baseUrl;
+      provider.currency = meta.currency;
+      if (meta.usdRate > 0) provider.usdRate = meta.usdRate;
+      if (meta.markup > 0) provider.markupPercent = meta.markup;
+      if (!provider.usdRate) provider.usdRate = five ? 2646 : doc.settings.usdNgn;
+      provider.importType = "NUMBER_IMPORT";
+      provider.serverId = slot;
+      provider.servesNumbers = true;
+      provider.enabled = true;
+      if (meta.hasKey) provider.hasKey = true;
+    }
+    return { doc: { ...doc, providers }, provider };
+  }
+  if (provider && (provider.serverId === "1" || provider.serverId === "2" || provider.serverId === "3" || provider.importType === "NUMBER_IMPORT")) {
+    return { error: "That provider is a number server. This import was not applied to it." };
+  }
   if (!provider) {
     provider = {
       id: uid("prov"),
       name: meta.name,
       baseUrl: meta.baseUrl,
       hasKey: meta.hasKey,
-      servesNumbers: dest?.importType === "NUMBER_IMPORT",
+      servesNumbers: false,
       enabled: true,
       currency: meta.currency,
       usdRate: meta.usdRate > 0 ? meta.usdRate : five ? 2646 : doc.settings.usdNgn,
@@ -1727,7 +1771,7 @@ function withProvider(doc: Data, meta: ImportMeta, providerId: string) {
     if (dest) {
       provider.importType = dest.importType;
       provider.serverId = dest.serverId;
-      provider.servesNumbers = dest.importType === "NUMBER_IMPORT";
+      provider.servesNumbers = false;
     }
     provider.enabled = true;
     if (meta.hasKey) provider.hasKey = true;
@@ -1786,9 +1830,14 @@ export async function stepCatalogImport(jobId: string) {
     const held = await locked(async () => {
       const loaded = await loadLight();
       const next = withProvider(loaded, meta, job.provider_id || "");
+      if ("error" in next) return next;
       await writeState({ ...next.doc, products: [] });
       return next;
     });
+    if ("error" in held) {
+      await sql`update shop_import_jobs set status = 'failed', error = ${held.error.slice(0, 300)} where id = ${jobId}`;
+      return emptyImport(held.error);
+    }
     const providerId = held.provider.id;
     if (meta.fetchSetup?.confirmed) {
       await saveProviderFetch(providerId, {
