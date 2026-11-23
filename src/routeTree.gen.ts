@@ -35,6 +35,7 @@ import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
 import { Route as AdminHostingRouteImport } from './routes/admin/hosting'
 import { Route as AdminImportRouteImport } from './routes/admin/import'
 import { Route as AdminLogosRouteImport } from './routes/admin/logos'
+import { Route as AdminMappingRouteImport } from './routes/admin/mapping'
 import { Route as AdminOrdersRouteImport } from './routes/admin/orders'
 import { Route as AdminReferralsRouteImport } from './routes/admin/referrals'
 import { Route as AdminRentRouteImport } from './routes/admin/rent'
@@ -193,6 +194,11 @@ const AdminImportRoute = AdminImportRouteImport.update({
 const AdminLogosRoute = AdminLogosRouteImport.update({
   id: '/logos',
   path: '/logos',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminMappingRoute = AdminMappingRouteImport.update({
+  id: '/mapping',
+  path: '/mapping',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminOrdersRoute = AdminOrdersRouteImport.update({
@@ -367,6 +373,7 @@ export interface FileRoutesByFullPath {
   '/admin/hosting': typeof AdminHostingRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/logos': typeof AdminLogosRoute
+  '/admin/mapping': typeof AdminMappingRoute
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/referrals': typeof AdminReferralsRoute
   '/admin/rent': typeof AdminRentRoute
@@ -422,6 +429,7 @@ export interface FileRoutesByTo {
   '/admin/hosting': typeof AdminHostingRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/logos': typeof AdminLogosRoute
+  '/admin/mapping': typeof AdminMappingRoute
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/referrals': typeof AdminReferralsRoute
   '/admin/rent': typeof AdminRentRoute
@@ -480,6 +488,7 @@ export interface FileRoutesById {
   '/admin/hosting': typeof AdminHostingRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/logos': typeof AdminLogosRoute
+  '/admin/mapping': typeof AdminMappingRoute
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/referrals': typeof AdminReferralsRoute
   '/admin/rent': typeof AdminRentRoute
@@ -539,6 +548,7 @@ export interface FileRouteTypes {
     | '/admin/hosting'
     | '/admin/import'
     | '/admin/logos'
+    | '/admin/mapping'
     | '/admin/orders'
     | '/admin/referrals'
     | '/admin/rent'
@@ -594,6 +604,7 @@ export interface FileRouteTypes {
     | '/admin/hosting'
     | '/admin/import'
     | '/admin/logos'
+    | '/admin/mapping'
     | '/admin/orders'
     | '/admin/referrals'
     | '/admin/rent'
@@ -651,6 +662,7 @@ export interface FileRouteTypes {
     | '/admin/hosting'
     | '/admin/import'
     | '/admin/logos'
+    | '/admin/mapping'
     | '/admin/orders'
     | '/admin/referrals'
     | '/admin/rent'
@@ -893,6 +905,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminLogosRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/mapping': {
+      id: '/admin/mapping'
+      path: '/mapping'
+      fullPath: '/admin/mapping'
+      preLoaderRoute: typeof AdminMappingRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/orders': {
       id: '/admin/orders'
       path: '/orders'
@@ -1108,6 +1127,7 @@ interface AdminRouteChildren {
   AdminHostingRoute: typeof AdminHostingRoute
   AdminImportRoute: typeof AdminImportRoute
   AdminLogosRoute: typeof AdminLogosRoute
+  AdminMappingRoute: typeof AdminMappingRoute
   AdminOrdersRoute: typeof AdminOrdersRoute
   AdminReferralsRoute: typeof AdminReferralsRoute
   AdminRentRoute: typeof AdminRentRoute
@@ -1128,6 +1148,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminHostingRoute: AdminHostingRoute,
   AdminImportRoute: AdminImportRoute,
   AdminLogosRoute: AdminLogosRoute,
+  AdminMappingRoute: AdminMappingRoute,
   AdminOrdersRoute: AdminOrdersRoute,
   AdminReferralsRoute: AdminReferralsRoute,
   AdminRentRoute: AdminRentRoute,

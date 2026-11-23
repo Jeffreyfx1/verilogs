@@ -165,7 +165,7 @@ async function loadDoc(_withCatalog = false): Promise<Data> {
   return loadLight();
 }
 
-async function loadLight(): Promise<Data> {
+export async function loadLight(): Promise<Data> {
   const sql = await getSql();
   const rows = await sql<{ doc: string }>`select doc from shop_state where id = 'main'`;
   if (!rows[0]) {
@@ -623,10 +623,12 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
     return { error: "Insufficient balance. Top up your balance to make this purchase.", data: doc };
   }
   const providerAmount = quoted.variable ? face : quantity;
-  let apiKey = await readProviderKey(provider.id);
-  if (!apiKey && (quoted.category === "logs" || quoted.category === "vpn")) {
-    const { readLogKeyForShopProvider } = await import("@/lib/logs-import.server");
-    apiKey = await readLogKeyForShopProvider(provider.id);
+  const { resolvePurchaseCredentials } = await import("@/lib/provider-map.server");
+  const credentials = await resolvePurchaseCredentials(provider.id, quoted.category);
+  const apiKey = credentials.apiKey;
+  if (!apiKey && quoted.category !== "vpn") {
+    if (key) await markPurchaseKey(key, "failed");
+    return { error: "This product is not connected to a provider with saved credentials, so the order was not sent and the wallet was not charged.", data: doc };
   }
   if (quoted.category === "vpn" && !apiKey) return { error: "VPN is coming soon.", data: doc };
   const placed = await placeOnProvider({ product: quoted, provider, apiKey, phone: extra.phone || "", amount: providerAmount, detail: extra.detail || "", clientReference: key });
@@ -1698,6 +1700,9 @@ function withProvider(doc: Data, meta: ImportMeta, providerId: string): { doc: D
   const five = /5sim\.net/i.test(meta.baseUrl);
   const dest = destinationOf(meta.kind);
   const slot = dest?.serverId === "1" || dest?.serverId === "2" || dest?.serverId === "3" ? dest.serverId : "";
+  if (providerId && !providers.find((item) => item.id === providerId) && !slot) {
+    return { error: "That provider was not found. Nothing was imported." };
+  }
   if (slot) {
     const resolved = resolveNumberServer(providers, slot, providerId);
     if ("error" in resolved && resolved.error) return { error: resolved.error };
@@ -1839,6 +1844,7 @@ export async function stepCatalogImport(jobId: string) {
       return emptyImport(held.error);
     }
     const providerId = held.provider.id;
+    await sql`update shop_import_jobs set provider_id = ${providerId} where id = ${jobId}`;
     if (meta.fetchSetup?.confirmed) {
       await saveProviderFetch(providerId, {
         ok: true,

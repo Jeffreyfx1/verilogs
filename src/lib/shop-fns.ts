@@ -80,6 +80,25 @@ export const purchaseResult = createServerFn({ method: "POST" })
     return openPurchase(data.orderId, data.refresh);
   });
 
+export const providerMapping = createServerFn({ method: "POST" })
+  .validator((input: { filter?: string }) => ({ filter: String(input?.filter || "all") }))
+  .handler(async ({ data }) => {
+    const { adminContext } = await core();
+    const admin = await adminContext();
+    if (!admin) return { error: "Only an admin can do that.", counts: {}, total: 0, rows: [] };
+    const { providerMappingReport } = await import("@/lib/provider-map.server");
+    const report = await providerMappingReport(data.filter as "all");
+    return { error: null as string | null, ...report };
+  });
+
+export const repairMappings = createServerFn({ method: "POST" }).handler(async () => {
+  const { adminContext } = await core();
+  const admin = await adminContext();
+  if (!admin) return { error: "Only an admin can do that.", repaired: 0, review: 0, mirrored: 0 };
+  const { repairProviderMappings } = await import("@/lib/provider-map.server");
+  return { error: null as string | null, ...(await repairProviderMappings()) };
+});
+
 export const webhookDesk = createServerFn({ method: "GET" }).handler(async () => {
   const { adminContext } = await core();
   const admin = await adminContext();

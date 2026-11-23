@@ -54,6 +54,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
   const adminNav: Item[] = [
     { to: "/admin", label: "Overview", icon: glyph.dashboard, end: true },
     { to: "/admin/import", label: "Import services", icon: glyph.download },
+    { to: "/admin/mapping", label: "Provider mapping", icon: glyph.settings },
     { to: "/admin/catalog", label: "Catalogue", icon: glyph.package },
     { to: "/admin/logos", label: "Category logos", icon: glyph.store },
     { to: "/admin/airtime", label: "Airtime networks", icon: glyph.phone },
