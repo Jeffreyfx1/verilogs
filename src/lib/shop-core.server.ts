@@ -682,6 +682,7 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
     delivery,
     country: quoted.country,
     service: quoted.service,
+    expiresAt: placed.expiresAt || "",
   });
   if (bought.error) {
     if (key) await markPurchaseKey(key, "needs_reconcile", { providerOrderId: placed.ref, amount: charge, detail: reconcileDetail });
@@ -919,7 +920,7 @@ async function fiveSimCall(key: string, path: string) {
   return { ok: res.ok, text, json };
 }
 
-async function applyFiveSim(doc: Data, orderId: string, pulled: { phone: string; status: string; messages: { at: string; sender: string; text: string; code: string }[] }) {
+async function applyFiveSim(doc: Data, orderId: string, pulled: { phone: string; status: string; messages: { at: string; sender: string; text: string; code: string }[]; expiresAt?: string }) {
   const { mapFiveSimStatus } = await import("@/lib/fivesim-status");
   const { mergeMessages } = await import("@/lib/fulfilment");
   const order = doc.orders.find((item) => item.id === orderId);
@@ -935,6 +936,7 @@ async function applyFiveSim(doc: Data, orderId: string, pulled: { phone: string;
     code,
     messages,
     providerStatus: pulled.status || order.providerStatus,
+    expiresAt: pulled.expiresAt || order.expiresAt || "",
     status,
   };
   let nextDoc = { ...doc, orders: doc.orders.map((item) => item.id === orderId ? updated : item) };

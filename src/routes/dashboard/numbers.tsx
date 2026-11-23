@@ -4,7 +4,7 @@ import { Glyph, glyph } from "@/components/icons";
 import { toast } from "sonner";
 import { BtnSpinner, inputClass } from "@/components/ui";
 import type { Product } from "@/lib/catalog";
-import { naira, when } from "@/lib/money";
+import { naira } from "@/lib/money";
 import { browseNumbers } from "@/lib/shop-fns";
 import { restoreSlot, type NumberSlot } from "@/lib/number-slots";
 import { withTimeout } from "@/lib/with-timeout";
@@ -53,6 +53,7 @@ function NumbersPage() {
   const orders = useMemo(() => allOrders.filter((o) => o.userId === session && o.server !== "Rent number" && (o.category === "numbers" || o.category === "rent" || o.category === "number" || o.category === "usa") && o.status === "waiting"), [allOrders, session]);
   const bought = useMemo(() => allOrders.filter((o) => o.userId === session && o.server !== "Rent number" && (o.category === "numbers" || o.category === "rent" || o.category === "number" || o.category === "usa")).length, [allOrders, session]);
   const buy = useStore((s) => s.buy);
+  const tick = useStore((s) => s.tickWaiting);
   const nav = useNavigate();
   const [buying, setBuying] = useState("");
   const usa = kind === "usa";
@@ -84,6 +85,8 @@ function NumbersPage() {
   const countryGen = useRef(0);
   const serviceGen = useRef(0);
   const opGen = useRef(0);
+
+  useEffect(() => { tick(); }, [tick]);
 
   const remember = (country: string, nextService: string) => {
     memory.current[slotKey] = { country, service: nextService };
@@ -209,15 +212,6 @@ function NumbersPage() {
       .finally(() => {
         if (token === opGen.current) setLoadingOps(false);
       });
-  };
-
-  const copy = async (value: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
-      toast.success("Copied");
-    } catch {
-      toast.error("Could not copy");
-    }
   };
 
   if (kind === "rent") return <p className="text-sm text-muted">Opening Rent numbers…</p>;
@@ -354,27 +348,38 @@ function NumbersPage() {
       </section>
 
       <section className="rounded-[1.4rem] bg-[#E5F2F8] p-4">
-        <h2 className="text-lg font-extrabold">My active numbers</h2>
+        <h2 className="text-lg font-extrabold">Active numbers</h2>
+        <p className="mt-1 text-xs text-muted">Numbers still waiting. Open one for the SMS, timer and cancellation.</p>
         <div className="mt-3 space-y-2">
           {orders.map((o) => (
-            <article key={o.id} className="rounded-xl bg-card p-3 text-sm">
+            <Link key={o.id} to="/purchase-result/$orderId" params={{ orderId: o.id }} className="block rounded-xl bg-card p-3 text-sm">
               <div className="flex items-center justify-between gap-2">
-                <p className="font-extrabold">{o.title}</p>
-                <span className="text-xs text-muted">{o.server}</span>
+                <p className="font-extrabold">{o.phone || o.title}</p>
+                <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-extrabold text-amber-800">{o.providerStatus || o.status}</span>
               </div>
-              <p className="mt-1 font-mono">{o.phone}</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button type="button" className="inline-flex items-center gap-1 text-xs font-extrabold text-primary" onClick={() => copy(o.phone)}><Glyph icon={glyph.copy} className="size-3" /> Copy number</button>
-                {o.code ? <button type="button" className="text-xs font-extrabold text-primary" onClick={() => copy(o.code)}>Code {o.code}</button> : <span className="text-xs text-muted">Waiting for SMS…</span>}
-                <Link to="/purchase-result/$orderId" params={{ orderId: o.id }} className="text-xs font-extrabold text-primary">Open delivery</Link>
-              </div>
-              <p className="mt-1 text-xs text-muted">{when(o.createdAt)} · {naira(o.amount)}</p>
-              <Link to="/purchase-result/$orderId" params={{ orderId: o.id }} className="mt-2 inline-block text-xs font-extrabold text-primary">Open this purchase</Link>
-            </article>
+              <p className="mt-1 text-xs text-muted">{[o.country, o.service || o.title, o.server].filter(Boolean).join(" · ")}</p>
+              <Remain expiresAt={o.expiresAt} />
+            </Link>
           ))}
           {!orders.length ? <p className="py-4 text-sm text-muted">No active numbers.</p> : null}
         </div>
       </section>
     </div>
   );
+}
+
+function Remain({ expiresAt }: { expiresAt?: string }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!expiresAt) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [expiresAt]);
+  if (!expiresAt) return null;
+  const end = Date.parse(expiresAt);
+  if (!Number.isFinite(end)) return null;
+  const left = Math.max(0, Math.floor((end - now) / 1000));
+  const minutes = Math.floor(left / 60);
+  const seconds = left % 60;
+  return <p className="mt-1 text-xs font-extrabold text-primary">{left ? `${minutes}:${String(seconds).padStart(2, "0")} left` : "Timer ended. Status is checked with FiveSim."}</p>;
 }

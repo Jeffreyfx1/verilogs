@@ -3,7 +3,7 @@ import { instakingOrderFields, instakingPost, isInstakingHost, readSmmDetail } f
 import { SMM_CLOSED, smmSalesOpen } from "@/lib/purchase-history";
 
 export type Placement =
-  | { ok: true; phone: string; ref: string; waiting: boolean; cost: number; delivery?: string; providerRef?: string }
+  | { ok: true; phone: string; ref: string; waiting: boolean; cost: number; delivery?: string; providerRef?: string; expiresAt?: string }
   | { ok: false; error: string };
 
 const FIVE: Record<string, string> = {
@@ -115,7 +115,7 @@ export async function placeOnProvider(input: { product: Product; provider: Provi
       if (/balance|funds|money/i.test(raw)) return { ok: false, error: "The API wallet is empty. Top up that API, then try again." };
       return { ok: false, error: raw || "The number API refused the order. The wallet was not charged." };
     }
-    return { ok: true, phone, ref: String(json.id || ""), waiting: true, cost, providerRef: String(json.id || "") };
+    return { ok: true, phone, ref: String(json.id || ""), waiting: true, cost, providerRef: String(json.id || ""), expiresAt: typeof json.expires === "string" ? json.expires : "" };
   }
 
   if (/(^|\.)getatext\.com$/i.test(host) && product.category === "usa") {

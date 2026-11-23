@@ -94,6 +94,7 @@ export type Order = {
   createdAt: string;
   providerOrderId?: string;
   providerStatus?: string;
+  expiresAt?: string;
   refillId?: string;
   refillAvailable?: boolean;
   delivery?: string;

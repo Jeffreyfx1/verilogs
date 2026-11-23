@@ -51,6 +51,8 @@ function ResultPage() {
     return () => window.clearInterval(timer);
   }, [view?.poll, orderId]);
 
+  const [confirm, setConfirm] = useState(false);
+
   const cancelNumber = async () => {
     setActing("number");
     try {
@@ -111,9 +113,12 @@ function ResultPage() {
             {view.service ? <Row label="Service" value={view.service} /> : null}
             {view.network ? <Row label="Network" value={view.network} /> : null}
             {view.phone ? <Row label="Number" value={view.phone} onCopy={() => void copy(view.phone, "Number")} /> : null}
-            {view.reference ? <Row label="Order reference" value={view.reference} /> : null}
             {view.code ? <Row label="Verification code" value={view.code} onCopy={() => void copy(view.code, "Code")} /> : null}
           </dl>
+          {view.kind === "number" && view.expiresAt ? <Remain expiresAt={view.expiresAt} done={view.status !== "waiting"} /> : null}
+          {view.kind === "number" && view.status === "waiting" && !view.code ? <p className="text-sm text-muted">Waiting for the SMS. FiveSim is checked from the server.</p> : null}
+          {view.status === "refunded" ? <p className="rounded-xl bg-paper px-3 py-2 text-sm">Cancelled. {naira(view.amount)} was returned to the wallet once.</p> : null}
+          {view.status === "completed" || view.status === "received" ? <p className="text-sm text-muted">This number is finished. Cancellation is closed.</p> : null}
           {view.accounts.length ? (
             <div>
               <div className="flex items-center justify-between gap-3">
@@ -168,9 +173,17 @@ function ResultPage() {
           ) : null}
           <p className="text-sm text-muted">{view.note}</p>
           {view.server === "Server 1" && view.kind === "number" && view.status === "waiting" ? (
-            <button type="button" className="rounded-xl border border-line px-3 py-2 text-sm font-extrabold text-danger" disabled={!!acting} onClick={() => void cancelNumber()}>
-              {acting === "number" ? "Checking FiveSim…" : "Cancel number"}
-            </button>
+            confirm ? (
+              <div className="space-y-2 rounded-xl border border-line p-3">
+                <p className="text-sm">Cancel this number with FiveSim? A refund is issued only if FiveSim confirms the cancellation.</p>
+                <div className="flex gap-2">
+                  <button type="button" className="rounded-xl bg-danger px-3 py-2 text-sm font-extrabold text-white" disabled={!!acting} onClick={() => void cancelNumber()}>{acting === "number" ? "Checking FiveSim…" : "Confirm cancel"}</button>
+                  <button type="button" className="rounded-xl border border-line px-3 py-2 text-sm font-extrabold" onClick={() => setConfirm(false)}>Keep it</button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" className="rounded-xl border border-line px-3 py-2 text-sm font-extrabold text-danger" onClick={() => setConfirm(true)}>Cancel number</button>
+            )
           ) : null}
           {view.server === "Rent number" && view.status === "waiting" ? (
             <div className="flex flex-wrap gap-2">
@@ -185,6 +198,26 @@ function ResultPage() {
         </article>
       ) : null}
     </div>
+  );
+}
+
+function Remain({ expiresAt, done }: { expiresAt: string; done: boolean }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (done) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [done, expiresAt]);
+  const end = Date.parse(expiresAt);
+  if (!Number.isFinite(end)) return null;
+  const left = Math.max(0, Math.floor((end - now) / 1000));
+  const minutes = Math.floor(left / 60);
+  const seconds = left % 60;
+  return (
+    <p className="rounded-xl bg-paper px-3 py-2 text-sm">
+      <span className="text-xs text-muted">FiveSim expiry</span>
+      <span className="mt-1 block font-extrabold">{done ? "Closed" : left ? `${minutes}:${String(seconds).padStart(2, "0")} remaining` : "Timer ended. Status is checked with FiveSim."}</span>
+    </p>
   );
 }
 

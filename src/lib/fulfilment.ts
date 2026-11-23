@@ -22,6 +22,7 @@ export type PurchaseOrder = {
   service?: string;
   messages?: SmsMessage[];
   createdAt?: string;
+  expiresAt?: string;
 };
 
 export type PurchaseView = {
@@ -44,6 +45,7 @@ export type PurchaseView = {
   poll: boolean;
   note: string;
   createdAt: string;
+  expiresAt: string;
   admin: boolean;
 };
 
@@ -73,7 +75,7 @@ function messageKey(message: SmsMessage) {
   return `${message.at}|${message.sender}|${message.text}|${message.code}`.trim();
 }
 
-export function parseFiveSimCheck(body: unknown): { phone: string; status: string; messages: SmsMessage[]; terminal: boolean } {
+export function parseFiveSimCheck(body: unknown): { phone: string; status: string; messages: SmsMessage[]; terminal: boolean; expiresAt: string } {
   const json = body && typeof body === "object" ? body as Record<string, unknown> : {};
   const status = String(json.status || "");
   const phone = typeof json.phone === "string" ? json.phone : "";
@@ -88,7 +90,7 @@ export function parseFiveSimCheck(body: unknown): { phone: string; status: strin
     };
   }).filter((item) => item.text || item.code);
   const terminal = /RECEIVED|CANCELED|CANCELLED|TIMEOUT|FINISHED|BANNED/i.test(status);
-  return { phone, status, messages, terminal };
+  return { phone, status, messages, terminal, expiresAt: typeof json.expires === "string" ? json.expires : "" };
 }
 
 export function parseGetatextStatus(body: unknown): { phone: string; status: string; messages: SmsMessage[]; terminal: boolean } {
@@ -163,6 +165,7 @@ export function purchaseView(order: PurchaseOrder, messages: SmsMessage[] = [], 
     poll: kind === "number" && waiting && !!reference,
     note: customerLogs ? hideSupplier(note, supplier) : note,
     createdAt: order.createdAt || "",
+    expiresAt: order.expiresAt || "",
     admin,
   };
 }

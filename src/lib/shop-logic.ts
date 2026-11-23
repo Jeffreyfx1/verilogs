@@ -169,7 +169,7 @@ export async function changePassword(data: Data, userId: string | null, oldPw: s
   return { error: null, data: { ...data, users } };
 }
 
-export function buyProduct(data: Data, userId: string | null, productId: string, extra: { phone?: string; amount?: number; detail?: string; cost?: number; gain?: number; code?: string; status?: Order["status"]; charge?: number; providerOrderId?: string; providerStatus?: string; refillAvailable?: boolean; delivery?: string; country?: string; service?: string }) {
+export function buyProduct(data: Data, userId: string | null, productId: string, extra: { phone?: string; amount?: number; detail?: string; cost?: number; gain?: number; code?: string; status?: Order["status"]; charge?: number; providerOrderId?: string; providerStatus?: string; refillAvailable?: boolean; delivery?: string; country?: string; service?: string; expiresAt?: string }) {
   const user = actor(data, userId);
   if (!user) return { error: "Sign in first.", data };
   const product = data.products.find((p) => p.id === productId && p.enabled);
@@ -209,6 +209,7 @@ export function buyProduct(data: Data, userId: string | null, productId: string,
     delivery: extra.delivery || "",
     country: extra.country || product.country || "",
     service: extra.service || product.service || "",
+    expiresAt: extra.expiresAt || "",
     messages: [],
   };
   let next: Data = {
