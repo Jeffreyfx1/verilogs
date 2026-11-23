@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Guard } from "@/components/guard";
-import { Glyph, glyph } from "@/components/icons";
 import { purchaseResult, cancelRentNumber, finishRentNumber, cancelServer1Number } from "@/lib/shop-fns";
 import { naira, when } from "@/lib/money";
 import { useStore } from "@/lib/store";
@@ -24,6 +23,8 @@ function ResultPage() {
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
   const [acting, setActing] = useState("");
+  const [confirm, setConfirm] = useState(false);
+  const [now, setNow] = useState(Date.now());
 
   const load = async (refresh: boolean) => {
     setChecking(true);
@@ -33,6 +34,7 @@ function ResultPage() {
       else {
         setError("");
         setView(res.view);
+        if (res.view.status !== "waiting") setConfirm(false);
       }
     } catch {
       setError("Could not open this purchase.");
@@ -41,9 +43,7 @@ function ResultPage() {
     }
   };
 
-  useEffect(() => {
-    void load(true);
-  }, [orderId]);
+  useEffect(() => { void load(true); }, [orderId]);
 
   useEffect(() => {
     if (!view?.poll) return;
@@ -51,7 +51,11 @@ function ResultPage() {
     return () => window.clearInterval(timer);
   }, [view?.poll, orderId]);
 
-  const [confirm, setConfirm] = useState(false);
+  useEffect(() => {
+    if (view?.kind !== "number" || view.status !== "waiting") return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [view?.kind, view?.status, view?.expiresAt]);
 
   const cancelNumber = async () => {
     setActing("number");
@@ -94,6 +98,8 @@ function ResultPage() {
     }
   };
 
+  if (view?.kind === "number") return <NumberCard view={view} error={error} checking={checking} acting={acting} confirm={confirm} now={now} onCopy={copy} onRefresh={() => void load(true)} onCancel={() => void cancelNumber()} onAsk={() => setConfirm(true)} onKeep={() => setConfirm(false)} />;
+
   return (
     <div className="mx-auto max-w-lg space-y-4">
       <Link to="/dashboard/history" className="text-sm font-extrabold text-primary">Back to order history</Link>
@@ -104,86 +110,25 @@ function ResultPage() {
           <div>
             <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#0c6e8a]">{view.kind}</p>
             <h2 className="mt-1 text-xl font-extrabold">{view.title}</h2>
-            <p className="mt-1 text-sm text-muted">{naira(view.amount)} · {view.status}{view.providerStatus ? ` · ${view.providerStatus}` : ""}</p>
+            <p className="mt-1 text-sm text-muted">{naira(view.amount)} · {view.status}</p>
             {view.createdAt ? <p className="text-xs text-muted">{when(view.createdAt)}</p> : null}
           </div>
-          <dl className="space-y-2 text-sm">
-            {view.server ? <Row label="Server" value={view.server} /> : null}
-            {view.country ? <Row label="Country" value={view.country} /> : null}
-            {view.service ? <Row label="Service" value={view.service} /> : null}
-            {view.network ? <Row label="Network" value={view.network} /> : null}
-            {view.phone ? <Row label="Number" value={view.phone} onCopy={() => void copy(view.phone, "Number")} /> : null}
-            {view.code ? <Row label="Verification code" value={view.code} onCopy={() => void copy(view.code, "Code")} /> : null}
-          </dl>
-          {view.kind === "number" && view.expiresAt ? <Remain expiresAt={view.expiresAt} done={view.status !== "waiting"} /> : null}
-          {view.kind === "number" && view.status === "waiting" && !view.code ? <p className="text-sm text-muted">Waiting for the SMS. FiveSim is checked from the server.</p> : null}
-          {view.status === "refunded" ? <p className="rounded-xl bg-paper px-3 py-2 text-sm">Cancelled. {naira(view.amount)} was returned to the wallet once.</p> : null}
-          {view.status === "completed" || view.status === "received" ? <p className="text-sm text-muted">This number is finished. Cancellation is closed.</p> : null}
           {view.accounts.length ? (
-            <div>
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-extrabold uppercase tracking-wide text-muted">Account information</p>
-                <button type="button" className="text-xs font-extrabold text-primary" onClick={() => void copy(accountText(view.accounts), "Account details")}>Copy all</button>
-              </div>
-              <div className="mt-2 space-y-3">
-                {view.accounts.map((account, index) => (
-                  <div key={index} className="space-y-2">
-                    {view.accounts.length > 1 ? <p className="text-xs font-extrabold text-ink">Account {index + 1}</p> : null}
-                    {account.fields.map((field) => (
-                      <div key={`${field.label}-${field.value}`} className="rounded-xl bg-paper px-3 py-2">
-                        <div className="flex items-start justify-between gap-3">
-                          <p className="text-xs text-muted">{field.label}</p>
-                          <button type="button" className="shrink-0 text-xs font-extrabold text-primary" onClick={() => void copy(field.value, field.label)}>Copy</button>
-                        </div>
-                        <FieldValue value={field.value} />
+            <div className="space-y-2">
+              {view.accounts.map((account, index) => (
+                <div key={index} className="space-y-2">
+                  {account.fields.map((field) => (
+                    <div key={`${field.label}-${field.value}`} className="rounded-xl bg-paper px-3 py-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-xs text-muted">{field.label}</p>
+                        <button type="button" className="text-xs font-extrabold text-primary" onClick={() => void copy(field.value, field.label)}>Copy</button>
                       </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-          {view.admin && view.delivery.length ? (
-            <div>
-              <p className="text-xs font-extrabold uppercase tracking-wide text-muted">Stored delivery</p>
-              <ul className="mt-2 space-y-2">
-                {view.delivery.map((line) => (
-                  <li key={line} className="break-all rounded-xl bg-paper px-3 py-2 font-mono text-sm">{line}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          {view.kind === "number" ? (
-            <div>
-              <p className="text-xs font-extrabold uppercase tracking-wide text-muted">Messages</p>
-              {view.poll ? <p className="mt-2 text-sm text-muted">{checking ? "Checking the provider…" : "Waiting for an SMS. This page checks without reloading."}</p> : null}
-              <ul className="mt-2 space-y-2">
-                {view.messages.map((message, index) => (
-                  <li key={`${message.at}-${message.code}-${index}`} className="rounded-xl bg-paper px-3 py-2 text-sm">
-                    <p className="text-xs text-muted">{[message.sender, message.at ? when(message.at) : ""].filter(Boolean).join(" · ") || "SMS"}</p>
-                    {message.text ? <p className="mt-1 whitespace-pre-wrap break-words">{message.text}</p> : null}
-                    {message.code ? (
-                      <button type="button" className="mt-1 font-extrabold text-primary" onClick={() => void copy(message.code, "Code")}>Code {message.code}</button>
-                    ) : null}
-                  </li>
-                ))}
-                {!view.messages.length ? <li className="text-sm text-muted">No message stored yet.</li> : null}
-              </ul>
-            </div>
-          ) : null}
-          <p className="text-sm text-muted">{view.note}</p>
-          {view.server === "Server 1" && view.kind === "number" && view.status === "waiting" ? (
-            confirm ? (
-              <div className="space-y-2 rounded-xl border border-line p-3">
-                <p className="text-sm">Cancel this number with FiveSim? A refund is issued only if FiveSim confirms the cancellation.</p>
-                <div className="flex gap-2">
-                  <button type="button" className="rounded-xl bg-danger px-3 py-2 text-sm font-extrabold text-white" disabled={!!acting} onClick={() => void cancelNumber()}>{acting === "number" ? "Checking FiveSim…" : "Confirm cancel"}</button>
-                  <button type="button" className="rounded-xl border border-line px-3 py-2 text-sm font-extrabold" onClick={() => setConfirm(false)}>Keep it</button>
+                      <FieldValue value={field.value} />
+                    </div>
+                  ))}
                 </div>
-              </div>
-            ) : (
-              <button type="button" className="rounded-xl border border-line px-3 py-2 text-sm font-extrabold text-danger" onClick={() => setConfirm(true)}>Cancel number</button>
-            )
+              ))}
+            </div>
           ) : null}
           {view.server === "Rent number" && view.status === "waiting" ? (
             <div className="flex flex-wrap gap-2">
@@ -191,41 +136,126 @@ function ResultPage() {
               <button type="button" className="rounded-xl border border-line px-3 py-2 text-sm font-extrabold" disabled={!!acting} onClick={() => void rentAct("finish")}>{acting === "finish" ? "Finishing…" : "Finish rental"}</button>
             </div>
           ) : null}
-          <button type="button" className="inline-flex items-center gap-2 rounded-xl border border-line px-3 py-2 text-sm font-extrabold" onClick={() => void load(true)}>
-            <Glyph icon={glyph.history} className="size-4" />
-            {checking ? "Checking…" : "Refresh"}
-          </button>
         </article>
-      ) : null}
+      ) : error ? null : <p className="text-sm text-muted">Opening this purchase…</p>}
     </div>
   );
 }
 
-function Remain({ expiresAt, done }: { expiresAt: string; done: boolean }) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (done) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [done, expiresAt]);
-  const end = Date.parse(expiresAt);
-  if (!Number.isFinite(end)) return null;
-  const left = Math.max(0, Math.floor((end - now) / 1000));
-  const minutes = Math.floor(left / 60);
-  const seconds = left % 60;
+function NumberCard({ view, error, checking, acting, confirm, now, onCopy, onRefresh, onCancel, onAsk, onKeep }: {
+  view: View;
+  error: string;
+  checking: boolean;
+  acting: string;
+  confirm: boolean;
+  now: number;
+  onCopy: (value: string, label: string) => void;
+  onRefresh: () => void;
+  onCancel: () => void;
+  onAsk: () => void;
+  onKeep: () => void;
+}) {
+  const clock = clockOf(view.expiresAt, view.createdAt, now);
+  const status = statusLabel(view.status, !!view.code);
+  const code = view.code || view.messages.map((item) => item.code).filter(Boolean).pop() || "";
+  const message = view.messages.find((item) => item.text)?.text || "";
   return (
-    <p className="rounded-xl bg-paper px-3 py-2 text-sm">
-      <span className="text-xs text-muted">FiveSim expiry</span>
-      <span className="mt-1 block font-extrabold">{done ? "Closed" : left ? `${minutes}:${String(seconds).padStart(2, "0")} remaining` : "Timer ended. Status is checked with FiveSim."}</span>
-    </p>
+    <div className="mx-auto max-w-lg space-y-3">
+      <Link to="/dashboard/numbers" search={{ server: "", country: "", kind: "", service: "" }} className="text-sm font-extrabold text-primary">Back to numbers</Link>
+      {error ? <p className="rounded-2xl border border-line bg-card p-4 text-sm text-danger">{error}</p> : null}
+      <article className="space-y-4 rounded-[1.4rem] bg-[#174c70] p-4 text-white shadow-card">
+        <p className="text-center text-sm font-extrabold">Order {view.orderId.slice(0, 12)}</p>
+        <dl className="space-y-1.5 text-sm">
+          <Line label="Service" value={view.service || view.title} />
+          <Line label="Country" value={view.country} />
+          {view.server ? <Line label="Server" value={view.server} /> : null}
+          <Line label="Price" value={naira(view.amount)} />
+        </dl>
+        <div>
+          <p className="text-xs font-extrabold uppercase tracking-wide text-white/70">Number</p>
+          <div className="mt-2 flex items-center gap-2">
+            <p className="flex-1 rounded-xl bg-white/10 px-3 py-3 text-center font-mono text-lg font-extrabold">{view.phone || "Waiting for the number"}</p>
+            {view.phone ? <button type="button" className="rounded-xl bg-[#1a8aa8] px-3 py-3 text-sm font-extrabold" onClick={() => onCopy(view.phone, "Number")}>Copy</button> : null}
+          </div>
+        </div>
+        {clock ? (
+          <div>
+            <p className="text-center text-sm font-extrabold">Time remaining</p>
+            <p className="mt-1 text-center text-xs text-white/70">{view.status === "waiting" ? "The code usually arrives within a few minutes." : "This order is closed."}</p>
+            <p className="mt-2 text-center text-2xl font-extrabold tabular-nums">{clock.label}</p>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/20">
+              <div className="h-full rounded-full bg-[#1a8aa8] transition-all" style={{ width: `${clock.used}%` }} />
+            </div>
+          </div>
+        ) : null}
+        <div>
+          <p className="text-xs font-extrabold uppercase tracking-wide text-white/70">Code from SMS</p>
+          {code ? (
+            <div className="mt-2 rounded-xl bg-white/10 px-3 py-3">
+              <p className="text-xs text-white/70">OTP received</p>
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <p className="font-mono text-2xl font-extrabold">{code}</p>
+                <button type="button" className="rounded-xl bg-[#1a8aa8] px-3 py-2 text-sm font-extrabold" onClick={() => onCopy(code, "Code")}>Copy</button>
+              </div>
+              {message ? <p className="mt-2 break-words text-sm text-white/80">{message}</p> : null}
+            </div>
+          ) : (
+            <p className="mt-2 rounded-xl bg-white/10 px-3 py-3 text-sm">{checking ? "Checking FiveSim…" : "Waiting for SMS…"}</p>
+          )}
+        </div>
+        <p className="text-sm"><span className="text-white/70">Status </span><span className="font-extrabold">{status}</span></p>
+        {view.status === "refunded" ? <p className="text-sm text-white/80">Cancelled. {naira(view.amount)} was returned to the wallet once.</p> : null}
+        {view.status === "waiting" && view.server === "Server 1" ? (
+          confirm ? (
+            <div className="space-y-2 rounded-xl bg-white/10 p-3 text-sm">
+              <p>Cancel this number with FiveSim? A refund is issued only if FiveSim confirms it.</p>
+              <div className="flex gap-2">
+                <button type="button" className="rounded-xl bg-[#c43d4b] px-3 py-2 font-extrabold" disabled={!!acting} onClick={onCancel}>{acting === "number" ? "Checking FiveSim…" : "Confirm cancel"}</button>
+                <button type="button" className="rounded-xl border border-white/30 px-3 py-2 font-extrabold" onClick={onKeep}>Keep it</button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button type="button" className="flex-1 rounded-xl bg-[#c43d4b] px-3 py-3 text-sm font-extrabold" onClick={onAsk}>Cancel order</button>
+              <button type="button" className="flex-1 rounded-xl bg-[#1a8aa8] px-3 py-3 text-sm font-extrabold" disabled={checking} onClick={onRefresh}>{checking ? "Checking…" : "Refresh OTP"}</button>
+            </div>
+          )
+        ) : (
+          <button type="button" className="w-full rounded-xl bg-[#1a8aa8] px-3 py-3 text-sm font-extrabold" disabled={checking} onClick={onRefresh}>{checking ? "Checking…" : "Refresh"}</button>
+        )}
+      </article>
+      <Link to="/dashboard/history" hash="numbers" className="inline-block text-sm font-extrabold text-primary">Order history</Link>
+    </div>
   );
 }
 
-function accountText(accounts: View["accounts"]) {
-  return accounts.flatMap((account, index) => [
-    accounts.length > 1 ? `Account ${index + 1}` : "",
-    ...account.fields.map((field) => `${field.label}: ${field.value}`),
-  ]).filter(Boolean).join("\n");
+function Line({ label, value }: { label: string; value: string }) {
+  if (!value) return null;
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <dt className="text-white/70">{label}</dt>
+      <dd className="font-extrabold">{value}</dd>
+    </div>
+  );
+}
+
+function statusLabel(status: string, hasCode: boolean) {
+  if (status === "refunded") return "Cancelled";
+  if (status === "completed") return "Completed";
+  if (status === "received" || hasCode) return "OTP received";
+  return "Waiting for SMS";
+}
+
+function clockOf(expiresAt: string, createdAt: string, now: number) {
+  const end = Date.parse(expiresAt || "");
+  if (!Number.isFinite(end)) return null;
+  const start = Date.parse(createdAt || "") || end - 20 * 60 * 1000;
+  const total = Math.max(1, end - start);
+  const left = Math.max(0, Math.floor((end - now) / 1000));
+  const used = Math.min(100, Math.max(0, Math.round(((now - start) / total) * 100)));
+  const minutes = Math.floor(left / 60);
+  const seconds = left % 60;
+  return { label: left ? `${minutes}:${String(seconds).padStart(2, "0")}` : "Ended", used };
 }
 
 function FieldValue({ value }: { value: string }) {
@@ -233,16 +263,4 @@ function FieldValue({ value }: { value: string }) {
   return url
     ? <a href={url} target="_blank" rel="noreferrer" className="mt-1 block break-all font-semibold text-primary underline">{value}</a>
     : <p className="mt-1 break-all font-semibold">{value}</p>;
-}
-
-function Row({ label, value, onCopy }: { label: string; value: string; onCopy?: () => void }) {
-  return (
-    <div className="flex items-start justify-between gap-3 rounded-xl bg-paper px-3 py-2">
-      <div>
-        <dt className="text-xs text-muted">{label}</dt>
-        <dd className="font-semibold break-all">{value}</dd>
-      </div>
-      {onCopy ? <button type="button" className="text-xs font-extrabold text-primary" onClick={onCopy}>Copy</button> : null}
-    </div>
-  );
 }
