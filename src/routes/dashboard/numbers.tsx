@@ -52,7 +52,6 @@ function NumbersPage() {
   const session = useStore((s) => s.sessionUserId);
   const orders = useMemo(() => allOrders.filter((o) => o.userId === session && o.server !== "Rent number" && (o.category === "numbers" || o.category === "rent" || o.category === "number" || o.category === "usa") && o.status === "waiting"), [allOrders, session]);
   const bought = useMemo(() => allOrders.filter((o) => o.userId === session && o.server !== "Rent number" && (o.category === "numbers" || o.category === "rent" || o.category === "number" || o.category === "usa")).length, [allOrders, session]);
-  const refund = useStore((s) => s.refund);
   const buy = useStore((s) => s.buy);
   const nav = useNavigate();
   const [buying, setBuying] = useState("");
@@ -370,7 +369,7 @@ function NumbersPage() {
                 <Link to="/purchase-result/$orderId" params={{ orderId: o.id }} className="text-xs font-extrabold text-primary">Open delivery</Link>
               </div>
               <p className="mt-1 text-xs text-muted">{when(o.createdAt)} · {naira(o.amount)}</p>
-              <button type="button" className="mt-2 text-xs font-extrabold text-danger" onClick={async () => { const err = await refund(o.id); if (err) toast.error(err); else toast.success("Refunded to wallet"); }}>Cancel and refund</button>
+              <Link to="/purchase-result/$orderId" params={{ orderId: o.id }} className="mt-2 inline-block text-xs font-extrabold text-primary">Open this purchase</Link>
             </article>
           ))}
           {!orders.length ? <p className="py-4 text-sm text-muted">No active numbers.</p> : null}

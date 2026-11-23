@@ -3,7 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Guard } from "@/components/guard";
 import { Glyph, glyph } from "@/components/icons";
-import { purchaseResult, cancelRentNumber, finishRentNumber } from "@/lib/shop-fns";
+import { purchaseResult, cancelRentNumber, finishRentNumber, cancelServer1Number } from "@/lib/shop-fns";
 import { naira, when } from "@/lib/money";
 import { useStore } from "@/lib/store";
 
@@ -50,6 +50,21 @@ function ResultPage() {
     const timer = window.setInterval(() => { void load(true); }, 8000);
     return () => window.clearInterval(timer);
   }, [view?.poll, orderId]);
+
+  const cancelNumber = async () => {
+    setActing("number");
+    try {
+      const res = await cancelServer1Number({ data: { orderId } });
+      if (res.error) toast.error(res.error);
+      else toast.success("FiveSim cancelled this number. The refund is in your wallet.");
+      if (res.state) adopt(res.state);
+      await load(true);
+    } catch {
+      toast.error("Could not cancel this number.");
+    } finally {
+      setActing("");
+    }
+  };
 
   const rentAct = async (action: "cancel" | "finish") => {
     setActing(action);
@@ -152,6 +167,11 @@ function ResultPage() {
             </div>
           ) : null}
           <p className="text-sm text-muted">{view.note}</p>
+          {view.server === "Server 1" && view.kind === "number" && view.status === "waiting" ? (
+            <button type="button" className="rounded-xl border border-line px-3 py-2 text-sm font-extrabold text-danger" disabled={!!acting} onClick={() => void cancelNumber()}>
+              {acting === "number" ? "Checking FiveSim…" : "Cancel number"}
+            </button>
+          ) : null}
           {view.server === "Rent number" && view.status === "waiting" ? (
             <div className="flex flex-wrap gap-2">
               <button type="button" className="rounded-xl border border-line px-3 py-2 text-sm font-extrabold" disabled={!!acting} onClick={() => void rentAct("cancel")}>{acting === "cancel" ? "Cancelling…" : "Cancel rental"}</button>

@@ -399,6 +399,9 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
     } else if (op === "refund") {
       const orderId = str("orderId");
       const before = doc.orders.find((order) => order.id === orderId);
+      if (before && isServer1Number(before)) {
+        error = "Cancel this number from its purchase page. A refund is only issued after FiveSim confirms cancellation.";
+      } else {
       const out = refundOrder(doc, userId, orderId);
       doc = out.data;
       error = out.error;
@@ -407,8 +410,10 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
         doc = { ...doc, users: doc.users.map((user) => (user.id === before.userId ? { ...user, balance: moved.balance } : user)) };
         await reverseReferral(before.userId, before.id);
       }
+      }
     } else if (op === "tick") {
       doc = await syncInstakingOrders(doc);
+      doc = await syncServer1Numbers(doc);
       doc = tickWaiting(doc);
     } else if (op === "refill") {
       const out = await refillInstakingOrder(doc, userId, str("orderId"));
@@ -895,6 +900,132 @@ export async function buyRentNumber(offerId: string, idempotencyKey = "") {
   return { error: null as string | null, orderId: bought.order.id, state: projectShop(data, session.userId, session.draft) };
 }
 
+function server1Provider(doc: Data) {
+  return doc.providers.find((item) => item.enabled && item.serverId === "1" && /5sim\.net/i.test(item.baseUrl || ""));
+}
+
+function isServer1Number(order: { server?: string; category?: string }) {
+  return order.server === "Server 1" && (order.category === "number" || order.category === "numbers");
+}
+
+async function fiveSimCall(key: string, path: string) {
+  const res = await fetch(`https://5sim.net/v1/user/${path}`, {
+    headers: { Authorization: "Bearer " + key, Accept: "application/json" },
+    signal: AbortSignal.timeout(15000),
+  });
+  const text = await res.text();
+  let json: unknown = {};
+  try { json = JSON.parse(text); } catch { json = {}; }
+  return { ok: res.ok, text, json };
+}
+
+async function applyFiveSim(doc: Data, orderId: string, pulled: { phone: string; status: string; messages: { at: string; sender: string; text: string; code: string }[] }) {
+  const { mapFiveSimStatus } = await import("@/lib/fivesim-status");
+  const { mergeMessages } = await import("@/lib/fulfilment");
+  const order = doc.orders.find((item) => item.id === orderId);
+  if (!order) return doc;
+  const next = mapFiveSimStatus(pulled.status);
+  if (next === "unknown") return doc;
+  const messages = mergeMessages(order.messages || [], pulled.messages);
+  const code = messages.map((item) => item.code).filter(Boolean).pop() || order.code;
+  const status = next === "waiting" ? order.status : next;
+  const updated = {
+    ...order,
+    phone: pulled.phone || order.phone,
+    code,
+    messages,
+    providerStatus: pulled.status || order.providerStatus,
+    status,
+  };
+  let nextDoc = { ...doc, orders: doc.orders.map((item) => item.id === orderId ? updated : item) };
+  if (status === "refunded" && order.status !== "refunded") {
+    const moved = await creditBalance(order.userId, order.amount, "refund:" + order.id, "Refund · " + order.title, "refund");
+    nextDoc = {
+      ...nextDoc,
+      users: nextDoc.users.map((user) => user.id === order.userId ? { ...user, balance: moved.balance } : user),
+    };
+    await reverseReferral(order.userId, order.id);
+  }
+  return nextDoc;
+}
+
+async function syncServer1Order(doc: Data, orderId: string) {
+  const order = doc.orders.find((item) => item.id === orderId);
+  if (!order || !isServer1Number(order) || order.status === "completed" || order.status === "refunded") return doc;
+  const provider = server1Provider(doc);
+  const key = provider ? await readProviderKey(provider.id) : "";
+  const ref = String(order.providerOrderId || "").replace(/[^\d]/g, "");
+  if (!key || !ref) return doc;
+  try {
+    const called = await fiveSimCall(key, `check/${ref}`);
+    if (!called.ok) return doc;
+    const { parseFiveSimCheck } = await import("@/lib/fulfilment");
+    const pulled = parseFiveSimCheck(called.json);
+    return applyFiveSim(doc, orderId, pulled);
+  } catch {
+    return doc;
+  }
+}
+
+export async function syncServer1Numbers(doc: Data) {
+  let next = doc;
+  const waiting = doc.orders.filter((order) => isServer1Number(order) && order.status === "waiting").slice(0, 20);
+  for (const order of waiting) next = await syncServer1Order(next, order.id);
+  return next;
+}
+
+export async function cancelServer1Number(orderId: string) {
+  const session = await readSession();
+  if (!session.userId) return { error: "Sign in first.", state: null as Data | null };
+  const doc = await loadLight();
+  const me = doc.users.find((user) => user.id === session.userId);
+  const order = doc.orders.find((item) => item.id === orderId);
+  if (!me || !order || (order.userId !== me.id && me.role !== "admin")) return { error: "That purchase was not found.", state: null };
+  if (!isServer1Number(order)) return { error: "This purchase is not a FiveSim Server 1 number.", state: null };
+  if (order.status === "refunded") return { error: null, state: projectShop(doc, session.userId, session.draft) };
+  if (order.status === "completed" || order.status === "received") return { error: "FiveSim has already completed this number. It cannot be cancelled or refunded.", state: projectShop(doc, session.userId, session.draft) };
+  const provider = server1Provider(doc);
+  const key = provider ? await readProviderKey(provider.id) : "";
+  const ref = String(order.providerOrderId || "").replace(/[^\d]/g, "");
+  if (!key || !ref) return { error: "This number has no FiveSim order id, so it was not cancelled.", state: null };
+  const { fiveSimCancelDecision } = await import("@/lib/fivesim-status");
+  const { parseFiveSimCheck } = await import("@/lib/fulfilment");
+  let checked;
+  try {
+    checked = await fiveSimCall(key, `check/${ref}`);
+  } catch {
+    return { error: "FiveSim could not be reached. Nothing was refunded. Try again.", state: null };
+  }
+  if (!checked.ok) return { error: "FiveSim did not confirm the order status. Nothing was refunded.", state: null };
+  const current = parseFiveSimCheck(checked.json);
+  const decision = fiveSimCancelDecision(current.status);
+  if (decision === "already_done") {
+    const synced = await applyFiveSim(doc, order.id, current);
+    await saveDoc(synced);
+    return { error: "FiveSim has already completed this number. It cannot be cancelled or refunded.", state: projectShop(synced, session.userId, session.draft) };
+  }
+  if (decision === "already_canceled") {
+    const synced = await applyFiveSim(doc, order.id, current);
+    await saveDoc(synced);
+    return { error: null, state: projectShop(synced, session.userId, session.draft) };
+  }
+  if (decision !== "cancel") return { error: "FiveSim did not confirm that this number can be cancelled. Nothing was refunded.", state: null };
+  let canceled;
+  try {
+    canceled = await fiveSimCall(key, `cancel/${ref}`);
+  } catch {
+    return { error: "FiveSim timed out. Nothing was refunded. The order is left for reconciliation.", state: null };
+  }
+  if (!canceled.ok) return { error: "FiveSim refused the cancellation. Nothing was refunded.", state: null };
+  const result = parseFiveSimCheck(canceled.json);
+  if (fiveSimCancelDecision(result.status) !== "already_canceled") {
+    return { error: "FiveSim did not confirm the cancellation. Nothing was refunded.", state: null };
+  }
+  const synced = await applyFiveSim(doc, order.id, result);
+  await saveDoc(synced);
+  return { error: null, state: projectShop(synced, session.userId, session.draft) };
+}
+
 async function fiveSimOrderCall(orderId: string, action: "cancel" | "finish") {
   const session = await readSession();
   if (!session.userId) return { error: "Sign in first." as string, state: null as Data | null };
@@ -1023,7 +1154,7 @@ async function finishPaidNumber(doc: Data, userId: string, productId: string, re
 export async function openPurchase(orderId: string, refresh: boolean) {
   const session = await readSession();
   if (!session.userId) return { error: "Sign in first.", view: null };
-  const doc = await loadLight();
+  let doc = await loadLight();
   const me = doc.users.find((user) => user.id === session.userId);
   if (!me) return { error: "Sign in first.", view: null };
   let order = doc.orders.find((item) => item.id === orderId);
@@ -1036,7 +1167,13 @@ export async function openPurchase(orderId: string, refresh: boolean) {
   let providerStatus = order.providerStatus || "";
   const numberLike = order.category === "number" || order.category === "numbers" || order.category === "rent" || order.category === "usa";
   const reference = order.providerOrderId || row?.provider_ref || "";
-  let terminal = /RECEIVED|CANCELED|CANCELLED|TIMEOUT|FINISHED|BANNED|complete|expire/i.test(providerStatus);
+  if (isServer1Number(order) && order.status === "waiting") {
+    doc = await syncServer1Order(doc, order.id);
+    order = doc.orders.find((item) => item.id === orderId) || order;
+    messages = mergeMessages(messages, order.messages || []);
+    providerStatus = order.providerStatus || providerStatus;
+  }
+  let terminal = /RECEIVED|CANCELED|CANCELLED|TIMEOUT|FINISHED|BANNED|complete|expire/i.test(order.providerStatus || "");
   if (refresh && numberLike && order.status === "waiting" && reference && !terminal) {
     const key = row?.provider_id ? await readProviderKey(row.provider_id) : "";
     const pulled = await pullProviderSms({ provider: row?.provider || "", apiKey: key, providerRef: reference });
