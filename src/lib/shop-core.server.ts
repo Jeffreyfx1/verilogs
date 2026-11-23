@@ -1,7 +1,7 @@
 import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/react-start/server";
 import { paystackSignatureOk } from "@/lib/paystack-sign";
 import { getSql } from "@/lib/db";
-import { freshData, normalizeData, quoteProduct, resolveNumberServer, serverLabel, topupQuote, withAdminLogin, type Data, type Product, type SyncReport } from "@/lib/catalog";
+import { freshData, normalizeData, quoteProduct, resolveNumberServer, serverLabel, topupQuote, withAdminLogin, type Data, type Order, type Product, type SyncReport } from "@/lib/catalog";
 import { customerPrice, profitsOf, sellQuote, summarizeProfit } from "@/lib/pricing";
 import { rentCharge } from "@/lib/rent";
 import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, fiveSimImportPlan, shapeImport, attachVtuIds, vtuCatalogueUrl, discoverServiceNames, mergeServiceNames, type ImportKind, type ParsedItem } from "@/lib/categorize";
@@ -925,11 +925,11 @@ async function applyFiveSim(doc: Data, orderId: string, pulled: { phone: string;
   const { mergeMessages } = await import("@/lib/fulfilment");
   const order = doc.orders.find((item) => item.id === orderId);
   if (!order) return doc;
-  const next = mapFiveSimStatus(pulled.status);
+  const next = mapFiveSimStatus(pulled.status, pulled.messages.length > 0);
   if (next === "unknown") return doc;
   const messages = mergeMessages(order.messages || [], pulled.messages);
-  const code = messages.map((item) => item.code).filter(Boolean).pop() || order.code;
-  const status = next === "waiting" ? order.status : next;
+  const code = messages.map((item) => item.code).filter(Boolean).pop() || (next === "waiting" ? "" : order.code);
+  const status: Order["status"] = next === "waiting" ? "waiting" : next;
   const updated = {
     ...order,
     phone: pulled.phone || order.phone,
@@ -985,7 +985,7 @@ export async function cancelServer1Number(orderId: string) {
   if (!me || !order || (order.userId !== me.id && me.role !== "admin")) return { error: "That purchase was not found.", state: null };
   if (!isServer1Number(order)) return { error: "This purchase is not a FiveSim Server 1 number.", state: null };
   if (order.status === "refunded") return { error: null, state: projectShop(doc, session.userId, session.draft) };
-  if (order.status === "completed" || order.status === "received") return { error: "FiveSim has already completed this number. It cannot be cancelled or refunded.", state: projectShop(doc, session.userId, session.draft) };
+  if (order.status === "completed") return { error: "FiveSim has already finished this number. It cannot be cancelled or refunded.", state: projectShop(doc, session.userId, session.draft) };
   const provider = server1Provider(doc);
   const key = provider ? await readProviderKey(provider.id) : "";
   const ref = String(order.providerOrderId || "").replace(/[^\d]/g, "");
@@ -1000,7 +1000,7 @@ export async function cancelServer1Number(orderId: string) {
   }
   if (!checked.ok) return { error: "FiveSim did not confirm the order status. Nothing was refunded.", state: null };
   const current = parseFiveSimCheck(checked.json);
-  const decision = fiveSimCancelDecision(current.status);
+  const decision = fiveSimCancelDecision(current.status, current.messages.length > 0);
   if (decision === "already_done") {
     const synced = await applyFiveSim(doc, order.id, current);
     await saveDoc(synced);
@@ -1020,7 +1020,7 @@ export async function cancelServer1Number(orderId: string) {
   }
   if (!canceled.ok) return { error: "FiveSim refused the cancellation. Nothing was refunded.", state: null };
   const result = parseFiveSimCheck(canceled.json);
-  if (fiveSimCancelDecision(result.status) !== "already_canceled") {
+  if (fiveSimCancelDecision(result.status, result.messages.length > 0) !== "already_canceled") {
     return { error: "FiveSim did not confirm the cancellation. Nothing was refunded.", state: null };
   }
   const synced = await applyFiveSim(doc, order.id, result);
@@ -1169,13 +1169,13 @@ export async function openPurchase(orderId: string, refresh: boolean) {
   let providerStatus = order.providerStatus || "";
   const numberLike = order.category === "number" || order.category === "numbers" || order.category === "rent" || order.category === "usa";
   const reference = order.providerOrderId || row?.provider_ref || "";
-  if (isServer1Number(order) && order.status === "waiting") {
+  if (isServer1Number(order) && order.status !== "completed" && order.status !== "refunded") {
     doc = await syncServer1Order(doc, order.id);
     order = doc.orders.find((item) => item.id === orderId) || order;
     messages = mergeMessages(messages, order.messages || []);
     providerStatus = order.providerStatus || providerStatus;
   }
-  let terminal = /RECEIVED|CANCELED|CANCELLED|TIMEOUT|FINISHED|BANNED|complete|expire/i.test(order.providerStatus || "");
+  let terminal = /CANCELED|CANCELLED|TIMEOUT|FINISHED|BANNED|complete|expire/i.test(order.providerStatus || "");
   if (refresh && numberLike && order.status === "waiting" && reference && !terminal) {
     const key = row?.provider_id ? await readProviderKey(row.provider_id) : "";
     const pulled = await pullProviderSms({ provider: row?.provider || "", apiKey: key, providerRef: reference });

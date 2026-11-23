@@ -156,8 +156,10 @@ function NumberCard({ view, error, checking, acting, confirm, now, onCopy, onRef
   onKeep: () => void;
 }) {
   const clock = clockOf(view.expiresAt, view.createdAt, now);
-  const status = statusLabel(view.status, !!view.code);
   const code = view.code || view.messages.map((item) => item.code).filter(Boolean).pop() || "";
+  const status = statusLabel(view.status, !!code, view.providerStatus);
+  const waiting = view.status === "waiting" && !code;
+  const closed = view.status === "completed" || view.status === "refunded";
   const message = view.messages.find((item) => item.text)?.text || "";
   return (
     <div className="mx-auto max-w-lg space-y-3">
@@ -181,7 +183,7 @@ function NumberCard({ view, error, checking, acting, confirm, now, onCopy, onRef
         {clock ? (
           <div>
             <p className="text-center text-sm font-extrabold">Time remaining</p>
-            <p className="mt-1 text-center text-xs text-white/70">{view.status === "waiting" ? "The code usually arrives within a few minutes." : "This order is closed."}</p>
+            <p className="mt-1 text-center text-xs text-white/70">{waiting ? "The code usually arrives within a few minutes." : closed ? "This order is closed." : "SMS received."}</p>
             <p className="mt-2 text-center text-2xl font-extrabold tabular-nums">{clock.label}</p>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/20">
               <div className="h-full rounded-full bg-[#1a8aa8] transition-all" style={{ width: `${clock.used}%` }} />
@@ -239,10 +241,10 @@ function Line({ label, value }: { label: string; value: string }) {
   );
 }
 
-function statusLabel(status: string, hasCode: boolean) {
-  if (status === "refunded") return "Cancelled";
-  if (status === "completed") return "Completed";
-  if (status === "received" || hasCode) return "OTP received";
+function statusLabel(status: string, hasCode: boolean, providerStatus: string) {
+  if (status === "refunded" || /CANCELED|CANCELLED|TIMEOUT|BANNED/i.test(providerStatus)) return "Cancelled";
+  if (status === "completed" || /FINISHED/i.test(providerStatus)) return "Completed";
+  if (hasCode) return "OTP received";
   return "Waiting for SMS";
 }
 
