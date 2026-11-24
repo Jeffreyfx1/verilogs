@@ -130,16 +130,18 @@ export async function placeOnProvider(input: { product: Product; provider: Provi
         body: JSON.stringify({ service }),
       });
     } catch {
-      return { ok: false, error: "GetaText could not be reached. The wallet was not charged." };
+      return { ok: false, error: "The number service could not be reached. The wallet was not charged." };
     }
     const { text, json } = await readBody(res);
-    if (!res.ok || json.errors) {
-      const raw = String(json.errors || json.message || text || "GetaText refused the rental.").slice(0, 180);
-      return { ok: false, error: raw || "GetaText refused the rental. The wallet was not charged." };
+    if (!res.ok || json.errors || /<!doctype|<html/i.test(text)) {
+      if (/<!doctype|<html|cloudflare/i.test(text)) return { ok: false, error: "The number service is temporarily unavailable. The wallet was not charged." };
+      const raw = String(json.errors || json.message || "").slice(0, 180);
+      return { ok: false, error: raw || "The number service refused the order. The wallet was not charged." };
     }
     const phone = String(json.number || "");
-    if (!phone) return { ok: false, error: "GetaText did not return a number. The wallet was not charged." };
-    return { ok: true, phone, ref: String(json.id || ""), waiting: true, cost, providerRef: String(json.id || "") };
+    if (!phone) return { ok: false, error: "The number service did not return a number. The wallet was not charged." };
+    const end = String(json.end_time || "");
+    return { ok: true, phone, ref: String(json.id || ""), waiting: true, cost, providerRef: String(json.id || ""), expiresAt: end ? new Date(end).toISOString() : "" };
   }
 
   if (sme && product.category === "airtime") {

@@ -992,6 +992,75 @@ async function syncRentOrder(doc: Data, orderId: string) {
   }
 }
 
+async function syncUsaOrder(doc: Data, orderId: string) {
+  const order = doc.orders.find((item) => item.id === orderId);
+  if (!order || order.category !== "usa" || order.status === "completed" || order.status === "refunded") return doc;
+  const provider = doc.providers.find((item) => item.enabled && /getatext\.com/i.test(item.baseUrl || ""));
+  const key = provider ? await readProviderKey(provider.id) : "";
+  const ref = String(order.providerOrderId || "").replace(/[^\d]/g, "");
+  if (!key || !ref) return doc;
+  try {
+    const res = await fetch("https://getatext.com/api/v1/rental-status", {
+      method: "POST",
+      headers: { Auth: key, Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ id: Number(ref) || ref }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return doc;
+    const json = await res.json().catch(() => null);
+    const { parseGetatextStatus } = await import("@/lib/fulfilment");
+    const pulled = parseGetatextStatus(json);
+    const messages = (order.messages || []).concat(pulled.messages);
+    const code = messages.map((item) => item.code).filter(Boolean).pop() || order.code;
+    const status: Order["status"] = pulled.terminal ? (/cancel/i.test(pulled.status) ? "refunded" : "completed") : code ? "received" : order.status;
+    const updated = { ...order, phone: pulled.phone || order.phone, code, messages, providerStatus: pulled.status || order.providerStatus, expiresAt: pulled.expiresAt || order.expiresAt || "", status };
+    let next = { ...doc, orders: doc.orders.map((item) => item.id === orderId ? updated : item) };
+    if (status === "refunded") {
+      const moved = await creditBalance(order.userId, order.amount, "refund:" + order.id, "Refund · " + order.title, "refund");
+      next = { ...next, users: next.users.map((user) => user.id === order.userId ? { ...user, balance: moved.balance } : user) };
+    }
+    return next;
+  } catch {
+    return doc;
+  }
+}
+
+export async function cancelUsaNumber(orderId: string) {
+  const session = await readSession();
+  if (!session.userId) return { error: "Sign in first.", state: null as Data | null };
+  const doc = await loadLight();
+  const me = doc.users.find((user) => user.id === session.userId);
+  const order = doc.orders.find((item) => item.id === orderId);
+  if (!me || !order || (order.userId !== me.id && me.role !== "admin") || order.category !== "usa") return { error: "That purchase was not found.", state: null };
+  if (order.status === "refunded") return { error: null, state: projectShop(doc, session.userId, session.draft) };
+  if (order.status === "completed" || order.code) return { error: "This number already has a code. It cannot be cancelled or refunded.", state: projectShop(doc, session.userId, session.draft) };
+  const provider = doc.providers.find((item) => item.enabled && /getatext\.com/i.test(item.baseUrl || ""));
+  const key = provider ? await readProviderKey(provider.id) : "";
+  const ref = String(order.providerOrderId || "").replace(/[^\d]/g, "");
+  if (!key || !ref) return { error: "This number has no provider reference, so it was not cancelled.", state: null };
+  let res: Response;
+  try {
+    res = await fetch("https://getatext.com/api/v1/cancel-rental", {
+      method: "POST",
+      headers: { Auth: key, Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ id: Number(ref) || ref }),
+      signal: AbortSignal.timeout(20000),
+    });
+  } catch {
+    return { error: "The number service could not be reached. Nothing was refunded.", state: null };
+  }
+  const text = await res.text();
+  if (!res.ok) return { error: providerMessage(text, "The number service refused the cancellation. Nothing was refunded."), state: null };
+  const moved = await creditBalance(order.userId, order.amount, "refund:" + order.id, "Refund · " + order.title, "refund");
+  const data = {
+    ...doc,
+    orders: doc.orders.map((item) => item.id === order.id ? { ...item, status: "refunded" as const, gain: 0 } : item),
+    users: doc.users.map((user) => user.id === order.userId ? { ...user, balance: moved.balance } : user),
+  };
+  await saveDoc(data);
+  return { error: null as string | null, state: projectShop(data, session.userId, session.draft) };
+}
+
 export async function syncServer1Numbers(doc: Data) {
   let next = doc;
   const waiting = doc.orders.filter((order) => isServer1Number(order) && order.status === "waiting").slice(0, 20);
@@ -1194,6 +1263,12 @@ export async function openPurchase(orderId: string, refresh: boolean) {
   const reference = order.providerOrderId || row?.provider_ref || "";
   if (isServer1Number(order) && order.status !== "completed" && order.status !== "refunded") {
     doc = await syncServer1Order(doc, order.id);
+    order = doc.orders.find((item) => item.id === orderId) || order;
+    messages = mergeMessages(messages, order.messages || []);
+    providerStatus = order.providerStatus || providerStatus;
+  }
+  if (order.category === "usa" && order.status === "waiting") {
+    doc = await syncUsaOrder(doc, order.id);
     order = doc.orders.find((item) => item.id === orderId) || order;
     messages = mergeMessages(messages, order.messages || []);
     providerStatus = order.providerStatus || providerStatus;

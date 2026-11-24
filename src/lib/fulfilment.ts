@@ -101,16 +101,17 @@ function codeFromText(text: string) {
   return match ? match[0] : "";
 }
 
-export function parseGetatextStatus(body: unknown): { phone: string; status: string; messages: SmsMessage[]; terminal: boolean } {
+export function parseGetatextStatus(body: unknown): { phone: string; status: string; messages: SmsMessage[]; terminal: boolean; expiresAt: string } {
   const json = body && typeof body === "object" ? body as Record<string, unknown> : {};
   const status = String(json.status || "");
   const phone = String(json.number || "");
   const codes = Array.isArray(json.codes) ? json.codes.map((item) => String(item || "")).filter(Boolean) : [];
-  const latest = String(json.code || "");
-  const list = codes.length ? codes : latest ? [latest] : [];
+  const latest = String(json.code || "").trim();
+  const list = codes.length ? codes : latest && latest !== "null" ? [latest] : [];
   const messages = list.map((code) => ({ at: "", sender: String(json.service_name || ""), text: "", code }));
   const terminal = /complete|cancel|expire|timeout|finished/i.test(status);
-  return { phone, status, messages, terminal };
+  const end = String(json.end_time || json.deadline || "");
+  return { phone, status, messages, terminal, expiresAt: end ? new Date(end).toISOString() : "" };
 }
 
 export function parseGetatextWebhook(body: unknown): { id: string; code: string; number: string; at: string; service: string; status: string } | null {

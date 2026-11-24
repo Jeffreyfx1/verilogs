@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Guard } from "@/components/guard";
-import { purchaseResult, cancelRentNumber, finishRentNumber, cancelServer1Number } from "@/lib/shop-fns";
+import { purchaseResult, cancelRentNumber, finishRentNumber, cancelServer1Number, cancelUsaNumber } from "@/lib/shop-fns";
 import { naira, when } from "@/lib/money";
 import { useStore } from "@/lib/store";
 
@@ -61,7 +61,8 @@ function ResultPage() {
     setActing("number");
     try {
       const isRent = view?.server === "Rent number";
-      const res = isRent ? await cancelRentNumber({ data: { orderId } }) : await cancelServer1Number({ data: { orderId } });
+      const isUsa = view?.server === "USA" || view?.country === "usa";
+      const res = isRent ? await cancelRentNumber({ data: { orderId } }) : isUsa ? await cancelUsaNumber({ data: { orderId } }) : await cancelServer1Number({ data: { orderId } });
       if (res.error) toast.error(res.error);
       else toast.success("Cancelled. The refund is in your wallet.");
       if (res.state) adopt(res.state);
@@ -208,7 +209,7 @@ function NumberCard({ view, error, checking, acting, confirm, now, onCopy, onRef
         </div>
         <p className="text-sm"><span className="text-white/70">Status </span><span className="font-extrabold">{status}</span></p>
         {view.status === "refunded" ? <p className="text-sm text-white/80">Cancelled. {naira(view.amount)} was returned to the wallet once.</p> : null}
-        {view.status === "waiting" && (view.server === "Server 1" || view.server === "Rent number") ? (
+        {view.status === "waiting" && (view.server === "Server 1" || view.server === "Rent number" || view.server === "USA" || view.country === "usa") ? (
           confirm ? (
             <div className="space-y-2 rounded-xl bg-white/10 p-3 text-sm">
               <p>Cancel this number? A refund is issued only if the service confirms it.</p>

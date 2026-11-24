@@ -688,6 +688,13 @@ export const buyRentNumber = createServerFn({ method: "POST" })
     return buy(data.offerId, data.idempotencyKey);
   });
 
+export const cancelUsaNumber = createServerFn({ method: "POST" })
+  .inputValidator((data: { orderId: string }) => data)
+  .handler(async ({ data }) => {
+    const { cancelUsaNumber: cancel } = await core();
+    return cancel(data.orderId);
+  });
+
 export const cancelServer1Number = createServerFn({ method: "POST" })
   .validator((input: { orderId?: string }) => ({ orderId: String(input?.orderId || "").slice(0, 80) }))
   .handler(async ({ data }) => {
