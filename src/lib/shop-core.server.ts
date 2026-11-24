@@ -806,7 +806,23 @@ function fiveSimProvider(doc: Data) {
 function providerMessage(text: string, fallback: string) {
   const body = String(text || "").trim();
   if (!body || /<!doctype|<html|cloudflare|cf-ray|cf-browser/i.test(body)) return fallback;
+  if (/no free phones|no numbers|not enough/i.test(body)) return "No numbers are free for that option right now. Try another.";
+  if (/balance|funds|money/i.test(body)) return "The number service wallet is empty. Nothing was charged.";
+  if (/bad country|bad operator|bad product|not found/i.test(body)) return "That country or service is not available. Nothing was charged.";
   return body.slice(0, 180);
+}
+
+async function fiveSimBuy(url: string, key: string) {
+  const headers = { Authorization: "Bearer " + key, Accept: "application/json", "User-Agent": "Verilogs/1.0" };
+  let res = await fetch(url, { headers, signal: AbortSignal.timeout(20000) });
+  let text = await res.text();
+  if (/<!doctype|<html|cloudflare/i.test(text)) {
+    res = await fetch(url, { headers, signal: AbortSignal.timeout(20000) });
+    text = await res.text();
+  }
+  let json: Record<string, unknown> = {};
+  try { json = JSON.parse(text) as Record<string, unknown>; } catch { json = {}; }
+  return { ok: res.ok, text, json };
 }
 
 export async function buyRentNumber(offerId: string, idempotencyKey = "") {
@@ -838,19 +854,23 @@ export async function buyRentNumber(offerId: string, idempotencyKey = "") {
     await markPurchaseKey(idem, "failed");
     return { error: "Insufficient balance. Top up your balance to make this purchase.", orderId: "", state: null };
   }
-  let res: Response;
+  let placed;
   try {
-    res = await fetch(fiveSimBuyUrl(offer), { headers: { Authorization: "Bearer " + key, Accept: "application/json" }, signal: AbortSignal.timeout(20000) });
+    placed = await fiveSimBuy(fiveSimBuyUrl(offer), key);
   } catch {
     await markPurchaseKey(idem, "failed");
     return { error: "The number service could not be reached. The wallet was not charged.", orderId: "", state: null };
   }
-  const text = await res.text();
-  let json: Record<string, unknown> = {};
-  try { json = JSON.parse(text) as Record<string, unknown>; } catch { json = {}; }
+  if ((!placed.json.phone || !placed.json.id) && offer.operator !== "any") {
+    try {
+      const retry = await fiveSimBuy(fiveSimBuyUrl({ ...offer, operator: "any" }), key);
+      if (retry.json.phone && retry.json.id) placed = retry;
+    } catch { /* keep the first result */ }
+  }
+  const { ok, text, json } = placed;
   const phone = typeof json.phone === "string" ? json.phone : "";
   const providerRef = String(json.id || "");
-  if (!res.ok || !phone || !providerRef) {
+  if (!ok || !phone || !providerRef) {
     await markPurchaseKey(idem, "failed");
     return { error: providerMessage(String(json.message || text || ""), "The number service refused the order. The wallet was not charged."), orderId: "", state: null };
   }
