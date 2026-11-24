@@ -689,7 +689,7 @@ export const buyRentNumber = createServerFn({ method: "POST" })
   });
 
 export const cancelUsaNumber = createServerFn({ method: "POST" })
-  .inputValidator((data: { orderId: string }) => data)
+  .validator((input: { orderId?: string }) => ({ orderId: String(input?.orderId || "").slice(0, 80) }))
   .handler(async ({ data }) => {
     const { cancelUsaNumber: cancel } = await core();
     return cancel(data.orderId);
