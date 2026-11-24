@@ -3,16 +3,19 @@ import { createFileRoute, Link, useRouterState } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { BtnSpinner } from "@/components/ui";
 import { naira, when } from "@/lib/money";
-import { historyFilterFromHash, listPurchases, orderQuantity, pagePurchases, purchaseTypeLabel, type HistoryFilter } from "@/lib/purchase-history";
+import { historyFilterFromHash, listPurchases, orderQuantity, pagePurchases, purchaseStatusLabel, purchaseTypeLabel, type HistoryFilter } from "@/lib/purchase-history";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/history")({ component: HistoryPage });
 
 const FILTERS: Array<[HistoryFilter, string]> = [
   ["all", "All purchases"],
+  ["bought", "Bought numbers"],
+  ["numbers", "Numbers"],
+  ["data", "Data"],
+  ["rent", "Rent"],
   ["logs", "Logs"],
   ["vpn", "VPN"],
-  ["numbers", "Numbers"],
   ["other", "Other products"],
 ];
 
@@ -59,7 +62,7 @@ function HistoryPage() {
               <p className="shrink-0 font-extrabold">{naira(order.amount)}</p>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-              <span className={`rounded-full px-2 py-1 font-bold ${statusClass(order.status)}`}>{order.status}</span>
+              <span className={`rounded-full px-2 py-1 font-bold ${statusClass(order.status)}`}>{purchaseStatusLabel(order)}</span>
               <span className="text-muted">{when(order.createdAt)}</span>
               <span className="text-muted">Qty {orderQuantity(order.detail || "")}</span>
             </div>

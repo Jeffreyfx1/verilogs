@@ -11,6 +11,20 @@ export function SiteTheme() {
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#0d1c24" : "#174C70");
   }, [theme]);
 
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const onScroll = (event: Event) => {
+      const target = event.target;
+      const top = target instanceof Element ? target.scrollTop : window.scrollY;
+      const shift = Math.max(0, Math.min(28, top / 28));
+      document.documentElement.style.setProperty("--glow-y", `${-6 + shift}%`);
+      document.documentElement.style.setProperty("--glow-x", `${82 - shift / 4}%`);
+      document.documentElement.style.setProperty("--shade-y", `${22 + shift * 0.55}%`);
+    };
+    document.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => document.removeEventListener("scroll", onScroll, true);
+  }, []);
+
   if (user?.role !== "admin") return null;
 
   const next = theme === "dark" ? "light" : "dark";

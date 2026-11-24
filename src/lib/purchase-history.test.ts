@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { airtimeSalesOpen, historyFilterFromHash, isRetiredBill, listPurchases, orderQuantity, pagePurchases, purchaseTypeLabel, smmSalesOpen, type HistoryOrder } from "./purchase-history.ts";
+import { airtimeSalesOpen, historyFilterFromHash, isRetiredBill, listPurchases, orderQuantity, pagePurchases, purchaseStatusLabel, purchaseTypeLabel, smmSalesOpen, type HistoryOrder } from "./purchase-history.ts";
 
 const rows: HistoryOrder[] = [
   { id: "log-1", userId: "ada", category: "logs", title: "Facebook followers pack", amount: 1500, status: "completed", createdAt: "2026-11-01T10:00:00.000Z", detail: "pack" },
@@ -27,6 +27,9 @@ test("filters and search cover logs, vpn, numbers and other products", () => {
   assert.deepEqual(listPurchases(rows, { userId: "ada", filter: "logs" }).map((row) => row.id), ["log-1"]);
   assert.deepEqual(listPurchases(rows, { userId: "ada", filter: "vpn" }).map((row) => row.id), ["vpn-1"]);
   assert.deepEqual(listPurchases(rows, { userId: "ada", filter: "numbers" }).map((row) => row.id), ["rent-1", "num-1"]);
+  assert.deepEqual(listPurchases(rows, { userId: "ada", filter: "bought" }).map((row) => row.id), ["num-1"]);
+  assert.deepEqual(listPurchases(rows, { userId: "ada", filter: "data" }).map((row) => row.id), ["data-1"]);
+  assert.deepEqual(listPurchases(rows, { userId: "ada", filter: "rent" }).map((row) => row.id), ["rent-1"]);
   assert.deepEqual(listPurchases(rows, { userId: "ada", filter: "other" }).map((row) => row.id), ["data-1", "smm-1", "bill-1"]);
   assert.deepEqual(listPurchases(rows, { userId: "ada", filter: "all", q: "whatsapp" }).map((row) => row.id), ["num-1"]);
   assert.equal(purchaseTypeLabel("logs"), "Logs");
@@ -38,6 +41,18 @@ test("filters and search cover logs, vpn, numbers and other products", () => {
   assert.equal(page.more, true);
   assert.equal(historyFilterFromHash("bills"), "all");
   assert.equal(historyFilterFromHash("numbers"), "numbers");
+  assert.equal(historyFilterFromHash("rent"), "rent");
+  assert.equal(historyFilterFromHash("data"), "data");
+  assert.equal(historyFilterFromHash("usa"), "bought");
+  assert.equal(purchaseTypeLabel("rent"), "Rent");
+  assert.equal(purchaseStatusLabel({ status: "waiting", category: "numbers" }), "Waiting for SMS");
+  assert.equal(purchaseStatusLabel({ status: "completed", category: "data" }), "Completed");
+  assert.equal(purchaseStatusLabel({ status: "waiting", category: "data" }), "Processing");
+  assert.equal(purchaseStatusLabel({ status: "refunded", category: "numbers", providerStatus: "CANCELED" }), "Cancelled");
+  assert.equal(purchaseStatusLabel({ status: "refunded", category: "data" }), "Refunded");
+  assert.equal(purchaseStatusLabel({ status: "waiting", category: "numbers", providerStatus: "FAILED" }), "Failed");
+  assert.equal(purchaseStatusLabel({ status: "waiting", category: "rent", expiresAt: "2020-01-01T00:00:00.000Z" }), "Expired");
+  assert.equal(purchaseStatusLabel({ status: "received", category: "numbers", code: "1234" }), "OTP received");
 });
 
 test("airtime and SMM sales stay closed and bill categories cannot be bought", () => {

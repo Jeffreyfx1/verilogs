@@ -7,6 +7,7 @@ import { DeviceFrame } from "@/components/device-picker";
 import { SupportBot } from "@/components/support-bot";
 import { PwaRegister } from "@/components/pwa-register";
 import { RouteProgress } from "@/components/route-progress";
+import { ServiceLoadingOverlay } from "@/components/service-nav";
 import appCss from "../styles.css?url";
 
 export const Route = createRootRoute({
@@ -49,6 +50,7 @@ function RootComponent() {
       </head>
       <body>
         <RouteProgress />
+        <ServiceLoadingOverlay />
         <PreviewHostBridge />
         <PwaRegister />
         <AuthProvider>

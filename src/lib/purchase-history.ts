@@ -17,7 +17,9 @@ export function isRetiredBill(category: string) {
   return BILL_CATEGORIES.has(category);
 }
 
-export type HistoryFilter = "all" | "logs" | "vpn" | "numbers" | "other";
+export type HistoryFilter = "all" | "logs" | "vpn" | "numbers" | "other" | "data" | "rent" | "bought";
+
+export type HistoryGroup = "logs" | "vpn" | "numbers" | "other";
 
 export type HistoryOrder = {
   id: string;
@@ -38,17 +40,26 @@ export type HistoryOrder = {
   refillAvailable?: boolean;
 };
 
-export function purchaseGroup(category: string): Exclude<HistoryFilter, "all"> {
+export function purchaseGroup(category: string): HistoryGroup {
   if (category === "logs") return "logs";
   if (category === "vpn") return "vpn";
   if (category === "numbers" || category === "rent" || category === "number" || category === "usa") return "numbers";
   return "other";
 }
 
+export function matchesHistoryFilter(category: string, filter: HistoryFilter) {
+  if (filter === "all") return true;
+  if (filter === "data") return category === "data";
+  if (filter === "rent") return category === "rent";
+  if (filter === "bought") return category === "numbers" || category === "number" || category === "usa";
+  return purchaseGroup(category) === filter;
+}
+
 export function purchaseTypeLabel(category: string) {
   const group = purchaseGroup(category);
   if (group === "logs") return "Logs";
   if (group === "vpn") return "VPN";
+  if (category === "rent") return "Rent";
   if (group === "numbers") return "Numbers";
   if (category === "smm") return "SMM";
   if (category === "data") return "Data";
@@ -69,8 +80,8 @@ export function orderQuantity(detail: string) {
 
 export function historyFilterFromHash(hash: string): HistoryFilter {
   const name = hash.replace(/^#/, "");
-  if (name === "logs" || name === "vpn" || name === "numbers" || name === "other") return name;
-  if (name === "rent" || name === "usa") return "numbers";
+  if (name === "logs" || name === "vpn" || name === "numbers" || name === "other" || name === "data" || name === "rent" || name === "bought") return name;
+  if (name === "usa") return "bought";
   return "all";
 }
 
@@ -84,7 +95,7 @@ export function listPurchases<T extends HistoryOrder>(orders: T[], input: { user
       seen.add(order.id);
       return true;
     })
-    .filter((order) => input.filter === "all" || purchaseGroup(order.category) === input.filter)
+    .filter((order) => matchesHistoryFilter(order.category, input.filter))
     .filter((order) => {
       if (!q) return true;
       return [order.title, order.category, purchaseTypeLabel(order.category), order.status, order.phone, order.code, order.server, order.network, order.detail, order.providerStatus]
@@ -98,4 +109,29 @@ export function listPurchases<T extends HistoryOrder>(orders: T[], input: { user
 export function pagePurchases<T>(rows: T[], pageSize: number, page: number) {
   const end = Math.max(1, pageSize) * Math.max(1, page);
   return { rows: rows.slice(0, end), more: rows.length > end };
+}
+
+/** Customer-facing status. Uses the stored order, not a guessed "completed". */
+export function purchaseStatusLabel(order: {
+  status: string;
+  category: string;
+  providerStatus?: string;
+  code?: string;
+  expiresAt?: string;
+}, now = Date.now()) {
+  const provider = order.providerStatus || "";
+  const numberLike = order.category === "numbers" || order.category === "number" || order.category === "usa" || order.category === "rent";
+  if (order.status === "refunded") {
+    if (/timeout|expir/i.test(provider)) return "Expired";
+    if (/cancel|banned/i.test(provider)) return "Cancelled";
+    return "Refunded";
+  }
+  if (/fail/i.test(provider) && order.status !== "completed" && order.status !== "received") return "Failed";
+  if (order.status === "completed") return "Completed";
+  if (order.status === "received" || order.code) return numberLike ? "OTP received" : "Completed";
+  const end = Date.parse(order.expiresAt || "");
+  if (numberLike && Number.isFinite(end) && end <= now) return "Expired";
+  if (numberLike) return "Waiting for SMS";
+  if (order.status === "waiting") return "Processing";
+  return order.status;
 }

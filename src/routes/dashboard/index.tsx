@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 
 import { Glyph, glyph } from "@/components/icons";
+import { isMajorService, ServiceLink } from "@/components/service-nav";
 
 import { TIER_IMAGE, UK_IMAGE } from "@/lib/dashboard-images";
 import { useUser, useStore } from "@/lib/store";
-import { naira } from "@/lib/money";
+import { naira, when } from "@/lib/money";
+import { listPurchases, purchaseStatusLabel, type HistoryOrder } from "@/lib/purchase-history";
 
 export const Route = createFileRoute("/dashboard/")({
   component: DashHome,
@@ -196,9 +198,11 @@ function DashHome() {
   const orders = useStore((s) => s.orders);
   const [hide, setHide] = useState(false);
   if (!user) return null;
+  const account = listPurchases(orders, { userId: user.id, filter: "all" });
   const mine = orders.filter((order) => order.userId === user.id && order.status !== "refunded");
   const sms = mine.filter((order) => order.category === "numbers" || order.category === "rent").length;
   const spent = mine.reduce((sum, order) => sum + order.amount, 0);
+  const recent = (pred: (order: HistoryOrder) => boolean) => account.filter(pred).slice(0, 3);
 
   return (
     <div className="min-w-0 space-y-4 pb-4">
@@ -252,10 +256,25 @@ function DashHome() {
               </>
             );
             const cls = "relative flex min-h-[5.4rem] flex-col items-center justify-center gap-2 rounded-2xl bg-[#E5F2F8] px-1 py-3 text-center";
-            return (
-              <Link key={q.label} to={q.to} search={"search" in q ? q.search : undefined} hash={"hash" in q ? q.hash : undefined} className={cls}>
-                {q.label === "Airtime" || q.label === "SMM" || q.label === "Telegram Premium" ? <span className="absolute right-1.5 top-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white">Soon</span> : null}
+            const soon = q.label === "Airtime" || q.label === "SMM" || q.label === "Telegram Premium";
+            const search = "search" in q ? q.search : undefined;
+            const hash = "hash" in q ? q.hash : undefined;
+            const inner = (
+              <>
+                {soon ? <span className="absolute right-1.5 top-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white">Soon</span> : null}
                 {body}
+              </>
+            );
+            if (isMajorService(q.to, q.label)) {
+              return (
+                <ServiceLink key={q.label} to={q.to} search={search} hash={hash} className={cls}>
+                  {inner}
+                </ServiceLink>
+              );
+            }
+            return (
+              <Link key={q.label} to={q.to} search={search} hash={hash} className={cls}>
+                {inner}
               </Link>
             );
           })}
@@ -276,8 +295,57 @@ function DashHome() {
           </Link>
         </div>
       </section>
+      <HistoryPreview
+        title="Number History"
+        hash="bought"
+        empty="No number purchases yet."
+        rows={recent((order) => order.category === "numbers" || order.category === "number" || order.category === "usa")}
+        kind="number"
+      />
+      <HistoryPreview
+        title="Data History"
+        hash="data"
+        empty="No data purchases yet."
+        rows={recent((order) => order.category === "data")}
+        kind="data"
+      />
+      <HistoryPreview
+        title="Rent Number History"
+        hash="rent"
+        empty="No Rent Number purchases yet."
+        rows={recent((order) => order.category === "rent")}
+        kind="rent"
+      />
       <InstallApp />
     </div>
+  );
+}
+
+type PreviewOrder = HistoryOrder & { country?: string; service?: string; expiresAt?: string };
+
+function previewTitle(kind: "number" | "data" | "rent", order: PreviewOrder) {
+  if (kind === "data") return [order.network || "Data", order.title || "Data plan"].filter(Boolean).join(" · ");
+  const service = order.service || order.title;
+  return [service, order.country].filter(Boolean).join(" · ");
+}
+
+function HistoryPreview({ title, hash, empty, rows, kind }: { title: string; hash: string; empty: string; rows: PreviewOrder[]; kind: "number" | "data" | "rent" }) {
+  return (
+    <section className="rounded-[1.4rem] bg-white p-3 shadow-[0_8px_24px_rgba(23,76,112,0.06)]">
+      <div className="flex items-center justify-between gap-3 px-1">
+        <h2 className="text-lg font-extrabold text-ink">{title}</h2>
+        <Link to="/dashboard/history" hash={hash} className="text-xs font-extrabold text-[#174C70]">View all</Link>
+      </div>
+      <div className="mt-2 space-y-2">
+        {rows.length ? rows.map((order) => (
+          <Link key={order.id} to="/purchase-result/$orderId" params={{ orderId: order.id }} className="block rounded-2xl bg-[#E5F2F8] px-3 py-3">
+            <p className="text-sm font-extrabold text-ink">{previewTitle(kind, order)}</p>
+            <p className="mt-1 text-xs text-muted">{when(order.createdAt)} · {naira(order.amount)} · {purchaseStatusLabel(order)}</p>
+            <span className="mt-2 inline-block rounded-full bg-[#286D86] px-3 py-1 text-[11px] font-extrabold text-white">Details</span>
+          </Link>
+        )) : <p className="rounded-2xl bg-[#E5F2F8] px-3 py-3 text-sm text-muted">{empty}</p>}
+      </div>
+    </section>
   );
 }
 

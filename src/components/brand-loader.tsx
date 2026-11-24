@@ -1,7 +1,7 @@
-export function BrandLoader({ caption }: { caption?: string }) {
+export function BrandLoader({ caption, service }: { caption?: string; service?: boolean }) {
   return (
-    <div className="grid min-h-screen place-items-center bg-paper px-6" role="status" aria-live="polite">
-      <div className="brand-loader">
+    <div className={service ? "grid place-items-center px-6" : "grid min-h-screen place-items-center bg-paper px-6"} role="status" aria-live="polite">
+      <div className={service ? "brand-loader is-service" : "brand-loader"}>
         <div className="brand-loader-glow">
           <span className="brand-loader-ring" />
           <img src="/icon-192.png" alt="" className="brand-loader-mark" />

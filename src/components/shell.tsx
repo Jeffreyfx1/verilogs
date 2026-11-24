@@ -4,6 +4,7 @@ import { Logo } from "@/components/ui";
 import { NoticeBell } from "@/components/bell";
 import { AnnounceBar } from "@/components/announce-bar";
 import { Glyph, glyph, type GlyphIcon } from "@/components/icons";
+import { isMajorService, ServiceLink, ServiceNavProvider } from "@/components/service-nav";
 import { useImportRun } from "@/lib/import-run";
 import { naira } from "@/lib/money";
 import { useStore, useUser } from "@/lib/store";
@@ -94,22 +95,30 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
     else if (item.match === "hist") active = path.startsWith("/dashboard/history");
     else if (item.end) active = path === item.to;
     else active = path === item.to || path.startsWith(item.to + "/");
-    return (
-      <Link
-        to={item.to}
-        search={item.search}
-        hash={item.hash}
-        onClick={() => setOpen(false)}
-        className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-semibold ${active ? "nav-active text-white" : "text-ink hover:bg-[#E5F2F8]"}`}
-      >
+    const className = `flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-semibold ${active ? "nav-active text-white" : "text-ink hover:bg-[#E5F2F8]"}`;
+    const body = (
+      <>
         <Glyph icon={item.icon} className={`nav-glyph shrink-0 ${active ? "text-white" : "text-[#5b4cdb]"}`} />
         <span className="min-w-0 flex-1 whitespace-normal leading-snug">{item.label}</span>
         {item.label === "Airtime" || item.label === "SMM" || item.label === "Telegram Premium" ? <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${active ? "bg-white text-[#174C70]" : "bg-amber-500 text-white"}`}>Soon</span> : null}
+      </>
+    );
+    if (isMajorService(item.to, item.label)) {
+      return (
+        <ServiceLink to={item.to} search={item.search} hash={item.hash} onBefore={() => setOpen(false)} className={className}>
+          {body}
+        </ServiceLink>
+      );
+    }
+    return (
+      <Link to={item.to} search={item.search} hash={item.hash} onClick={() => setOpen(false)} className={className}>
+        {body}
       </Link>
     );
   };
 
   return (
+    <ServiceNavProvider>
     <div className="shell-screen flex overflow-hidden bg-paper text-ink">
       {open ? <button className="fixed inset-0 z-30 bg-deep/40 lg:hidden" aria-label="Close menu" onClick={() => setOpen(false)} /> : null}
       <aside className={`shell-aside fixed inset-y-0 left-0 z-40 flex w-80 flex-col border-r border-line bg-card transition-transform lg:static lg:translate-x-0 ${open ? "is-open translate-x-0" : "-translate-x-full"}`}>
@@ -206,5 +215,6 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
         </nav>
       </div>
     </div>
+    </ServiceNavProvider>
   );
 }

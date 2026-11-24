@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Glyph, glyph } from "@/components/icons";
+import { useServiceHold } from "@/components/service-nav";
 import { toast } from "sonner";
 import { BtnSpinner, inputClass } from "@/components/ui";
 import type { Product } from "@/lib/catalog";
@@ -79,6 +80,8 @@ function NumbersPage() {
   const [loadingOps, setLoadingOps] = useState(false);
   const [loadingServices, setLoadingServices] = useState(false);
   const [countriesReady, setCountriesReady] = useState(false);
+  const [usaReady, setUsaReady] = useState(false);
+  const sawUsaFetch = useRef(false);
   const [opsError, setOpsError] = useState("");
   const [notice, setNotice] = useState("");
   const want = usa ? "usa" : kind === "rent" ? "rent" : "number";
@@ -115,6 +118,10 @@ function NumbersPage() {
     setNotice("");
     setLoadingOps(false);
     setCountriesReady(usa);
+    if (usa) {
+      sawUsaFetch.current = false;
+      setUsaReady(false);
+    }
   }, [slotKey, usa]);
 
   useEffect(() => {
@@ -185,6 +192,13 @@ function NumbersPage() {
     }, 200);
     return () => { serviceGen.current += 1; clearTimeout(timer); };
   }, [activeId, want, countryName, serviceQ, slotKey, usa, service, kind]);
+
+  useEffect(() => {
+    if (!usa) return;
+    if (loadingServices) sawUsaFetch.current = true;
+    else if (sawUsaFetch.current) setUsaReady(true);
+  }, [usa, loadingServices]);
+  useServiceHold(usa ? !usaReady : !countriesReady);
 
   const runSelect = (nextCountry: string, nextService: string) => {
     if (!nextCountry || !nextService) {
