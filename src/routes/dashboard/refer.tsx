@@ -27,7 +27,7 @@ function ReferPage() {
   const card = summary;
   return (
     <div className="space-y-4">
-      <section className="rounded-[1.6rem] bg-gradient-to-br from-[#174C70] to-[#286D86] p-5 text-white">
+      <section className="tone-band rounded-[1.6rem] bg-gradient-to-br from-[#174C70] to-[#286D86] p-5 text-white">
         <p className="text-xs font-bold tracking-wide text-white/70">REFER & EARN</p>
         <h1 className="mt-1 text-2xl font-extrabold">Total referral earnings {naira(card?.earned || 0)}</h1>
         <p className="mt-1 text-sm text-white/80">You earn when someone you invite completes a first qualifying purchase. Registration alone does not pay.</p>

@@ -17,7 +17,7 @@ export function isRetiredBill(category: string) {
   return BILL_CATEGORIES.has(category);
 }
 
-export type HistoryFilter = "all" | "logs" | "vpn" | "numbers" | "other";
+export type HistoryFilter = "all" | "logs" | "vpn" | "numbers" | "other" | "data" | "rent" | "bought";
 
 export type HistoryOrder = {
   id: string;
@@ -38,17 +38,26 @@ export type HistoryOrder = {
   refillAvailable?: boolean;
 };
 
-export function purchaseGroup(category: string): Exclude<HistoryFilter, "all"> {
+export function purchaseGroup(category: string): "logs" | "vpn" | "numbers" | "other" {
   if (category === "logs") return "logs";
   if (category === "vpn") return "vpn";
   if (category === "numbers" || category === "rent" || category === "number" || category === "usa") return "numbers";
   return "other";
 }
 
+export function matchesHistoryFilter(category: string, filter: HistoryFilter) {
+  if (filter === "all") return true;
+  if (filter === "data") return category === "data";
+  if (filter === "rent") return category === "rent";
+  if (filter === "bought") return category === "numbers" || category === "number" || category === "usa";
+  return purchaseGroup(category) === filter;
+}
+
 export function purchaseTypeLabel(category: string) {
   const group = purchaseGroup(category);
   if (group === "logs") return "Logs";
   if (group === "vpn") return "VPN";
+  if (category === "rent") return "Rent";
   if (group === "numbers") return "Numbers";
   if (category === "smm") return "SMM";
   if (category === "data") return "Data";
@@ -69,8 +78,8 @@ export function orderQuantity(detail: string) {
 
 export function historyFilterFromHash(hash: string): HistoryFilter {
   const name = hash.replace(/^#/, "");
-  if (name === "logs" || name === "vpn" || name === "numbers" || name === "other") return name;
-  if (name === "rent" || name === "usa") return "numbers";
+  if (name === "logs" || name === "vpn" || name === "numbers" || name === "other" || name === "data" || name === "rent" || name === "bought") return name;
+  if (name === "usa") return "bought";
   return "all";
 }
 
@@ -84,7 +93,7 @@ export function listPurchases<T extends HistoryOrder>(orders: T[], input: { user
       seen.add(order.id);
       return true;
     })
-    .filter((order) => input.filter === "all" || purchaseGroup(order.category) === input.filter)
+    .filter((order) => matchesHistoryFilter(order.category, input.filter))
     .filter((order) => {
       if (!q) return true;
       return [order.title, order.category, purchaseTypeLabel(order.category), order.status, order.phone, order.code, order.server, order.network, order.detail, order.providerStatus]

@@ -10,9 +10,12 @@ export const Route = createFileRoute("/dashboard/history")({ component: HistoryP
 
 const FILTERS: Array<[HistoryFilter, string]> = [
   ["all", "All purchases"],
+  ["bought", "Bought numbers"],
+  ["numbers", "Numbers"],
+  ["data", "Data"],
+  ["rent", "Rent"],
   ["logs", "Logs"],
   ["vpn", "VPN"],
-  ["numbers", "Numbers"],
   ["other", "Other products"],
 ];
 
