@@ -803,6 +803,12 @@ function fiveSimProvider(doc: Data) {
   return rows.find((item) => item.serverId === "1") || rows[0] || null;
 }
 
+function providerMessage(text: string, fallback: string) {
+  const body = String(text || "").trim();
+  if (!body || /<!doctype|<html|cloudflare|cf-ray|cf-browser/i.test(body)) return fallback;
+  return body.slice(0, 180);
+}
+
 export async function buyRentNumber(offerId: string, idempotencyKey = "") {
   const session = await readSession();
   if (!session.userId) return { error: "Sign in first.", orderId: "", state: null as Data | null };
@@ -813,7 +819,7 @@ export async function buyRentNumber(offerId: string, idempotencyKey = "") {
   const doc = await loadLight();
   const provider = fiveSimProvider(doc);
   const key = provider ? await readProviderKey(provider.id) : "";
-  if (!provider || !key) return { error: "FiveSim is not connected for Rent numbers. Nothing was sent.", orderId: "", state: null };
+  if (!provider || !key) return { error: "Rent numbers are not available right now. Nothing was sent.", orderId: "", state: null };
   const user = doc.users.find((item) => item.id === session.userId);
   if (!user) return { error: "Sign in first.", orderId: "", state: null };
   const pricing = await readRentPricing();
@@ -837,7 +843,7 @@ export async function buyRentNumber(offerId: string, idempotencyKey = "") {
     res = await fetch(fiveSimBuyUrl(offer), { headers: { Authorization: "Bearer " + key, Accept: "application/json" }, signal: AbortSignal.timeout(20000) });
   } catch {
     await markPurchaseKey(idem, "failed");
-    return { error: "FiveSim could not be reached. The wallet was not charged.", orderId: "", state: null };
+    return { error: "The number service could not be reached. The wallet was not charged.", orderId: "", state: null };
   }
   const text = await res.text();
   let json: Record<string, unknown> = {};
@@ -846,8 +852,7 @@ export async function buyRentNumber(offerId: string, idempotencyKey = "") {
   const providerRef = String(json.id || "");
   if (!res.ok || !phone || !providerRef) {
     await markPurchaseKey(idem, "failed");
-    const raw = String(json.message || text || "FiveSim refused the rental.").slice(0, 180);
-    return { error: raw || "FiveSim refused the rental. The wallet was not charged.", orderId: "", state: null };
+    return { error: providerMessage(String(json.message || text || ""), "The number service refused the order. The wallet was not charged."), orderId: "", state: null };
   }
   const countryName = (await rentCountryName(offer.country)) || offer.country;
   const title = `Rent number · ${offer.service} · ${countryName}`;
@@ -855,7 +860,7 @@ export async function buyRentNumber(offerId: string, idempotencyKey = "") {
   const debited = await debitBalance(user.id, charge, ledgerRef, title);
   if (!debited.ok) {
     await markPurchaseKey(idem, "needs_reconcile", { providerOrderId: providerRef, amount: charge, detail: title });
-    return { error: "FiveSim accepted the rental, but the wallet update did not finish. It is flagged for reconciliation and will not be charged twice.", orderId: "", state: null };
+    return { error: "The number service accepted the order, but the wallet update did not finish. It is flagged for reconciliation and will not be charged twice.", orderId: "", state: null };
   }
   const ready = { ...doc, users: doc.users.map((item) => (item.id === user.id ? { ...item, balance: debited.balance + charge } : item)) };
   const bought = recordRentOrder(ready, user.id, {
@@ -871,10 +876,11 @@ export async function buyRentNumber(offerId: string, idempotencyKey = "") {
     providerRef,
     providerStatus: String(json.status || "PENDING"),
     providerUsd: offer.priceUsd,
+    expiresAt: typeof json.expires === "string" ? json.expires : "",
   });
   if (bought.error || !("order" in bought) || !bought.order) {
     await markPurchaseKey(idem, "needs_reconcile", { providerOrderId: providerRef, amount: charge, detail: title });
-    return { error: "FiveSim accepted the rental. The wallet debit is recorded and the order will be reconciled.", orderId: "", state: null };
+    return { error: "The number service accepted the order. The wallet debit is recorded and the order will be reconciled.", orderId: "", state: null };
   }
   const data = { ...bought.data, users: bought.data.users.map((item) => (item.id === user.id ? { ...item, balance: debited.balance } : item)) };
   await markPurchaseKey(idem, "completed", { orderId: bought.order.id, providerOrderId: providerRef, amount: charge, detail: title });
@@ -969,6 +975,23 @@ async function syncServer1Order(doc: Data, orderId: string) {
   }
 }
 
+async function syncRentOrder(doc: Data, orderId: string) {
+  const order = doc.orders.find((item) => item.id === orderId);
+  if (!order || order.server !== "Rent number" || order.status === "completed" || order.status === "refunded") return doc;
+  const provider = fiveSimProvider(doc);
+  const key = provider ? await readProviderKey(provider.id) : "";
+  const ref = String(order.providerOrderId || "").replace(/[^\d]/g, "");
+  if (!key || !ref) return doc;
+  try {
+    const called = await fiveSimCall(key, `check/${ref}`);
+    if (!called.ok) return doc;
+    const { parseFiveSimCheck } = await import("@/lib/fulfilment");
+    return applyFiveSim(doc, orderId, parseFiveSimCheck(called.json));
+  } catch {
+    return doc;
+  }
+}
+
 export async function syncServer1Numbers(doc: Data) {
   let next = doc;
   const waiting = doc.orders.filter((order) => isServer1Number(order) && order.status === "waiting").slice(0, 20);
@@ -1038,15 +1061,15 @@ async function fiveSimOrderCall(orderId: string, action: "cancel" | "finish") {
   const provider = fiveSimProvider(doc);
   const key = provider ? await readProviderKey(provider.id) : "";
   const ref = String(order.providerOrderId || "").replace(/[^\d]/g, "");
-  if (!key || !ref) return { error: "This rental has no FiveSim reference.", state: null };
+  if (!key || !ref) return { error: "This rental has no provider reference.", state: null };
   let res: Response;
   try {
     res = await fetch(`https://5sim.net/v1/user/${action}/${ref}`, { headers: { Authorization: "Bearer " + key, Accept: "application/json" }, signal: AbortSignal.timeout(20000) });
   } catch {
-    return { error: "FiveSim could not be reached.", state: null };
+    return { error: "The number service could not be reached.", state: null };
   }
   const text = await res.text();
-  if (!res.ok) return { error: text.slice(0, 180) || "FiveSim refused that request.", state: null };
+  if (!res.ok) return { error: providerMessage(text, "The number service refused that request."), state: null };
   return { error: null as string | null, state: doc, order, session };
 }
 
@@ -1171,6 +1194,12 @@ export async function openPurchase(orderId: string, refresh: boolean) {
   const reference = order.providerOrderId || row?.provider_ref || "";
   if (isServer1Number(order) && order.status !== "completed" && order.status !== "refunded") {
     doc = await syncServer1Order(doc, order.id);
+    order = doc.orders.find((item) => item.id === orderId) || order;
+    messages = mergeMessages(messages, order.messages || []);
+    providerStatus = order.providerStatus || providerStatus;
+  }
+  if (order.server === "Rent number" && order.status === "waiting") {
+    doc = await syncRentOrder(doc, order.id);
     order = doc.orders.find((item) => item.id === orderId) || order;
     messages = mergeMessages(messages, order.messages || []);
     providerStatus = order.providerStatus || providerStatus;

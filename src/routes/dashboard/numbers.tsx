@@ -381,5 +381,5 @@ function Remain({ expiresAt }: { expiresAt?: string }) {
   const left = Math.max(0, Math.floor((end - now) / 1000));
   const minutes = Math.floor(left / 60);
   const seconds = left % 60;
-  return <p className="mt-1 text-xs font-extrabold text-primary">{left ? `${minutes}:${String(seconds).padStart(2, "0")} left` : "Timer ended. Status is checked with FiveSim."}</p>;
+  return <p className="mt-1 text-xs font-extrabold text-primary">{left ? `${minutes}:${String(seconds).padStart(2, "0")} left` : "Timer ended. Status is being checked."}</p>;
 }

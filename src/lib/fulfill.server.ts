@@ -110,10 +110,11 @@ export async function placeOnProvider(input: { product: Product; provider: Provi
     }
     const { text, json } = await readBody(res);
     const phone = typeof json.phone === "string" ? json.phone : "";
-    if (!res.ok || !phone) {
-      const raw = String(json.message || text || "The number API refused the order.").slice(0, 180);
+    if (!res.ok || !phone || /<!doctype|<html/i.test(text)) {
+      if (/<!doctype|<html|cloudflare/i.test(text)) return { ok: false, error: "The number service is temporarily unavailable. The wallet was not charged." };
+      const raw = String(json.message || text || "The number service refused the order.").slice(0, 180);
       if (/balance|funds|money/i.test(raw)) return { ok: false, error: "The API wallet is empty. Top up that API, then try again." };
-      return { ok: false, error: raw || "The number API refused the order. The wallet was not charged." };
+      return { ok: false, error: raw || "The number service refused the order. The wallet was not charged." };
     }
     return { ok: true, phone, ref: String(json.id || ""), waiting: true, cost, providerRef: String(json.id || ""), expiresAt: typeof json.expires === "string" ? json.expires : "" };
   }

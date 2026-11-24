@@ -60,9 +60,10 @@ function ResultPage() {
   const cancelNumber = async () => {
     setActing("number");
     try {
-      const res = await cancelServer1Number({ data: { orderId } });
+      const isRent = view?.server === "Rent number";
+      const res = isRent ? await cancelRentNumber({ data: { orderId } }) : await cancelServer1Number({ data: { orderId } });
       if (res.error) toast.error(res.error);
-      else toast.success("FiveSim cancelled this number. The refund is in your wallet.");
+      else toast.success("Cancelled. The refund is in your wallet.");
       if (res.state) adopt(res.state);
       await load(true);
     } catch {
@@ -202,17 +203,17 @@ function NumberCard({ view, error, checking, acting, confirm, now, onCopy, onRef
               {message ? <p className="mt-2 break-words text-sm text-white/80">{message}</p> : null}
             </div>
           ) : (
-            <p className="mt-2 rounded-xl bg-white/10 px-3 py-3 text-sm">{checking ? "Checking FiveSim…" : "Waiting for SMS…"}</p>
+            <p className="mt-2 rounded-xl bg-white/10 px-3 py-3 text-sm">{checking ? "Checking for SMS…" : "Waiting for SMS…"}</p>
           )}
         </div>
         <p className="text-sm"><span className="text-white/70">Status </span><span className="font-extrabold">{status}</span></p>
         {view.status === "refunded" ? <p className="text-sm text-white/80">Cancelled. {naira(view.amount)} was returned to the wallet once.</p> : null}
-        {view.status === "waiting" && view.server === "Server 1" ? (
+        {view.status === "waiting" && (view.server === "Server 1" || view.server === "Rent number") ? (
           confirm ? (
             <div className="space-y-2 rounded-xl bg-white/10 p-3 text-sm">
-              <p>Cancel this number with FiveSim? A refund is issued only if FiveSim confirms it.</p>
+              <p>Cancel this number? A refund is issued only if the service confirms it.</p>
               <div className="flex gap-2">
-                <button type="button" className="rounded-xl bg-[#c43d4b] px-3 py-2 font-extrabold" disabled={!!acting} onClick={onCancel}>{acting === "number" ? "Checking FiveSim…" : "Confirm cancel"}</button>
+                <button type="button" className="rounded-xl bg-[#c43d4b] px-3 py-2 font-extrabold" disabled={!!acting} onClick={onCancel}>{acting === "number" ? "Checking…" : "Confirm cancel"}</button>
                 <button type="button" className="rounded-xl border border-white/30 px-3 py-2 font-extrabold" onClick={onKeep}>Keep it</button>
               </div>
             </div>

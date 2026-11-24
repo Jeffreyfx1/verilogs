@@ -268,14 +268,14 @@ export function recordAirtimeOrder(data: Data, userId: string | null, input: { n
   return { error: null, data: next, order };
 }
 
-export function recordRentOrder(data: Data, userId: string | null, input: { offerId: string; title: string; country: string; service: string; kind: string; phone: string; charge: number; cost: number; gain: number; providerRef: string; providerStatus: string; providerUsd?: number }) {
+export function recordRentOrder(data: Data, userId: string | null, input: { offerId: string; title: string; country: string; service: string; kind: string; phone: string; charge: number; cost: number; gain: number; providerRef: string; providerStatus: string; providerUsd?: number; expiresAt?: string }) {
   const user = actor(data, userId);
   if (!user) return { error: "Sign in first.", data };
   const amount = Math.round(input.charge);
   if (amount <= 0) return { error: "This rental has no price yet.", data };
   if (user.balance < amount) return { error: "Insufficient balance. Top up your balance to make this purchase.", data };
   const phone = input.phone.trim();
-  if (!phone) return { error: "FiveSim did not return a number. The wallet was not charged.", data };
+  if (!phone) return { error: "The number service did not return a number. The wallet was not charged.", data };
   const createdAt = new Date().toISOString();
   const order: Order = {
     id: uid("ord"),
@@ -289,12 +289,13 @@ export function recordRentOrder(data: Data, userId: string | null, input: { offe
     phone,
     code: "",
     status: "waiting",
-    detail: input.kind === "hosting" ? "FiveSim hosting rental" : "FiveSim activation",
+    detail: input.kind === "hosting" ? "Hosting rental" : "Activation",
     cost: Math.max(0, Math.round(input.cost)),
     gain: Math.round(input.gain),
     createdAt,
     providerOrderId: input.providerRef,
     providerStatus: input.providerStatus,
+    expiresAt: input.expiresAt || "",
     country: input.country,
     service: input.service,
     providerUsd: input.providerUsd && input.providerUsd > 0 ? input.providerUsd : undefined,
