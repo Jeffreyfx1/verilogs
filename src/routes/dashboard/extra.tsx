@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Glyph, glyph } from "@/components/icons";
 import { ProductSkeletons } from "@/components/product-skeletons";
+import { useServiceHold } from "@/components/service-nav";
 import { BtnSpinner } from "@/components/ui";
 import { toast } from "sonner";
 import { isLive, type Product } from "@/lib/catalog";
@@ -272,6 +273,7 @@ export function Marketplace({ kind }: { kind: Shelf }) {
 
   const copy = COPY[kind];
   const loading = remote === null && !failed;
+  useServiceHold(kind === "random" && loading);
 
   return (
     <div className="-mx-3 min-h-full bg-[#EEF7FA] px-3 py-4 text-ink">

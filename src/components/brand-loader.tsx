@@ -1,7 +1,7 @@
-export function BrandLoader({ caption }: { caption?: string }) {
+export function BrandLoader({ caption, compact }: { caption?: string; compact?: boolean }) {
   return (
-    <div className="grid min-h-screen place-items-center bg-paper px-6" role="status" aria-live="polite">
-      <div className="brand-loader">
+    <div className={compact ? "grid place-items-center px-6" : "grid min-h-screen place-items-center bg-paper px-6"} role="status" aria-live="polite">
+      <div className={compact ? "brand-loader is-compact" : "brand-loader"}>
         <div className="brand-loader-glow">
           <span className="brand-loader-ring" />
           <img src="/icon-192.png" alt="" className="brand-loader-mark" />

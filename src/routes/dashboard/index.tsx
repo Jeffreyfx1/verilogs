@@ -6,8 +6,8 @@ import { isMajorService, ServiceLink } from "@/components/service-nav";
 
 import { UK_IMAGE } from "@/lib/dashboard-images";
 import { useUser, useStore } from "@/lib/store";
-import { naira, when } from "@/lib/money";
-import { listPurchases, type HistoryOrder } from "@/lib/purchase-history";
+import { naira } from "@/lib/money";
+import { listPurchases } from "@/lib/purchase-history";
 import { publicSiteImages } from "@/lib/shop-fns";
 
 export const Route = createFileRoute("/dashboard/")({
@@ -85,6 +85,12 @@ const quick = [
   { to: "/faq", label: "Tutorials", icon: glyph.play },
   { to: "/community", label: "Channel", icon: glyph.send },
   { to: "/dashboard/refer", label: "Refer & Earn", icon: glyph.users },
+] as const;
+
+const histories = [
+  { hash: "bought", label: "Number History", icon: glyph.hash },
+  { hash: "data", label: "Data History", icon: glyph.data },
+  { hash: "rent", label: "Rent Number History", icon: glyph.crown },
 ] as const;
 
 /* ======================================
@@ -225,7 +231,6 @@ function DashHome() {
   const mine = account.filter((order) => order.status !== "refunded");
   const sms = mine.filter((order) => order.category === "numbers" || order.category === "rent" || order.category === "usa" || order.category === "number").length;
   const spent = mine.reduce((sum, order) => sum + order.amount, 0);
-  const recent = (pred: (order: HistoryOrder) => boolean) => account.filter(pred).slice(0, 4);
 
   return (
     <div className="dash-home min-w-0 space-y-3 pb-2">
@@ -306,49 +311,19 @@ function DashHome() {
 
       <section className="dash-panel">
         <h2 className="px-1 text-base font-extrabold text-ink">History</h2>
-        <div className="mt-2">
-          <Link to="/dashboard/history" className="flex items-center gap-3 rounded-xl bg-[#E7EEF8] px-3 py-2.5">
-            <span className="svc-icon size-10">
-              <Glyph icon={glyph.history} className="size-4" />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-sm font-extrabold text-ink">Order history</span>
-              <span className="block text-xs text-muted">Logs, VPN, numbers and other purchases</span>
-            </span>
-          </Link>
+        <div className="history-shortcuts mt-2">
+          {histories.map((item) => (
+            <Link key={item.hash} to="/dashboard/history" hash={item.hash} className="history-shortcut">
+              <span className="svc-icon">
+                <Glyph icon={item.icon} className="size-4" />
+              </span>
+              <span className="min-w-0 text-sm font-extrabold leading-tight text-ink">{item.label}</span>
+            </Link>
+          ))}
         </div>
       </section>
-
-      <HistoryPreview title="Number history" hash="bought" empty="No number purchases yet." rows={recent((order) => order.category === "numbers" || order.category === "number" || order.category === "usa")} />
-      <HistoryPreview title="Data history" hash="data" empty="No data purchases yet." rows={recent((order) => order.category === "data")} />
-      <HistoryPreview title="Rent number history" hash="rent" empty="No rented numbers yet." rows={recent((order) => order.category === "rent")} />
       <InstallApp />
     </div>
-  );
-}
-
-function HistoryPreview({ title, hash, empty, rows }: { title: string; hash: string; empty: string; rows: HistoryOrder[] }) {
-  return (
-    <section className="dash-panel">
-      <div className="flex items-center justify-between gap-3 px-1">
-        <h2 className="text-base font-extrabold text-ink">{title}</h2>
-        <Link to="/dashboard/history" hash={hash} className="text-xs font-extrabold text-[#1d4ed8]">View all</Link>
-      </div>
-      <div className="mt-2">
-        {rows.length ? rows.map((order) => (
-          <article key={order.id} className="dash-row">
-            <div className="flex items-start justify-between gap-3">
-              <p className="min-w-0 truncate text-sm font-extrabold text-ink">{order.title}</p>
-              <p className="shrink-0 text-sm font-extrabold">{naira(order.amount)}</p>
-            </div>
-            <div className="mt-0.5 flex items-center justify-between gap-2">
-              <p className="min-w-0 truncate text-[11px] text-muted">{when(order.createdAt)} · {order.status}</p>
-              <Link to="/purchase-result/$orderId" params={{ orderId: order.id }} className="shrink-0 rounded-full bg-[#12357a] px-2.5 py-1 text-[11px] font-extrabold text-white">Details</Link>
-            </div>
-          </article>
-        )) : <p className="rounded-xl bg-[#f4f7fb] px-3 py-3 text-xs text-muted">{empty}</p>}
-      </div>
-    </section>
   );
 }
 
