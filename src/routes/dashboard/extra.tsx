@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Glyph, glyph } from "@/components/icons";
 import { ProductSkeletons } from "@/components/product-skeletons";
-import { useServiceHold } from "@/components/service-nav";
 import { BtnSpinner } from "@/components/ui";
 import { toast } from "sonner";
 import { isLive, type Product } from "@/lib/catalog";
@@ -273,11 +272,10 @@ export function Marketplace({ kind }: { kind: Shelf }) {
 
   const copy = COPY[kind];
   const loading = remote === null && !failed;
-  useServiceHold(kind === "random" && loading);
 
   return (
     <div className="-mx-3 min-h-full bg-[#EEF7FA] px-3 py-4 text-ink">
-      <section className="tone-band rounded-[1.6rem] bg-gradient-to-br from-[#174C70] to-[#286D86] p-5 text-white shadow-[0_12px_28px_rgba(23,76,112,0.16)]">
+      <section className="rounded-[1.6rem] bg-gradient-to-br from-[#174C70] to-[#286D86] p-5 text-white shadow-[0_12px_28px_rgba(23,76,112,0.16)]">
         <p className="text-[11px] font-bold tracking-[0.14em] text-white/75">INSTANT DELIVERY</p>
         <h1 className="mt-1 text-2xl font-extrabold">{copy.title}</h1>
         <p className="mt-1 max-w-sm text-sm text-white/85">{copy.body}</p>

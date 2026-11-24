@@ -7,7 +7,6 @@ import { DeviceFrame } from "@/components/device-picker";
 import { SupportBot } from "@/components/support-bot";
 import { PwaRegister } from "@/components/pwa-register";
 import { RouteProgress } from "@/components/route-progress";
-import { ServiceLoadingOverlay } from "@/components/service-nav";
 import appCss from "../styles.css?url";
 
 export const Route = createRootRoute({
@@ -18,7 +17,7 @@ export const Route = createRootRoute({
       { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" },
       { title: "VeriLogs — SMS numbers and digital services" },
       { name: "description", content: "Virtual numbers for SMS verification, data and digital services in naira. Fund a wallet, pick a server, and get a code." },
-      { name: "theme-color", content: "#0A214D" },
+      { name: "theme-color", content: "#174C70" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-title", content: "VeriLogs" },
       { name: "apple-mobile-web-app-status-bar-style", content: "default" },
@@ -50,7 +49,6 @@ function RootComponent() {
       </head>
       <body>
         <RouteProgress />
-        <ServiceLoadingOverlay />
         <PreviewHostBridge />
         <PwaRegister />
         <AuthProvider>

@@ -2,13 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 
 import { Glyph, glyph } from "@/components/icons";
-import { isMajorService, ServiceLink } from "@/components/service-nav";
 
-import { UK_IMAGE } from "@/lib/dashboard-images";
+import { TIER_IMAGE, UK_IMAGE } from "@/lib/dashboard-images";
 import { useUser, useStore } from "@/lib/store";
 import { naira } from "@/lib/money";
-import { listPurchases } from "@/lib/purchase-history";
-import { publicSiteImages } from "@/lib/shop-fns";
 
 export const Route = createFileRoute("/dashboard/")({
   component: DashHome,
@@ -38,7 +35,7 @@ const slides = [
   },
   {
     id: "us",
-    tone: "sky",
+    tone: "blue",
     title: "Cheap USA Line",
     text: "Reliable US numbers for every app you verify.",
     icon: glyph.flag,
@@ -52,7 +49,7 @@ const slides = [
     title: "WhatsApp Numbers",
     text: "Instant OTP for WhatsApp, from any country.",
     icon: glyph.chat,
-    image: "/photos/banner-wa.webp",
+    image: null,
     to: "/dashboard/numbers",
     search: waSearch,
   },
@@ -87,12 +84,6 @@ const quick = [
   { to: "/dashboard/refer", label: "Refer & Earn", icon: glyph.users },
 ] as const;
 
-const histories = [
-  { hash: "bought", label: "Number History", icon: glyph.hash },
-  { hash: "data", label: "Data History", icon: glyph.data },
-  { hash: "rent", label: "Rent Number History", icon: glyph.crown },
-] as const;
-
 /* ======================================
    PROMO CAROUSEL
 ====================================== */
@@ -102,25 +93,6 @@ function PromoCarousel() {
   const indexRef = useRef(0);
   const paused = useRef(false);
   const [active, setActive] = useState(0);
-  const [waSrc, setWaSrc] = useState("/photos/banner-wa.webp");
-
-  useEffect(() => {
-    let live = true;
-    void publicSiteImages()
-      .then((rows) => {
-        if (!live) return;
-        const row = rows.find((item) => item.id === "banner-wa");
-        const mobile = window.matchMedia("(max-width: 767px)").matches;
-        const stamp = mobile ? row?.mobile || row?.desktop : row?.desktop;
-        if (!stamp) return;
-        const variant = mobile && row?.mobile ? "mobile" : "desktop";
-        setWaSrc(`/api/site-image/banner-wa?variant=${variant}&v=${encodeURIComponent(stamp)}`);
-      })
-      .catch(() => undefined);
-    return () => {
-      live = false;
-    };
-  }, []);
 
   const step = () => {
     const el = trackRef.current;
@@ -160,20 +132,18 @@ function PromoCarousel() {
         onPointerCancel={() => (paused.current = false)}
         className="no-scrollbar flex w-full min-w-0 snap-x snap-mandatory gap-3 overflow-x-auto"
       >
-        {slides.map((s) => {
-          const photo = s.id === "wa" ? waSrc : s.image;
-          return (
-          <ServiceLink
+        {slides.map((s) => (
+          <Link
             key={s.id}
             to={s.to}
             search={s.search}
-            className={`promo-slide slide-${s.tone} relative flex min-h-[7.15rem] w-full min-w-full max-w-full shrink-0 basis-full snap-start items-center gap-3 overflow-hidden rounded-[1.15rem] p-3.5 md:min-w-0 md:max-w-none md:basis-auto md:w-[calc(50%-0.375rem)] xl:w-[calc(33.333%-0.5rem)]`}
+            className={`promo-slide slide-${s.tone} relative flex min-h-[8.75rem] w-full min-w-full max-w-full shrink-0 basis-full snap-start items-center gap-3 overflow-hidden rounded-[1.4rem] p-4 md:min-w-0 md:max-w-none md:basis-auto md:w-[calc(50%-0.375rem)] xl:w-[calc(33.333%-0.5rem)]`}
           >
-            {photo ? (
+            {s.image ? (
               <img
-                src={photo}
+                src={s.image}
                 alt=""
-                className={`promo-photo pointer-events-none absolute inset-y-0 right-0 h-full w-[78%] object-cover object-center ${s.id === "wa" ? "promo-photo-fade" : ""}`}
+                className="absolute inset-y-0 right-0 h-full w-[75%] object-cover object-right"
                 onError={(e) => {
                   e.currentTarget.style.display = "none";
                 }}
@@ -184,19 +154,18 @@ function PromoCarousel() {
 
             <span className="promo-fade pointer-events-none absolute inset-0" />
 
-            <span className={`promo-icon relative z-10 grid size-11 shrink-0 place-items-center rounded-2xl text-white ${s.id === "wa" ? "promo-icon-wa" : ""}`}>
-              <Glyph icon={s.icon} className="size-5" />
+            <span className="promo-icon relative z-10 grid size-14 shrink-0 place-items-center rounded-2xl text-white">
+              <Glyph icon={s.icon} className="size-7" />
             </span>
 
-            <span className="relative z-10 min-w-0 flex-1">
-              <span className="block text-base font-extrabold leading-tight text-white">{s.title}</span>
-              <span className="mt-1 block max-w-[14rem] text-xs font-medium leading-snug text-white/85">
+            <span className="relative z-10 min-w-0 flex-1 ">
+              <span className="block text-lg font-extrabold text-white">{s.title}</span>
+              <span className="mt-1 block max-w-[14rem] text-[13px] font-medium leading-snug text-white/85">
                 {s.text}
               </span>
             </span>
-          </ServiceLink>
-          );
-        })}
+          </Link>
+        ))}
       </div>
 
       {/* DOTS */}
@@ -208,7 +177,7 @@ function PromoCarousel() {
             aria-label={`Go to slide ${i + 1}`}
             onClick={() => goTo(i)}
             className={`h-1.5 rounded-full transition-all ${
-              i === active ? "w-5 bg-[#1d4ed8]" : "w-1.5 bg-[#1d4ed8]/30"
+              i === active ? "w-5 bg-[#286D86]" : "w-1.5 bg-[#286D86]/30"
             }`}
           />
         ))}
@@ -227,99 +196,84 @@ function DashHome() {
   const orders = useStore((s) => s.orders);
   const [hide, setHide] = useState(false);
   if (!user) return null;
-  const account = listPurchases(orders, { userId: user.id, filter: "all" });
-  const mine = account.filter((order) => order.status !== "refunded");
-  const sms = mine.filter((order) => order.category === "numbers" || order.category === "rent" || order.category === "usa" || order.category === "number").length;
+  const mine = orders.filter((order) => order.userId === user.id && order.status !== "refunded");
+  const sms = mine.filter((order) => order.category === "numbers" || order.category === "rent").length;
   const spent = mine.reduce((sum, order) => sum + order.amount, 0);
 
   return (
-    <div className="dash-home min-w-0 space-y-3 pb-2">
+    <div className="min-w-0 space-y-4 pb-4">
       <div>
-        <h1 className="text-xl font-extrabold text-ink">Welcome back{user.name ? `, ${user.name.split(" ")[0]}` : ""}</h1>
-        <p className="mt-0.5 text-xs text-muted">Wallet, numbers, data and digital services in one place.</p>
+        <h1 className="text-2xl font-extrabold text-ink">Welcome back{user.name ? `, ${user.name.split(" ")[0]}` : ""}</h1>
+        <p className="mt-1 text-sm text-muted">Wallet, numbers, data and digital services in one place.</p>
       </div>
 
-      <section className="balance-card overflow-hidden rounded-[1.25rem] px-4 py-3.5 text-white">
+      <section className="balance-card overflow-hidden rounded-[1.6rem] px-5 py-5 text-white">
         <div className="flex items-start justify-between gap-3">
-          <p className="text-[10px] font-bold tracking-[0.14em] text-white/80">AVAILABLE BALANCE</p>
-          <Link to="/dashboard/wallet" className="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-extrabold">+ Fund wallet</Link>
+          <p className="text-[11px] font-bold tracking-[0.14em] text-white/80">AVAILABLE BALANCE</p>
+          <Link to="/dashboard/wallet" className="rounded-full bg-white/15 px-3 py-1.5 text-xs font-extrabold">+ Fund wallet</Link>
         </div>
-        <div className="mt-2 flex items-center gap-2">
-          <p className="text-[1.85rem] font-extrabold leading-none tracking-tight">{hide ? "₦••••" : naira(user.balance)}</p>
-          <button type="button" aria-label={hide ? "Show balance" : "Hide balance"} className="grid size-8 place-items-center rounded-full bg-white/15" onClick={() => setHide((v) => !v)}>
+        <div className="mt-3 flex items-center gap-2">
+          <p className="text-4xl font-extrabold tracking-tight">{hide ? "₦••••" : naira(user.balance)}</p>
+          <button type="button" aria-label={hide ? "Show balance" : "Hide balance"} className="grid size-9 place-items-center rounded-full bg-white/15" onClick={() => setHide((v) => !v)}>
             {hide ? <Glyph icon={glyph.eyeOff} className="size-4" /> : <Glyph icon={glyph.eye} className="size-4" />}
           </button>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="balance-glass rounded-xl px-3 py-1.5">
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="rounded-2xl bg-white/12 px-3 py-2">
             <p className="text-[10px] font-bold tracking-wide text-white/70">NUMBERS</p>
-            <p className="text-base font-extrabold">{sms}</p>
+            <p className="text-lg font-extrabold">{sms}</p>
             <p className="text-[11px] text-white/70">Bought</p>
           </div>
-          <div className="balance-glass rounded-xl px-3 py-1.5">
+          <div className="rounded-2xl bg-white/12 px-3 py-2">
             <p className="text-[10px] font-bold tracking-wide text-white/70">SPENT</p>
-            <p className="text-base font-extrabold">{hide ? "••••" : naira(spent)}</p>
+            <p className="text-lg font-extrabold">{hide ? "••••" : naira(spent)}</p>
             <p className="text-[11px] text-white/70">On this account</p>
           </div>
         </div>
-        <div className="mt-2 text-right">
+        <div className="mt-3 text-right">
           <Link to="/dashboard/history" className="text-xs font-extrabold underline">View history</Link>
         </div>
       </section>
 
       <PromoCarousel />
 
-      <section className="dash-panel">
+      <section className="rounded-[1.4rem] bg-white p-3 shadow-[0_8px_24px_rgba(23,76,112,0.06)]">
         <div className="mb-2 flex items-center justify-between px-1">
-          <h2 className="text-base font-extrabold text-ink">Quick services</h2>
+          <h2 className="text-lg font-extrabold text-ink">Quick services</h2>
         </div>
-        <div className="quick-grid">
+        <div className="grid grid-cols-4 gap-2">
           {quick.map((q) => {
             const body = (
               <>
-                <span className="svc-icon">
-                  <Glyph icon={q.icon} className="size-4" />
+                <span className="grid size-11 place-items-center rounded-2xl bg-[#286D86] text-white">
+                  <Glyph icon={q.icon} className="size-5" />
                 </span>
                 <span className="text-[11px] font-bold leading-tight text-ink">{q.label}</span>
               </>
             );
-            const cls = "quick-tile relative flex flex-col items-center justify-center gap-1.5 px-1 py-2 text-center";
-            const soon = q.label === "Airtime" || q.label === "SMM" || q.label === "Telegram Premium";
-            const search = "search" in q ? q.search : undefined;
-            const hash = "hash" in q ? q.hash : undefined;
-            const inner = (
-              <>
-                {soon ? <span className="absolute right-1 top-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white">Soon</span> : null}
-                {body}
-              </>
-            );
-            if (isMajorService(q.to, q.label)) {
-              return (
-                <ServiceLink key={q.label} to={q.to} search={search} hash={hash} className={cls}>
-                  {inner}
-                </ServiceLink>
-              );
-            }
+            const cls = "relative flex min-h-[5.4rem] flex-col items-center justify-center gap-2 rounded-2xl bg-[#E5F2F8] px-1 py-3 text-center";
             return (
-              <Link key={q.label} to={q.to} search={search} hash={hash} className={cls}>
-                {inner}
+              <Link key={q.label} to={q.to} search={"search" in q ? q.search : undefined} hash={"hash" in q ? q.hash : undefined} className={cls}>
+                {q.label === "Airtime" || q.label === "SMM" || q.label === "Telegram Premium" ? <span className="absolute right-1.5 top-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white">Soon</span> : null}
+                {body}
               </Link>
             );
           })}
         </div>
       </section>
 
-      <section className="dash-panel">
-        <h2 className="px-1 text-base font-extrabold text-ink">History</h2>
-        <div className="history-shortcuts mt-2">
-          {histories.map((item) => (
-            <Link key={item.hash} to="/dashboard/history" hash={item.hash} className="history-shortcut">
-              <span className="svc-icon">
-                <Glyph icon={item.icon} className="size-4" />
-              </span>
-              <span className="min-w-0 text-sm font-extrabold leading-tight text-ink">{item.label}</span>
-            </Link>
-          ))}
+      <section className="rounded-[1.4rem] bg-white p-3 shadow-[0_8px_24px_rgba(23,76,112,0.06)]">
+        <h2 className="px-1 text-lg font-extrabold text-ink">History</h2>
+        <div className="mt-2">
+          <Link to="/dashboard/history" className="flex items-center gap-3 rounded-2xl bg-[#E5F2F8] px-3 py-3">
+            <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#286D86] text-white">
+              <Glyph icon={glyph.history} className="size-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-extrabold text-ink">Order history</span>
+              <span className="block text-xs text-muted">Logs, VPN, numbers and other purchases</span>
+            </span>
+          </Link>
         </div>
       </section>
       <InstallApp />

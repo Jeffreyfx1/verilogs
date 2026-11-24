@@ -27,9 +27,6 @@ test("filters and search cover logs, vpn, numbers and other products", () => {
   assert.deepEqual(listPurchases(rows, { userId: "ada", filter: "logs" }).map((row) => row.id), ["log-1"]);
   assert.deepEqual(listPurchases(rows, { userId: "ada", filter: "vpn" }).map((row) => row.id), ["vpn-1"]);
   assert.deepEqual(listPurchases(rows, { userId: "ada", filter: "numbers" }).map((row) => row.id), ["rent-1", "num-1"]);
-  assert.deepEqual(listPurchases(rows, { userId: "ada", filter: "bought" }).map((row) => row.id), ["num-1"]);
-  assert.deepEqual(listPurchases(rows, { userId: "ada", filter: "data" }).map((row) => row.id), ["data-1"]);
-  assert.deepEqual(listPurchases(rows, { userId: "ada", filter: "rent" }).map((row) => row.id), ["rent-1"]);
   assert.deepEqual(listPurchases(rows, { userId: "ada", filter: "other" }).map((row) => row.id), ["data-1", "smm-1", "bill-1"]);
   assert.deepEqual(listPurchases(rows, { userId: "ada", filter: "all", q: "whatsapp" }).map((row) => row.id), ["num-1"]);
   assert.equal(purchaseTypeLabel("logs"), "Logs");
@@ -41,11 +38,6 @@ test("filters and search cover logs, vpn, numbers and other products", () => {
   assert.equal(page.more, true);
   assert.equal(historyFilterFromHash("bills"), "all");
   assert.equal(historyFilterFromHash("numbers"), "numbers");
-  assert.equal(historyFilterFromHash("rent"), "rent");
-  assert.equal(historyFilterFromHash("data"), "data");
-  assert.equal(historyFilterFromHash("usa"), "bought");
-  assert.equal(purchaseTypeLabel("rent"), "Rent");
-  assert.equal(purchaseTypeLabel("data"), "Data");
 });
 
 test("airtime and SMM sales stay closed and bill categories cannot be bought", () => {

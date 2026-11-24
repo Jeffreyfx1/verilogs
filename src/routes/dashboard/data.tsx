@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, Field, inputClass } from "@/components/ui";
-import { useServiceHold } from "@/components/service-nav";
 import type { Product } from "@/lib/catalog";
 import { naira } from "@/lib/money";
 import { listShelf } from "@/lib/shop-fns";
@@ -56,7 +55,6 @@ function DataPage() {
   const [ready, setReady] = useState(false);
   const [net, setNet] = useState("");
   const [kind, setKind] = useState("All");
-  useServiceHold(!ready);
   useEffect(() => {
     let stop = false;
     listShelf({ data: { category: "data" } })

@@ -6,7 +6,6 @@ import { naira, when } from "@/lib/money";
 import { flagEmoji, rentSearchHit } from "@/lib/rent";
 import { useStore, useUser } from "@/lib/store";
 import { inputClass } from "@/components/ui";
-import { useServiceHold } from "@/components/service-nav";
 
 export const Route = createFileRoute("/dashboard/rent")({ component: RentPage });
 
@@ -39,8 +38,6 @@ function RentPage() {
   const keys = useRef(new Map<string, string>());
   const shownCountries = countries.filter((row) => rentSearchHit(row.name, countryOpen ? countryQ : ""));
   const shownServices = services.filter((row) => rentSearchHit(row.service, serviceOpen ? serviceQ : ""));
-  const opening = loading || (!!country && loadingServices && services.length === 0 && !serviceQ.trim());
-  useServiceHold(opening);
   const selectedCountry = countries.find((row) => row.slug === country);
   const selected = services.find((row) => row.id === serviceId);
 

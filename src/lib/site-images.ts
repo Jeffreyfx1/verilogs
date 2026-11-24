@@ -5,7 +5,6 @@ export const SITE_SLOTS = [
   { id: "numbers", label: "Virtual numbers", alt: "Person reading a message on a phone" },
   { id: "data", label: "Data and airtime", alt: "Person using a phone at a table" },
   { id: "logs", label: "Account logs", alt: "Person working on a laptop" },
-  { id: "banner-wa", label: "WhatsApp banner", alt: "Hand holding a smartphone" },
 ] as const;
 
 export type SiteSlot = (typeof SITE_SLOTS)[number]["id"];

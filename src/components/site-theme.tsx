@@ -8,21 +8,8 @@ export function SiteTheme() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#0b1524" : "#0A214D");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#0d1c24" : "#174C70");
   }, [theme]);
-
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const onScroll = (event: Event) => {
-      const target = event.target;
-      const top = target instanceof Element ? target.scrollTop : window.scrollY;
-      const shift = Math.max(0, Math.min(34, top / 26));
-      document.documentElement.style.setProperty("--glow-y", `${-8 + shift}%`);
-      document.documentElement.style.setProperty("--glow-x", `${88 - shift / 5}%`);
-    };
-    document.addEventListener("scroll", onScroll, { capture: true, passive: true });
-    return () => document.removeEventListener("scroll", onScroll, true);
-  }, []);
 
   if (user?.role !== "admin") return null;
 
