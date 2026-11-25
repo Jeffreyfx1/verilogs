@@ -550,7 +550,7 @@ function isOperatorMap(node: unknown): node is Record<string, unknown> {
 
 function pushQuote(rows: Array<Record<string, unknown>>, service: string, country: string, operator: string, rec: Record<string, unknown>, hint: string) {
   const cost = Number(rec.cost ?? rec.Price ?? rec.price ?? 0);
-  const count = Number(rec.count ?? rec.Qty ?? rec.qty ?? 0);
+  const count = Number(rec.count ?? rec.Qty ?? rec.qty ?? rec.stock ?? 0);
   if (!Number.isFinite(cost) || !Number.isFinite(count) || count <= 0 || cost <= 0) return;
   const windows: Array<[string, unknown]> = [
     ["1h", rec.rate1 ?? rec.rate],
@@ -599,60 +599,130 @@ function fiveSimOrientation(top: string, children: Array<[string, Record<string,
   return "country" as const;
 }
 
-export function slimFiveSim(payload: unknown, hint = "", allow: string[] = [], place: { country?: string; operator?: string } = {}): unknown {
+export type FiveSimAudit = {
+  rows: Array<Record<string, unknown>>;
+  quotes: number;
+  stocked: number;
+  unavailable: number;
+  filtered: number;
+  lost: string[];
+  understood: boolean;
+};
+
+function quoteFigures(rec: Record<string, unknown>) {
+  return {
+    cost: Number(rec.cost ?? rec.Price ?? rec.price ?? 0),
+    count: Number(rec.count ?? rec.Qty ?? rec.qty ?? rec.stock ?? 0),
+  };
+}
+
+function nestedHasStock(node: unknown, depth = 0): boolean {
+  if (!node || typeof node !== "object" || depth > 6) return false;
+  if (Array.isArray(node)) return node.some((item) => nestedHasStock(item, depth + 1));
+  const rec = node as Record<string, unknown>;
+  const { cost, count } = quoteFigures(rec);
+  if (Number.isFinite(cost) && cost > 0 && Number.isFinite(count) && count > 0) return true;
+  return Object.values(rec).some((value) => nestedHasStock(value, depth + 1));
+}
+
+function noteLost(lost: string[], label: string) {
+  if (lost.length >= 8 || lost.includes(label)) return;
+  lost.push(label);
+}
+
+/** One walk of a 5sim price tree. Out-of-stock quotes are counted and not turned into products. */
+export function readFiveSimCatalogue(payload: unknown, hint = "", allow: string[] = [], place: { country?: string; operator?: string } = {}): FiveSimAudit | null {
   const root = unwrapMeta(payload);
-  if (!root || typeof root !== "object" || Array.isArray(root)) return root;
+  if (!root || typeof root !== "object" || Array.isArray(root)) return null;
   const rows: Array<Record<string, unknown>> = [];
+  const lost: string[] = [];
+  let quotes = 0;
+  let stocked = 0;
+  let unavailable = 0;
+  let filtered = 0;
+  const take = (service: string, country: string, operator: string, rec: Record<string, unknown>) => {
+    if (allow.length && !serviceAllowed(service, allow)) {
+      filtered++;
+      return;
+    }
+    const { cost, count } = quoteFigures(rec);
+    quotes++;
+    if (!Number.isFinite(cost) || !Number.isFinite(count) || count <= 0 || cost <= 0) {
+      unavailable++;
+      return;
+    }
+    stocked++;
+    pushQuote(rows, service, country, operator, rec, hint);
+  };
   const entries = objectEntries(root);
   if (entries.length && entries.every(([, value]) => isOperatorQuote(value))) {
     const country = place.country || "";
     const operator = place.operator || "any";
-    for (const [service, row] of entries) {
-      if (allow.length && !serviceAllowed(service, allow)) continue;
-      pushQuote(rows, service, country, operator, row, hint);
-    }
-    return rows;
+    for (const [service, row] of entries) take(service, country, operator, row);
+    return { rows, quotes, stocked, unavailable, filtered, lost, understood: true };
   }
   let understood = false;
   for (const [top, nested] of entries) {
     const children = objectEntries(nested);
-    if (!children.length) continue;
+    if (!children.length) {
+      if (nestedHasStock(nested)) noteLost(lost, top);
+      continue;
+    }
+    const consume = (service: string, country: string, operators: Record<string, unknown>) => {
+      let matched = false;
+      for (const [operator, row] of Object.entries(operators)) {
+        if (!isOperatorQuote(row)) {
+          if (nestedHasStock(row)) noteLost(lost, `${country}/${service}/${operator}`);
+          continue;
+        }
+        matched = true;
+        take(service, country, operator, row);
+      }
+      return matched;
+    };
     if (children.every(([, value]) => isOperatorMap(value))) {
       understood = true;
       const orientation = fiveSimOrientation(top, children);
       if (orientation === "service") {
-        if (allow.length && !serviceAllowed(top, allow)) continue;
-        for (const [country, operators] of children) {
-          for (const [operator, row] of Object.entries(operators)) {
-            if (!isOperatorQuote(row)) continue;
-            pushQuote(rows, top, country, operator, row, hint);
-          }
-        }
+        for (const [country, operators] of children) consume(top, country, operators);
         continue;
       }
       for (const [service, operators] of children) {
-        if (!isOperatorMap(operators)) continue;
-        if (allow.length && !serviceAllowed(service, allow)) continue;
-        for (const [operator, row] of Object.entries(operators)) {
-          if (!isOperatorQuote(row)) continue;
-          pushQuote(rows, service, top, operator, row, hint);
+        if (!isOperatorMap(operators)) {
+          if (nestedHasStock(operators)) noteLost(lost, `${top}/${service}`);
+          continue;
         }
+        consume(service, top, operators);
       }
       continue;
     }
     let matched = false;
     for (const [service, operators] of children) {
-      if (!isOperatorMap(operators)) continue;
-      matched = true;
-      if (allow.length && !serviceAllowed(service, allow)) continue;
-      for (const [operator, row] of Object.entries(operators)) {
-        if (!isOperatorQuote(row)) continue;
-        pushQuote(rows, service, top, operator, row, hint);
+      if (!isOperatorMap(operators)) {
+        if (nestedHasStock(operators)) noteLost(lost, `${top}/${service}`);
+        continue;
       }
+      matched = true;
+      consume(service, top, operators);
     }
     if (matched) understood = true;
+    else if (nestedHasStock(nested)) noteLost(lost, top);
   }
-  return understood ? rows : root;
+  return { rows, quotes, stocked, unavailable, filtered, lost, understood };
+}
+
+export function fiveSimReconcileMessage(audit: FiveSimAudit) {
+  const stocked = audit.stocked.toLocaleString("en-NG");
+  const quotes = audit.quotes.toLocaleString("en-NG");
+  const unavailable = audit.unavailable.toLocaleString("en-NG");
+  const lost = audit.lost.length ? ` ${audit.lost.length} in-stock record${audit.lost.length === 1 ? "" : "s"} could not be mapped (${audit.lost.join(", ")}).` : "";
+  return `5sim catalogue: ${quotes} offers, ${stocked} in stock kept, ${unavailable} out of stock not listed.${lost}`;
+}
+
+export function slimFiveSim(payload: unknown, hint = "", allow: string[] = [], place: { country?: string; operator?: string } = {}): unknown {
+  const audit = readFiveSimCatalogue(payload, hint, allow, place);
+  if (!audit || !audit.understood) return unwrapMeta(payload);
+  return audit.rows;
 }
 
 export function discoverServiceNames(payload: unknown): string[] {

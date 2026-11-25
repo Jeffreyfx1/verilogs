@@ -5,6 +5,9 @@ import { SHELF_CATEGORIES, shelfOf } from "@/lib/shelves";
 
 const COLS = 27;
 
+/** Customer service and country lists. England currently has 831 in-stock services. */
+export const NUMBER_LIST_LIMIT = 5000;
+
 export function encodeCursor(row: { service: string; name: string; id: string }) {
   return `${row.service}\u001f${row.name}\u001f${row.id}`;
 }
@@ -395,7 +398,7 @@ export async function queryServices(input: BrowseInput) {
   const sql = await getSql();
   const values: unknown[] = [];
   const where = filters(input, values);
-  const limit = input.category === "usa" ? 5000 : 400;
+  const limit = NUMBER_LIST_LIMIT;
   values.push(limit);
   const rows = await sql.query<{ service: string; provider_id: string; cost: number; price: number }>(
     `select service, provider_id, min(cost) as cost, min(price) as price from shop_products where ${where} group by service, provider_id order by service limit $${values.length}`,
@@ -450,7 +453,7 @@ export async function queryCountries(input: BrowseInput) {
   const values: unknown[] = [];
   const where = filters(input, values);
   const rows = await sql.query<Record<string, unknown>>(
-    `select distinct on (country) * from shop_products where ${where} order by country, price asc limit 300`,
+    `select distinct on (country) * from shop_products where ${where} order by country, price asc limit ${NUMBER_LIST_LIMIT}`,
     values,
   );
   return rows.map(rowOf).sort((a, b) => a.price - b.price || a.country.localeCompare(b.country));
@@ -461,7 +464,7 @@ export async function queryOperators(input: BrowseInput) {
   const values: unknown[] = [];
   const where = filters(input, values);
   const rows = await sql.query<Record<string, unknown>>(
-    `select * from shop_products where ${where} order by rate desc, price asc, operator asc limit 200`,
+    `select * from shop_products where ${where} order by rate desc, price asc, operator asc limit 500`,
     values,
   );
   return rows.map(rowOf);

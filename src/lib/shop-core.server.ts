@@ -4,7 +4,7 @@ import { getSql } from "@/lib/db";
 import { freshData, normalizeData, quoteProduct, resolveNumberServer, serverLabel, topupQuote, withAdminLogin, type Data, type Order, type Product, type SyncReport } from "@/lib/catalog";
 import { customerPrice, profitsOf, sellQuote, summarizeProfit } from "@/lib/pricing";
 import { rentCharge } from "@/lib/rent";
-import { extractCatalog, slimFiveSim, fiveSimCategoryUrl, fiveSimImportPlan, shapeImport, attachVtuIds, vtuCatalogueUrl, discoverServiceNames, mergeServiceNames, type ImportKind, type ParsedItem } from "@/lib/categorize";
+import { extractCatalog, fiveSimCategoryUrl, fiveSimImportPlan, fiveSimReconcileMessage, readFiveSimCatalogue, shapeImport, attachVtuIds, vtuCatalogueUrl, discoverServiceNames, mergeServiceNames, type ImportKind, type ParsedItem } from "@/lib/categorize";
 import { applyCategoryLogo } from "@/lib/logo-discover";
 import { AIRTIME_CLOSED, BILL_CLOSED, SMM_CLOSED, airtimeSalesOpen, isRetiredBill, smmSalesOpen } from "@/lib/purchase-history";
 import { airtimeCharge, airtimeImportBlock, airtimeOffers, prepareAirtimePurchase, sendAirtimePurchase, withoutAirtimeProducts, type AirtimeRouteRecord } from "@/lib/airtime";
@@ -41,6 +41,7 @@ import {
   setRowsEnabled,
   lockListing,
   upsertProductRows,
+  NUMBER_LIST_LIMIT,
 } from "@/lib/product-rows.server";
 import { catalogSplitVerified, ensureCatalogSplit } from "@/lib/catalog-split.server";
 import { beginPurchaseKey, creditBalance, debitBalance, markPurchaseKey, overlayBalances, reconcilePurchases } from "@/lib/shop-wallet.server";
@@ -1512,6 +1513,16 @@ export function integrationStatus() {
   };
 }
 
+function packFiveSim(raw: unknown, hint: string, allow: string[], place: { country?: string; operator?: string }) {
+  const audit = readFiveSimCatalogue(raw, hint, allow, place);
+  const payload = !audit || !audit.understood ? raw : audit.rows;
+  if (audit?.understood && (audit.lost.length > 0 || audit.stocked !== audit.rows.length)) {
+    const example = audit.lost[0] ? ` Example: ${audit.lost[0]}.` : "";
+    return { payload, reconcile: "", error: `5sim has in-stock offers the importer could not map.${example} Nothing was imported.` };
+  }
+  return { payload, reconcile: audit?.understood ? fiveSimReconcileMessage(audit) : "", error: "" };
+}
+
 export async function pullRemote(input: { url: string; apiKey?: string; providerId?: string; allow?: string[]; kind?: ImportKind; setup?: CatalogSetup | null }) {
   const session = await readSession();
   const doc = await loadLight();
@@ -1573,7 +1584,9 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
         }
       }
       if (!Object.keys(merged).length) return { ok: false as const, error: "None of the saved services came back from 5sim." };
-      return { ok: true as const, payload: slimFiveSim(merged, "", allow, {}), services: discoverServiceNames(merged) };
+      const packed = packFiveSim(merged, "", allow, {});
+      if (packed.error) return { ok: false as const, error: packed.error };
+      return { ok: true as const, payload: packed.payload, services: discoverServiceNames(merged), reconcile: packed.reconcile };
     }
     if (input.kind === "vtu-data" || input.kind === "vtu") {
       const catalogue = vtuCatalogueUrl(url.toString());
@@ -1622,8 +1635,11 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     const parts = url.pathname.split("/").filter(Boolean);
     const at = parts.findIndex((part) => part === "products");
     const place = at >= 0 ? { country: parts[at + 1] || "", operator: parts[at + 2] || "any" } : {};
-    const ready = url.hostname.endsWith("5sim.net") ? slimFiveSim(payload, hint, allow, place) : payload;
-    const services = url.hostname.endsWith("5sim.net") ? discoverServiceNames(payload) : [];
+    const fiveSimHost = url.hostname.endsWith("5sim.net");
+    const packed = fiveSimHost ? packFiveSim(payload, hint, allow, place) : null;
+    if (packed?.error) return { ok: false as const, error: packed.error, fetch: fetchReport };
+    const ready = packed ? packed.payload : payload;
+    const services = fiveSimHost ? discoverServiceNames(payload) : [];
     if (/(^|\.)getatext\.com$/i.test(host)) {
       const prices = normalizeGetaTextPayload(ready);
       if (prices?.recognized) {
@@ -1631,7 +1647,7 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
         return { ok: true as const, payload: prices.rows, fetch: fetchReport, setup: probe.setup, services };
       }
     }
-    return { ok: true as const, payload: ready, fetch: fetchReport, setup: probe.setup, services };
+    return { ok: true as const, payload: ready, fetch: fetchReport, setup: probe.setup, services, reconcile: packed?.reconcile || "" };
   } catch {
     return { ok: false as const, error: "Could not reach that API. Check the URL and key." };
   } finally {
@@ -1827,6 +1843,7 @@ type ImportMeta = {
   fetchStatus?: number;
   fetchDiscovered?: number;
   services?: string[];
+  reconcile?: string;
 };
 
 
@@ -1894,6 +1911,9 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
       fetchDiscovered = "fetch" in fetched && fetched.fetch ? fetched.fetch.discovered : 0;
       noted = "fetch" in fetched && fetched.fetch ? fetchNote(fetched.fetch) : "";
     }
+    if ("reconcile" in fetched && typeof fetched.reconcile === "string" && fetched.reconcile) {
+      noted = noted ? `${noted} ${fetched.reconcile}` : fetched.reconcile;
+    }
   }
   if (payload == null) return emptyImport(selective ? "Tick products before importing." : "Add a catalogue URL or paste JSON.");
   if (kind === "usa") {
@@ -1947,6 +1967,7 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
     fetchStatus,
     fetchDiscovered,
     services: services.length ? services : [...new Set(items.map((item) => item.service).filter(Boolean))],
+    reconcile: noted,
   };
   const sql = await getSql();
   const skipped = extracted.skipped + (extracted.items.length - items.length);
@@ -2219,6 +2240,7 @@ export async function stepCatalogImport(jobId: string) {
       byNetwork: tally.byNetwork,
       providerId,
       serverLabel: serverLabel(view.providers, providerId),
+      note: finalize ? (meta.reconcile || "") : "",
     };
     return { error: null, jobId, total, saved, batch: cursor + 1, batches, batchSize, done: finalize, report, state: projectShop(view, fresh.userId, fresh.draft) };
   } catch (err) {
@@ -2286,7 +2308,7 @@ export async function browseNumbers(input: { providerId?: string; category?: str
       return [...best.entries()].map(([service, price]) => ({ service, price })).sort((a, b) => a.service.localeCompare(b.service));
     };
     const ranked = rank(await queryServices(query));
-    const limit = want === "usa" ? 5000 : 100;
+    const limit = NUMBER_LIST_LIMIT;
     const provider = doc.providers.find((item) => item.id === (input.providerId || ""));
     const fiveSim = want === "number" && isFiveSimServer1(provider);
     const preview = ranked.slice(0, limit);

@@ -5,13 +5,15 @@ import {
   discoverServiceNames,
   extractCatalog,
   fiveSimImportPlan,
+  fiveSimReconcileMessage,
   mergeServiceNames,
+  readFiveSimCatalogue,
   savedProductCount,
   shapeImport,
   slimFiveSim,
 } from "./categorize.ts";
 import { getSql } from "@/lib/db";
-import { countExistingProducts, upsertProductRows } from "@/lib/product-rows.server";
+import { NUMBER_LIST_LIMIT, countExistingProducts, upsertProductRows } from "@/lib/product-rows.server";
 
 const quote = (cost: number, count: number, rate = 80) => ({ cost, count, rate, rate24: 70 });
 
@@ -70,6 +72,40 @@ test("the full country → service → operator catalogue discovers services wit
   assert.deepEqual(names, ["deadapp", "telegram", "whatsapp"]);
   assert.deepEqual(mergeServiceNames(["WhatsApp", "Google"], names), ["WhatsApp", "Google", "deadapp", "telegram"]);
   assert.equal(mergeServiceNames(["WhatsApp"], ["whatsapp", "WhatsApp"]).length, 1);
+});
+
+test("Telegram for Canada keeps the 5sim service id and is not hidden by the old 100-name page", () => {
+  const countryTree = {
+    canada: {
+      telegram: {
+        virtual8: quote(0.359, 26995),
+        virtual2: quote(0.49, 0),
+      },
+      whatsapp: { virtual12: quote(0.53, 40) },
+    },
+  };
+  const productTree = { telegram: { canada: { virtual12: quote(0.6, 77640), virtual58: quote(1.3, 0) } } };
+  const audit = readFiveSimCatalogue(countryTree);
+  assert.ok(audit);
+  assert.equal(audit.understood, true);
+  assert.equal(audit.lost.length, 0);
+  assert.equal(audit.stocked, audit.rows.length);
+  assert.equal(audit.unavailable, 1);
+  assert.match(fiveSimReconcileMessage(audit), /out of stock not listed/);
+  const fromCountry = offers(countryTree).filter((item) => item.service === "Telegram" && item.country === "Canada");
+  const fromProduct = offers(productTree).filter((item) => item.service === "Telegram" && item.country === "Canada");
+  assert.equal(fromCountry.length, 1);
+  assert.equal(fromCountry[0]?.operator, "virtual8");
+  assert.equal(fromCountry[0]?.externalId, "canada|telegram|virtual8");
+  assert.equal(fromCountry[0]?.serverId, "1");
+  assert.equal(fromProduct.length, 1);
+  assert.equal(fromProduct[0]?.externalId, "canada|telegram|virtual12");
+  assert.equal(fromProduct[0]?.stock, 77640);
+  const names = Array.from({ length: 216 }, (_, index) => `name-${String(index).padStart(3, "0")}`);
+  names[179] = "Telegram";
+  assert.equal(names.slice(0, 100).includes("Telegram"), false);
+  assert.equal(names.slice(0, NUMBER_LIST_LIMIT).includes("Telegram"), true);
+  assert.ok(NUMBER_LIST_LIMIT >= 831);
 });
 
 test("a product-filtered 5sim response and an array of products still import", () => {

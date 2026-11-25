@@ -1,6 +1,7 @@
-/** FiveSim Server 1 stores hundreds of services. The customer list is alphabetical
- * and capped, so WhatsApp sorts off the page even when the catalogue has stock.
- * These helpers only decide whether that one real row should be added back.
+/** FiveSim countries publish hundreds of services. The customer list used to keep
+ * the first 100 names, which hid Telegram and every later service. The page now
+ * returns the whole country up to this cap. The helper below only puts WhatsApp
+ * back if a smaller page is requested.
  */
 
 export function serviceSlug(name: string) {

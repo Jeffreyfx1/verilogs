@@ -152,7 +152,7 @@ async function drain(jobId: string, batches: number) {
     phase: "done",
     report: latest.report,
     saved: latest.saved,
-    status: `${filed} services filed${latest.report.serverLabel ? ` under ${latest.report.serverLabel}` : ""}.`,
+    status: `${filed} services filed${latest.report.serverLabel ? ` under ${latest.report.serverLabel}` : ""}.${latest.report.note ? ` ${latest.report.note}` : ""}`,
   });
   toast.success(`${filed} services filed.`);
 }

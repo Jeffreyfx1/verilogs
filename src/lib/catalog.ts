@@ -501,6 +501,7 @@ export type SyncReport = {
   byNetwork: Record<string, number>;
   providerId: string;
   serverLabel: string | null;
+  note?: string;
 };
 
 function cleanServerId(value: string | undefined) {
