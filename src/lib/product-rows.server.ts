@@ -395,8 +395,10 @@ export async function queryServices(input: BrowseInput) {
   const sql = await getSql();
   const values: unknown[] = [];
   const where = filters(input, values);
+  const limit = input.category === "usa" ? 5000 : 400;
+  values.push(limit);
   const rows = await sql.query<{ service: string; provider_id: string; cost: number; price: number }>(
-    `select service, provider_id, min(cost) as cost, min(price) as price from shop_products where ${where} group by service, provider_id order by service limit 400`,
+    `select service, provider_id, min(cost) as cost, min(price) as price from shop_products where ${where} group by service, provider_id order by service limit $${values.length}`,
     values,
   );
   return rows.map((row) => ({ service: row.service, providerId: row.provider_id, cost: Number(row.cost) || 0, price: Number(row.price) || 0 }));

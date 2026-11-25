@@ -9,7 +9,7 @@ import { applyCategoryLogo } from "@/lib/logo-discover";
 import { AIRTIME_CLOSED, BILL_CLOSED, SMM_CLOSED, airtimeSalesOpen, isRetiredBill, smmSalesOpen } from "@/lib/purchase-history";
 import { airtimeCharge, airtimeImportBlock, airtimeOffers, prepareAirtimePurchase, sendAirtimePurchase, withoutAirtimeProducts, type AirtimeRouteRecord } from "@/lib/airtime";
 import { deleteAirtimeNetworkRow, deleteAirtimeRouteRow, listAirtimeRecords, saveAirtimeNetworkRow, saveAirtimeRouteRow } from "@/lib/airtime-rows.server";
-import { destinationOf, flattenGetaText, readGetaTextPrices, sourceKindOf } from "@/lib/import-source";
+import { destinationOf, normalizeGetaTextPayload, sourceKindOf } from "@/lib/import-source";
 import { instakingCurrency, instakingPost, isInstakingHost, parseInstakingServices, readSmmDetail } from "@/lib/instaking";
 import { catalogStamp, followCatalogPages, walkBrowse } from "@/lib/catalog-pages";
 import { applyFieldMap, getatextCatalogueUrl, looksLikePurchase, publicEndpoint, setupView, type CatalogMethod, type CatalogSetup } from "@/lib/catalog-request";
@@ -1625,13 +1625,11 @@ export async function pullRemote(input: { url: string; apiKey?: string; provider
     const ready = url.hostname.endsWith("5sim.net") ? slimFiveSim(payload, hint, allow, place) : payload;
     const services = url.hostname.endsWith("5sim.net") ? discoverServiceNames(payload) : [];
     if (/(^|\.)getatext\.com$/i.test(host)) {
-      const prices = readGetaTextPrices(ready);
+      const prices = normalizeGetaTextPayload(ready);
       if (prices?.recognized) {
         if (!prices.rows.length) return { ok: false as const, error: "GetaText did not return any USA services.", fetch: fetchReport };
         return { ok: true as const, payload: prices.rows, fetch: fetchReport, setup: probe.setup, services };
       }
-      const flat = flattenGetaText(ready);
-      if (flat) return { ok: true as const, payload: flat, fetch: fetchReport, setup: probe.setup, services };
     }
     return { ok: true as const, payload: ready, fetch: fetchReport, setup: probe.setup, services };
   } catch {
@@ -1898,6 +1896,10 @@ export async function beginCatalogImport(input: { url?: string; payload?: unknow
     }
   }
   if (payload == null) return emptyImport(selective ? "Tick products before importing." : "Add a catalogue URL or paste JSON.");
+  if (kind === "usa") {
+    const normalized = normalizeGetaTextPayload(payload);
+    if (normalized?.recognized) payload = normalized.rows;
+  }
   if (selective) {
     let size = 0;
     try {
@@ -2284,7 +2286,7 @@ export async function browseNumbers(input: { providerId?: string; category?: str
       return [...best.entries()].map(([service, price]) => ({ service, price })).sort((a, b) => a.service.localeCompare(b.service));
     };
     const ranked = rank(await queryServices(query));
-    const limit = want === "usa" ? 400 : 100;
+    const limit = want === "usa" ? 5000 : 100;
     const provider = doc.providers.find((item) => item.id === (input.providerId || ""));
     const fiveSim = want === "number" && isFiveSimServer1(provider);
     const preview = ranked.slice(0, limit);

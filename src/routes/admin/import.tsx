@@ -6,7 +6,7 @@ import { PricingAdmin } from "@/components/pricing-admin";
 import { LogsApiAdmin } from "@/components/logs-api-admin";
 import { CATEGORY_LABEL, serverSlots } from "@/lib/catalog";
 import { extractCatalog, shapeImport, type ImportKind } from "@/lib/categorize";
-import { IMPORT_CARDS } from "@/lib/import-source";
+import { IMPORT_CARDS, normalizeGetaTextPayload } from "@/lib/import-source";
 import { batchWindow } from "@/lib/import-batch";
 import { resumeCatalogRun, startCatalogRun, useImportRun } from "@/lib/import-run";
 import { naira } from "@/lib/money";
@@ -131,7 +131,12 @@ function ImportPage() {
   const preview = useMemo(() => {
     if (!text.trim()) return null;
     try {
-      const parsed = extractCatalog(JSON.parse(text));
+      let body: unknown = JSON.parse(text);
+      if (kind === "usa") {
+        const normalized = normalizeGetaTextPayload(body);
+        if (normalized?.recognized) body = normalized.rows;
+      }
+      const parsed = extractCatalog(body);
       const wanted = names.split(/\n+/).map((item) => item.trim()).filter(Boolean);
       const items = shapeImport(parsed.items, kind, wanted);
       return { ok: true as const, items, skipped: parsed.skipped + (parsed.items.length - items.length) };

@@ -107,3 +107,84 @@ test("GetaText prices-info maps service name, api name, price and stock", () => 
   assert.equal(direct.every((item) => item.service === "whatsapp" || item.service === "telegram"), true);
   assert.equal(direct.some((item) => /no id/i.test(item.name)), false);
 });
+
+test("GetaText prices array keeps USD amounts and sums area-code stock", () => {
+  const read = readGetaTextPrices({
+    service_name: "Catalogue",
+    api_name: "catalogue",
+    price: "9.99",
+    stock: 1,
+    prices: [
+      { service_name: "WhatsApp", api_name: "whatsapp", price: 1.4, stock: 12 },
+      { service_name: "Google", api_name: "google", price: "$0.50", stock: { "555": 9, "852": 3, "212": 0 } },
+      { service_name: "TikTok", api_name: "tiktok", price: { USD: 0.08 }, stock: 0 },
+      { service_name: "Broken", api_name: "broken", price: { "555": 4 }, stock: 9 },
+    ],
+  });
+  assert.equal(read?.recognized, true);
+  assert.equal(read?.rows.length, 3);
+  assert.equal(read?.rows.some((row) => row.service === "catalogue"), false);
+  const whatsapp = read?.rows.find((row) => row.service === "whatsapp");
+  const google = read?.rows.find((row) => row.service === "google");
+  const tiktok = read?.rows.find((row) => row.service === "tiktok");
+  assert.equal(whatsapp?.cost, 1.4);
+  assert.equal(whatsapp?.count, 12);
+  assert.equal(whatsapp?.country, "usa");
+  assert.equal(google?.cost, 0.5);
+  assert.equal(google?.count, 12);
+  assert.equal(google?.country, "usa");
+  assert.equal(tiktok?.cost, 0.08);
+  assert.equal(tiktok?.count, 0);
+  assert.equal(read?.rows.some((row) => row.service === "555" || row.country === "555" || row.country === "852"), false);
+  const currencyStock = readGetaTextPrices({
+    data: [{ service_name: "Signal", api_name: "signal", price: 0.2, stock: { USD: 40 } }],
+  });
+  assert.equal(currencyStock?.rows[0]?.cost, 0.2);
+  assert.equal(currencyStock?.rows[0]?.count, 0);
+});
+
+test("GetaText service map and USA country aliases stay one USA row", () => {
+  const mapped = readGetaTextPrices({
+    whatsapp: { service_name: "WhatsApp", price: "$1.40", stock: { "212": 4, "646": 1 } },
+    telegram: { price: 0.97, count: 3 },
+  });
+  assert.equal(mapped?.rows.length, 2);
+  assert.equal(mapped?.rows.find((row) => row.service === "whatsapp")?.count, 5);
+  assert.equal(mapped?.rows.find((row) => row.service === "whatsapp")?.cost, 1.4);
+  assert.equal(mapped?.rows.find((row) => row.service === "telegram")?.count, 3);
+  const aliased = flattenGetaText({
+    usa: {
+      whatsapp: { cost: 0.55, count: 10 },
+      tinder: { cost: 0.18, count: 2 },
+    },
+    "187": {
+      whatsapp: { cost: 0.4, count: 25 },
+      telegram: { cost: 0.45, count: 4 },
+    },
+  });
+  assert.equal(aliased?.filter((row) => row.service === "whatsapp").length, 1);
+  assert.equal(aliased?.find((row) => row.service === "whatsapp")?.country, "usa");
+  assert.equal(aliased?.find((row) => row.service === "whatsapp")?.count, 25);
+  assert.equal(aliased?.find((row) => row.service === "whatsapp")?.cost, 0.4);
+  assert.equal(aliased?.find((row) => row.service === "telegram")?.country, "usa");
+  assert.equal(aliased?.some((row) => row.country === "187" || row.service === "187"), false);
+  const stamped = shapeImport(extractCatalog(aliased).items, "usa", ["Telegram"]);
+  assert.equal(stamped.length, 3);
+  assert.ok(stamped.every((item) => item.category === "usa" && item.country === "United States"));
+});
+
+test("USA import keeps every priced service while number servers still use the wanted list", () => {
+  const extracted = extractCatalog({
+    data: [
+      { service_name: "Whatsapp", api_name: "whatsapp", price: "0.55", stock: 4 },
+      { service_name: "TikTok", api_name: "tiktok", price: "0.08", stock: 2 },
+    ],
+  });
+  const usa = shapeImport(extracted.items, "usa", ["Telegram"]);
+  assert.deepEqual(usa.map((item) => item.service).sort(), ["tiktok", "whatsapp"]);
+  assert.equal(shapeImport(extracted.items, "numbers", ["Telegram"]).length, 0);
+  const kept = shapeImport(extracted.items, "numbers", ["WhatsApp"]);
+  assert.equal(kept.length, 1);
+  assert.equal(kept[0]?.service, "whatsapp");
+  assert.equal(kept[0]?.importType, "NUMBER_IMPORT");
+});

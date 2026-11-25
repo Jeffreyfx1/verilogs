@@ -519,7 +519,7 @@ export function shapeImport(items: ParsedItem[], kind: ImportKind, wanted: strin
   const dest = destinationOf(kind);
   if (!dest) return [];
   let rows = items.filter((item) => !!(item.name || item.service || item.externalId));
-  if ((dest.importType === "NUMBER_IMPORT" || dest.importType === "USA_IMPORT") && wanted.length) {
+  if (dest.importType === "NUMBER_IMPORT" && wanted.length) {
     rows = rows.filter((item) => serviceAllowed(item.service || item.name, wanted));
   }
   return rows.map((item) => ({

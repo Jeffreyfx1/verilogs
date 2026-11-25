@@ -1,4 +1,5 @@
 /** Marketplace comes from the import the admin selected. Product text is never consulted. */
+import { parseMoney } from "./money.ts";
 
 export const IMPORT_TYPES = ["SMM_IMPORT", "NUMBER_IMPORT", "VPN_IMPORT", "RANDOM_IMPORT", "VTU_IMPORT", "USA_IMPORT"] as const;
 export type ImportType = (typeof IMPORT_TYPES)[number];
@@ -44,6 +45,83 @@ function textField(row: Record<string, unknown>, keys: string[]) {
   return "";
 }
 
+function moneyCost(raw: unknown): number | null {
+  const n = parseMoney(raw);
+  return n != null && Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** A number, a numeric string, or a sum of area-code counts. Currency objects are not stock. */
+function stockCount(raw: unknown): number {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw > 0 ? Math.round(raw) : 0;
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return 0;
+    const n = Number(trimmed.replace(/[,\s]/g, ""));
+    return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return 0;
+  const rec = raw as Record<string, unknown>;
+  if ("USD" in rec || "usd" in rec || "NGN" in rec || "ngn" in rec || "cost" in rec || "price" in rec || "Price" in rec) return 0;
+  let sum = 0;
+  let saw = false;
+  for (const value of Object.values(rec)) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      saw = true;
+      if (value > 0) sum += value;
+    } else if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) {
+      saw = true;
+      const n = Number(value);
+      if (n > 0) sum += n;
+    }
+  }
+  return saw ? Math.round(sum) : 0;
+}
+
+function pickStock(row: Record<string, unknown>) {
+  if ("stock" in row && row.stock != null) return stockCount(row.stock);
+  if ("count" in row && row.count != null) return stockCount(row.count);
+  if ("physicalCount" in row && row.physicalCount != null) return stockCount(row.physicalCount);
+  return 0;
+}
+
+function isUsaAliasKey(key: string) {
+  const normalized = key.trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  return normalized === "usa" || normalized === "us" || normalized === "187" || normalized === "united states" || normalized === "united states of america";
+}
+
+function usaAlias(country: string) {
+  const trimmed = country.trim();
+  return trimmed && isUsaAliasKey(trimmed) ? "usa" : trimmed;
+}
+
+function serviceKey(key: string) {
+  const trimmed = key.trim();
+  if (!trimmed || isUsaAliasKey(trimmed) || /^\d+$/.test(trimmed)) return "";
+  return /^[a-z0-9][a-z0-9._+-]{0,64}$/i.test(trimmed) ? trimmed : "";
+}
+
+/** `{ whatsapp: { price, stock } }` — not a country → service tree. */
+function asServiceMap(payload: unknown): Array<Record<string, unknown>> | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const entries = Object.entries(payload as Record<string, unknown>);
+  if (!entries.length) return null;
+  const rows: Array<Record<string, unknown>> = [];
+  for (const [key, value] of entries) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const rec = value as Record<string, unknown>;
+    const cost = moneyCost(rec.price ?? rec.cost ?? rec.retail_price);
+    const nested = Object.values(rec).some((item) => item && typeof item === "object");
+    if (!(cost != null && cost > 0)) {
+      if (nested || isUsaAliasKey(key)) return null;
+      continue;
+    }
+    const api = textField(rec, ["api_name", "apiName"]) || serviceKey(key);
+    if (!api || (isUsaAliasKey(key) && !textField(rec, ["api_name", "apiName"]))) return null;
+    rows.push({ ...rec, api_name: api });
+  }
+  return rows.length ? rows : null;
+}
+
 function priceInfoRow(row: unknown): row is Record<string, unknown> {
   if (!row || typeof row !== "object" || Array.isArray(row)) return false;
   const rec = row as Record<string, unknown>;
@@ -59,9 +137,9 @@ export function readGetaTextPrices(payload: unknown): { recognized: boolean; row
   for (const row of listed) {
     const service = textField(row, ["api_name", "apiName"]);
     const name = textField(row, ["service_name", "serviceName"]) || service;
-    const cost = Number(row.price ?? row.cost);
-    const count = Number(row.stock ?? row.count ?? 0);
-    if (!service || !Number.isFinite(cost) || !(cost > 0) || seen.has(service)) continue;
+    const cost = moneyCost(row.price ?? row.cost);
+    const count = pickStock(row);
+    if (!service || cost == null || seen.has(service)) continue;
     seen.add(service);
     rows.push({
       id: service,
@@ -72,7 +150,7 @@ export function readGetaTextPrices(payload: unknown): { recognized: boolean; row
       country: "usa",
       operator: "",
       cost,
-      count: Number.isFinite(count) && count > 0 ? Math.round(count) : 0,
+      count,
     });
   }
   return { recognized: true, rows };
@@ -83,15 +161,25 @@ function priceInfoList(payload: unknown): Array<Record<string, unknown>> | null 
     const rows = payload.filter(priceInfoRow);
     return rows.length ? rows : null;
   }
-  if (priceInfoRow(payload)) return [payload];
   if (!payload || typeof payload !== "object") return null;
   const bag = payload as Record<string, unknown>;
   for (const key of ["data", "services", "prices", "result", "items", "list"]) {
     if (!(key in bag)) continue;
     const found = priceInfoList(bag[key]);
     if (found) return found;
+    const mapped = asServiceMap(bag[key]);
+    if (mapped) return mapped;
   }
-  return null;
+  if (priceInfoRow(payload)) return [payload];
+  return asServiceMap(payload);
+}
+
+export function normalizeGetaTextPayload(payload: unknown): { recognized: boolean; rows: Array<Record<string, unknown>> } | null {
+  const prices = readGetaTextPrices(payload);
+  if (prices) return prices;
+  const flat = flattenGetaText(payload);
+  if (!flat?.length) return null;
+  return { recognized: true, rows: flat };
 }
 
 export function flattenGetaText(payload: unknown): Array<Record<string, unknown>> | null {
@@ -99,10 +187,21 @@ export function flattenGetaText(payload: unknown): Array<Record<string, unknown>
   if (prices) return prices.rows.length ? prices.rows : null;
   if (!payload || typeof payload !== "object") return null;
   const rows: Array<Record<string, unknown>> = [];
-  const push = (country: string, service: string, operator: string, quote: Record<string, unknown>) => {
-    const cost = Number(quote.cost ?? quote.price ?? quote.retail_price);
-    const count = Number(quote.count ?? quote.physicalCount ?? quote.stock ?? 0);
-    if (!service || !Number.isFinite(cost) || cost <= 0) return;
+  const seen = new Map<string, Record<string, unknown>>();
+  const push = (countryRaw: string, service: string, operator: string, quote: Record<string, unknown>) => {
+    const cost = moneyCost(quote.cost ?? quote.price ?? quote.retail_price);
+    if (!service || cost == null) return;
+    const country = usaAlias(countryRaw) || "usa";
+    const count = pickStock(quote);
+    const key = `${country}|${service}|${operator}`.toLowerCase();
+    const prev = seen.get(key);
+    if (prev) {
+      if (count > Number(prev.count || 0)) {
+        prev.count = count;
+        prev.cost = cost;
+      }
+      return;
+    }
     const row: Record<string, unknown> = {
       id: `${country}|${service}|${operator}`,
       name: service,
@@ -110,10 +209,11 @@ export function flattenGetaText(payload: unknown): Array<Record<string, unknown>
       country,
       operator,
       cost,
-      count: Number.isFinite(count) ? count : 0,
+      count,
     };
     const rate = quote.rate ?? quote.success_rate ?? quote.successRate;
     if (rate != null && rate !== "" && Number.isFinite(Number(rate))) row.rate = Number(rate);
+    seen.set(key, row);
     rows.push(row);
   };
   if (Array.isArray(payload)) {
@@ -131,7 +231,11 @@ export function flattenGetaText(payload: unknown): Array<Record<string, unknown>
     for (const [service, quote] of Object.entries(services as Record<string, unknown>)) {
       if (!quote || typeof quote !== "object" || Array.isArray(quote)) continue;
       const record = quote as Record<string, unknown>;
-      const nested = Object.entries(record).filter(([, value]) => value && typeof value === "object");
+      const nested = Object.entries(record).filter(([, value]) => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+        const inner = value as Record<string, unknown>;
+        return moneyCost(inner.cost ?? inner.price ?? inner.retail_price) != null;
+      });
       if (nested.length) {
         shaped = true;
         for (const [operator, inner] of nested) {
@@ -139,7 +243,7 @@ export function flattenGetaText(payload: unknown): Array<Record<string, unknown>
         }
         continue;
       }
-      if (Number.isFinite(Number(record.cost ?? record.price))) {
+      if (moneyCost(record.cost ?? record.price) != null) {
         shaped = true;
         push(country, service, "any", record);
       }
