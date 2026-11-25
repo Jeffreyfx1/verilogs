@@ -1,7 +1,5 @@
-/** FiveSim countries publish hundreds of services. The customer list used to keep
- * the first 100 names, which hid Telegram and every later service. The page now
- * returns the whole country up to this cap. The helper below only puts WhatsApp
- * back if a smaller page is requested.
+/** 5sim service search returns 500 names. A shorter page still puts WhatsApp back
+ * when that one row was cut off.
  */
 
 export function serviceSlug(name: string) {

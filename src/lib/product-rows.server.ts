@@ -7,6 +7,8 @@ const COLS = 27;
 
 /** Customer service and country lists. England currently has 831 in-stock services. */
 export const NUMBER_LIST_LIMIT = 5000;
+/** 5sim service search. Was 100, which cut off Telegram and later names. */
+export const FIVESIM_SEARCH_LIMIT = 500;
 
 export function encodeCursor(row: { service: string; name: string; id: string }) {
   return `${row.service}\u001f${row.name}\u001f${row.id}`;
@@ -398,7 +400,7 @@ export async function queryServices(input: BrowseInput) {
   const sql = await getSql();
   const values: unknown[] = [];
   const where = filters(input, values);
-  const limit = NUMBER_LIST_LIMIT;
+  const limit = input.category === "usa" ? NUMBER_LIST_LIMIT : FIVESIM_SEARCH_LIMIT;
   values.push(limit);
   const rows = await sql.query<{ service: string; provider_id: string; cost: number; price: number }>(
     `select service, provider_id, min(cost) as cost, min(price) as price from shop_products where ${where} group by service, provider_id order by service limit $${values.length}`,

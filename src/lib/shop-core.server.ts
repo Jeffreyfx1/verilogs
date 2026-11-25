@@ -42,6 +42,7 @@ import {
   lockListing,
   upsertProductRows,
   NUMBER_LIST_LIMIT,
+  FIVESIM_SEARCH_LIMIT,
 } from "@/lib/product-rows.server";
 import { catalogSplitVerified, ensureCatalogSplit } from "@/lib/catalog-split.server";
 import { beginPurchaseKey, creditBalance, debitBalance, markPurchaseKey, overlayBalances, reconcilePurchases } from "@/lib/shop-wallet.server";
@@ -2308,7 +2309,7 @@ export async function browseNumbers(input: { providerId?: string; category?: str
       return [...best.entries()].map(([service, price]) => ({ service, price })).sort((a, b) => a.service.localeCompare(b.service));
     };
     const ranked = rank(await queryServices(query));
-    const limit = NUMBER_LIST_LIMIT;
+    const limit = want === "usa" ? NUMBER_LIST_LIMIT : FIVESIM_SEARCH_LIMIT;
     const provider = doc.providers.find((item) => item.id === (input.providerId || ""));
     const fiveSim = want === "number" && isFiveSimServer1(provider);
     const preview = ranked.slice(0, limit);

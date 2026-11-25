@@ -13,7 +13,7 @@ import {
   slimFiveSim,
 } from "./categorize.ts";
 import { getSql } from "@/lib/db";
-import { NUMBER_LIST_LIMIT, countExistingProducts, upsertProductRows } from "@/lib/product-rows.server";
+import { FIVESIM_SEARCH_LIMIT, NUMBER_LIST_LIMIT, countExistingProducts, upsertProductRows } from "@/lib/product-rows.server";
 
 const quote = (cost: number, count: number, rate = 80) => ({ cost, count, rate, rate24: 70 });
 
@@ -104,7 +104,8 @@ test("Telegram for Canada keeps the 5sim service id and is not hidden by the old
   const names = Array.from({ length: 216 }, (_, index) => `name-${String(index).padStart(3, "0")}`);
   names[179] = "Telegram";
   assert.equal(names.slice(0, 100).includes("Telegram"), false);
-  assert.equal(names.slice(0, NUMBER_LIST_LIMIT).includes("Telegram"), true);
+  assert.equal(FIVESIM_SEARCH_LIMIT, 500);
+  assert.equal(names.slice(0, FIVESIM_SEARCH_LIMIT).includes("Telegram"), true);
   assert.ok(NUMBER_LIST_LIMIT >= 831);
 });
 
