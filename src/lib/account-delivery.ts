@@ -1,10 +1,11 @@
 /** Labels for a delivered Logs or VPN account. Labels come from the listing format or from names the provider already returned. */
 
-import { FACEBOOK_2FA_HEADING, FACEBOOK_2FA_LINKS, FACEBOOK_2FA_NOTE, isFacebookAccount, parseFacebookAccounts } from "@/lib/facebook-account";
+import { FACEBOOK_INFO_HEADING, FACEBOOK_INFO_NOTE, isFacebookAccount, parseFacebookAccounts } from "@/lib/facebook-account";
 
 export type AccountField = { label: string; value: string };
 export type AccountGuide = { heading: string; note: string; links: string[] };
-export type ParsedAccount = { fields: AccountField[]; layout?: "facebook"; guide?: AccountGuide };
+export type AccountGap = { label: string; reason: "absent" | "unlabelled" };
+export type ParsedAccount = { fields: AccountField[]; layout?: "facebook"; guide?: AccountGuide; gaps?: AccountGap[] };
 
 const SINK = /cookie|url|link|token|session|extra|raw|2fa|recovery/i;
 
@@ -29,7 +30,7 @@ export function parseAccountDelivery(raw: string, hint = ""): ParsedAccount[] {
   if (isFacebookAccount(hint)) {
     const facebook = parseFacebookAccounts(text, hint);
     if (facebook.length) return facebook;
-    return [{ fields: [], layout: "facebook", guide: { heading: FACEBOOK_2FA_HEADING, note: FACEBOOK_2FA_NOTE, links: [...FACEBOOK_2FA_LINKS] } }];
+    return [{ fields: [], layout: "facebook", guide: { heading: FACEBOOK_INFO_HEADING, note: FACEBOOK_INFO_NOTE, links: [] }, gaps: [{ label: "User ID (Login ID)", reason: "absent" }] }];
   }
   if (text.startsWith("{") || text.startsWith("[")) {
     try {

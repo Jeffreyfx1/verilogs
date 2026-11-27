@@ -314,6 +314,17 @@ function FacebookDelivery({ account, onCopy }: { account: View["accounts"][numbe
           ))}
         </div>
       ) : null}
+      {account.gaps?.length ? (
+        <div className="space-y-2">
+          {account.gaps.map((gap) => (
+            <div key={gap.label} className="rounded-xl border border-dashed border-line px-3 py-2">
+              <p className="text-xs font-extrabold">{gap.label}</p>
+              <p className="mt-1 text-sm text-muted">{gap.reason === "absent" ? "Not included in this provider response." : "Not placed. The provider response did not label this field clearly enough to match it."}</p>
+            </div>
+          ))}
+          <p className="text-sm text-muted">This delivery did not include every account field. Nothing was invented to fill the gap.</p>
+        </div>
+      ) : null}
       {account.guide ? (
         <section className="space-y-2 rounded-xl border border-line bg-paper px-3 py-3">
           <p className="text-sm font-extrabold">{account.guide.heading}</p>

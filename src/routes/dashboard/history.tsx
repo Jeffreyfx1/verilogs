@@ -100,12 +100,21 @@ function OrderSummary({ order }: { order: { category?: string; title?: string; s
   const accounts = facebookOrderAccounts(order);
   if (accounts) {
     const fields = accounts.flatMap((account) => account.fields);
-    if (!fields.length) return null;
+    const gaps = accounts.flatMap((account) => account.gaps || []);
+    if (!fields.length && !gaps.length) return null;
     return (
       <div className="mt-2 space-y-1">
         {fields.map((field, index) => (
-          <p key={`${field.label}-${index}`} className="break-all text-xs leading-relaxed">
-            <span className="font-extrabold">{field.label}:</span> {field.value}
+          <div key={`${field.label}-${index}`} className="flex items-start justify-between gap-2">
+            <p className="min-w-0 break-all text-xs leading-relaxed">
+              <span className="font-extrabold">{field.label}:</span> {field.value}
+            </p>
+            <button type="button" className="shrink-0 text-xs font-extrabold text-primary" onClick={() => void navigator.clipboard.writeText(field.value).then(() => toast.success(`${field.label} copied`), () => toast.error("Could not copy that."))}>Copy</button>
+          </div>
+        ))}
+        {gaps.map((gap, index) => (
+          <p key={`${gap.label}-gap-${index}`} className="text-xs leading-relaxed text-muted">
+            <span className="font-extrabold">{gap.label}:</span> {gap.reason === "absent" ? "not included by the provider" : "not labelled clearly enough to place"}
           </p>
         ))}
       </div>

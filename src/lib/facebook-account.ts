@@ -3,7 +3,7 @@
  * Values are taken only from the provider string. A field that is not there is omitted.
  */
 
-import type { AccountField, AccountGuide, ParsedAccount } from "@/lib/account-delivery";
+import type { AccountField, AccountGap, AccountGuide, ParsedAccount } from "@/lib/account-delivery";
 
 export const FACEBOOK_HEADINGS = [
   "User ID (Login ID)",
@@ -13,8 +13,9 @@ export const FACEBOOK_HEADINGS = [
   "Linked Email Password",
 ] as const;
 
-export const FACEBOOK_2FA_HEADING = "Links to get Code from 2FA-Key";
-export const FACEBOOK_2FA_NOTE = "Paste the 2FA key into either link to get this account's verification code.";
+export const FACEBOOK_INFO_HEADING = "Important Account Information";
+export const FACEBOOK_INFO_NOTE = "Keep these details private. Use them only for this account. After you sign in, change the password and use the account's own security and recovery settings if you are locked out.";
+export const FACEBOOK_2FA_NOTE = "The 2FA key is the authenticator secret. Paste it into either link below to get the verification code.";
 export const FACEBOOK_2FA_LINKS = ["https://2fa.vn", "https://2fa-auth.com"] as const;
 
 type Slot = "login" | "password" | "totp" | "email" | "emailPassword";
@@ -70,11 +71,17 @@ function accountFromLine(line: string, hint: string): ParsedAccount | null {
     if (inner) return inner;
   }
   const fitting = formatLists(hint).filter((labels) => formatFits(labels, parts));
-  if (fitting[0]) return accountFromSlots(zipSlots(fitting[0], parts));
-  return accountFromSlots(slotsFromShapes(parts));
+  if (fitting.length) return finishAccount(combineFormats(fitting, parts));
+  const slots = slotsFromShapes(parts);
+  return finishAccount({ slots, gaps: shapeGaps(formatLists(hint), slots, parts) });
 }
 
-function accountFromSlots(slots: Partial<Record<Slot, string>>): ParsedAccount | null {
+function accountFromSlots(slots: Partial<Record<Slot, string>>, gaps: AccountGap[] = []): ParsedAccount | null {
+  return finishAccount({ slots, gaps });
+}
+
+function finishAccount(input: { slots: Partial<Record<Slot, string>>; gaps: AccountGap[] }): ParsedAccount | null {
+  const slots = { ...input.slots };
   if (!slots.login && slots.email) {
     slots.login = slots.email;
     delete slots.email;
@@ -85,9 +92,64 @@ function accountFromSlots(slots: Partial<Record<Slot, string>>): ParsedAccount |
     if (!value) continue;
     fields.push({ label: HEADING[slot], value });
   }
-  if (!fields.length) return null;
-  const guide: AccountGuide = { heading: FACEBOOK_2FA_HEADING, note: FACEBOOK_2FA_NOTE, links: [...FACEBOOK_2FA_LINKS] };
-  return { fields, layout: "facebook", guide };
+  const seen = new Set<string>();
+  const gaps = input.gaps.filter((gap) => {
+    if (!gap.label || seen.has(gap.label) || fields.some((field) => field.label === gap.label)) return false;
+    seen.add(gap.label);
+    return true;
+  });
+  if (!fields.length && !gaps.length) return null;
+  const guide: AccountGuide = {
+    heading: FACEBOOK_INFO_HEADING,
+    note: slots.totp ? `${FACEBOOK_INFO_NOTE} ${FACEBOOK_2FA_NOTE}` : FACEBOOK_INFO_NOTE,
+    links: slots.totp ? [...FACEBOOK_2FA_LINKS] : [],
+  };
+  return { fields, layout: "facebook", guide, gaps };
+}
+
+/** One documented order is followed. Two orders that both fit do not overwrite each other. */
+function combineFormats(lists: string[][], parts: string[]) {
+  const packed = lists.map((labels) => ({ slots: zipSlots(labels, parts), expected: expectedSlots(labels) }));
+  const slots: Partial<Record<Slot, string>> = {};
+  const gaps: AccountGap[] = [];
+  for (const slot of ORDER) {
+    const values = [...new Set(packed.map((item) => item.slots[slot] || "").filter(Boolean))];
+    const required = packed.every((item) => item.expected.includes(slot));
+    if (values.length === 1) slots[slot] = values[0];
+    else if (values.length > 1) gaps.push({ label: HEADING[slot], reason: "unlabelled" });
+    else if (required) gaps.push({ label: HEADING[slot], reason: "absent" });
+  }
+  return { slots, gaps };
+}
+
+function shapeGaps(lists: string[][], slots: Partial<Record<Slot, string>>, parts: string[]) {
+  const gaps: AccountGap[] = [];
+  const leftovers = unusedPasswords(slots, parts);
+  if (lists.length) {
+    const shared = ORDER.filter((slot) => lists.every((labels) => expectedSlots(labels).includes(slot)));
+    for (const slot of shared) {
+      if (slots[slot]) continue;
+      gaps.push({ label: HEADING[slot], reason: leftovers.length ? "unlabelled" : "absent" });
+    }
+  }
+  if (leftovers.length >= 2) {
+    if (!slots.password) gaps.push({ label: HEADING.password, reason: "unlabelled" });
+    if (!slots.emailPassword) gaps.push({ label: HEADING.emailPassword, reason: "unlabelled" });
+  }
+  return gaps;
+}
+
+function unusedPasswords(slots: Partial<Record<Slot, string>>, parts: string[]) {
+  const used = new Set(Object.values(slots).filter(Boolean));
+  return parts.map(clean).filter((part) => part && !used.has(part) && isPassword(part));
+}
+
+function expectedSlots(labels: string[]): Slot[] {
+  const found = new Set<Slot>();
+  for (const role of rolesFor(labels)) {
+    if (role && role.slot !== "ignore") found.add(role.slot);
+  }
+  return ORDER.filter((slot) => found.has(slot));
 }
 
 function zipSlots(labels: string[], parts: string[]): Partial<Record<Slot, string>> {
@@ -214,7 +276,7 @@ function labeledPair(line: string) {
 }
 
 function formatLists(hint: string) {
-  const flat = String(hint || "").replace(/`/g, " ");
+  const flat = String(hint || "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&/gi, "&").replace(/`/g, " ");
   const start = flat.search(/account\s*format/i);
   const window = start >= 0 ? flat.slice(start) : flat;
   const body = window.split(/\bstep\s+1\b|\bkey features\b|\bimportant notes\b/i)[0] || window;
@@ -265,7 +327,7 @@ function slotOf(label: string): Role | null {
 function matches(expect: Expect, value: string) {
   if (expect === "email") return isEmail(value);
   if (expect === "uid") return isUid(value);
-  if (expect === "totp") return isTotp(value);
+  if (expect === "totp") return isTotp(value) || isNamedSecret(value);
   if (expect === "url") return isUrl(value);
   if (expect === "cookie") return isCookie(value) || value.length > 20;
   if (expect === "password") return isPassword(value);
@@ -377,6 +439,18 @@ function isTotp(value: string) {
   return /^[A-Za-z2-7]{16,64}$/.test(compact);
 }
 
+/** A column the listing names as the 2FA secret. Stricter than a guess, looser than base32. */
+function isNamedSecret(value: string) {
+  const compact = value.replace(/\s+/g, "");
+  if (compact.length < 8 || compact.length > 80) return false;
+  if (isEmail(value) || isUrl(value) || isCookie(value) || isHtml(value) || isLiveCode(compact) || isUid(compact) || isTotp(value)) return false;
+  return /^[A-Za-z0-9+/=_-]+$/.test(compact);
+}
+
+function isHtml(value: string) {
+  return /<[a-z!/][^>]*>/i.test(value);
+}
+
 function isLiveCode(value: string) {
   return /^\d{6}$/.test(value.trim());
 }
@@ -391,6 +465,6 @@ function isCookie(value: string) {
 }
 
 function isPassword(value: string) {
-  if (!value || isEmail(value) || isUrl(value) || isTotp(value) || isCookie(value) || isUid(value) || isLiveCode(value)) return false;
+  if (!value || isEmail(value) || isUrl(value) || isTotp(value) || isCookie(value) || isUid(value) || isLiveCode(value) || isHtml(value)) return false;
   return value.length >= 4 && value.length <= 80 && !/\s/.test(value);
 }

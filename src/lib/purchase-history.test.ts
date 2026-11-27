@@ -71,7 +71,8 @@ test("a Facebook order summary uses the labelled fields and not the raw provider
   assert.ok(accounts);
   assert.deepEqual(accounts[0]?.fields.map((field) => field.label), ["User ID (Login ID)", "Facebook Password", "2FA Key (Secret)", "Linked Email Password"]);
   assert.equal(JSON.stringify(accounts).includes(raw), false);
-  assert.equal(accounts[0]?.guide?.heading, "Links to get Code from 2FA-Key");
+  assert.equal(accounts[0]?.guide?.heading, "Important Account Information");
+  assert.deepEqual(accounts[0]?.guide?.links.map((link) => link), ["https://2fa.vn", "https://2fa-auth.com"]);
   assert.equal(facebookOrderAccounts({ category: "logs", title: "Facebook followers pack", code: raw, detail: "pack" }), null);
   assert.equal(facebookOrderAccounts({ category: "numbers", title: "Facebook", code: "123456" }), null);
 });
