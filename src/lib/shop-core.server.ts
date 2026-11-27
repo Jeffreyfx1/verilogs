@@ -18,6 +18,7 @@ import { uid } from "@/lib/money";
 import { isFiveSimServer1, isWhatsAppService, preferWhatsApp, wantsWhatsAppLookup, finishServicePage } from "@/lib/whatsapp-availability";
 import { mergeServicePrices } from "@/lib/service-search";
 import { mentionedCountry, mentionedService } from "@/lib/vera-mind";
+import { applyLiveToOrder, getatextCancelResult, mapGetaTextRental, orderIsOpen } from "@/lib/number-live";
 import { placeOnProvider } from "@/lib/fulfill.server";
 import {
   clearProducts,
@@ -399,8 +400,8 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
     } else if (op === "refund") {
       const orderId = str("orderId");
       const before = doc.orders.find((order) => order.id === orderId);
-      if (before && isServer1Number(before)) {
-        error = "Cancel this number from its purchase page. A refund is only issued after FiveSim confirms cancellation.";
+      if (before && (isServer1Number(before) || before.category === "usa" || before.server === "Rent number")) {
+        error = "Cancel this number from its purchase page. A refund is only issued after the number service confirms cancellation.";
       } else {
       const out = refundOrder(doc, userId, orderId);
       doc = out.data;
@@ -414,6 +415,8 @@ async function runAct(op: string, payload: Record<string, unknown>): Promise<App
     } else if (op === "tick") {
       doc = await syncInstakingOrders(doc);
       doc = await syncServer1Numbers(doc);
+      doc = await syncUsaNumbers(doc);
+      doc = await syncRentNumbers(doc);
       doc = tickWaiting(doc);
     } else if (op === "refill") {
       const out = await refillInstakingOrder(doc, userId, str("orderId"));
@@ -655,7 +658,7 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
     gain: charge - cost,
     code: quoted.category === "smm" ? "" : placed.ref,
     status: placed.waiting ? "waiting" : "completed",
-    providerStatus: quoted.category === "smm" ? "Pending" : "",
+    providerStatus: quoted.category === "smm" ? "Pending" : quoted.category === "usa" ? "active" : "",
     refillAvailable: !!quoted.smmRefill,
     detail: extra.detail || quoted.description,
   });
@@ -676,7 +679,7 @@ async function completePurchase(doc: Data, userId: string | null, productId: str
     gain: charge - cost,
     code: numberLike || quoted.category === "smm" ? "" : delivery || placed.ref,
     providerOrderId: quoted.category === "smm" ? placed.ref : providerRef,
-    providerStatus: quoted.category === "smm" ? "Pending" : "",
+    providerStatus: quoted.category === "smm" ? "Pending" : quoted.category === "usa" ? "active" : "",
     refillAvailable: !!quoted.smmRefill,
     status: placed.waiting ? "waiting" : "completed",
     delivery,
@@ -979,7 +982,7 @@ async function applyFiveSim(doc: Data, orderId: string, pulled: { phone: string;
 
 async function syncServer1Order(doc: Data, orderId: string) {
   const order = doc.orders.find((item) => item.id === orderId);
-  if (!order || !isServer1Number(order) || order.status === "completed" || order.status === "refunded") return doc;
+  if (!order || !isServer1Number(order) || !orderIsOpen(order)) return doc;
   const provider = server1Provider(doc);
   const key = provider ? await readProviderKey(provider.id) : "";
   const ref = String(order.providerOrderId || "").replace(/[^\d]/g, "");
@@ -997,7 +1000,7 @@ async function syncServer1Order(doc: Data, orderId: string) {
 
 async function syncRentOrder(doc: Data, orderId: string) {
   const order = doc.orders.find((item) => item.id === orderId);
-  if (!order || order.server !== "Rent number" || order.status === "completed" || order.status === "refunded") return doc;
+  if (!order || order.server !== "Rent number" || !orderIsOpen(order)) return doc;
   const provider = fiveSimProvider(doc);
   const key = provider ? await readProviderKey(provider.id) : "";
   const ref = String(order.providerOrderId || "").replace(/[^\d]/g, "");
@@ -1014,7 +1017,7 @@ async function syncRentOrder(doc: Data, orderId: string) {
 
 async function syncUsaOrder(doc: Data, orderId: string) {
   const order = doc.orders.find((item) => item.id === orderId);
-  if (!order || order.category !== "usa" || order.status === "completed" || order.status === "refunded") return doc;
+  if (!order || order.category !== "usa" || !orderIsOpen(order)) return doc;
   const provider = doc.providers.find((item) => item.enabled && /getatext\.com/i.test(item.baseUrl || ""));
   const key = provider ? await readProviderKey(provider.id) : "";
   const ref = String(order.providerOrderId || "").replace(/[^\d]/g, "");
@@ -1028,16 +1031,14 @@ async function syncUsaOrder(doc: Data, orderId: string) {
     });
     if (!res.ok) return doc;
     const json = await res.json().catch(() => null);
-    const { parseGetatextStatus } = await import("@/lib/fulfilment");
-    const pulled = parseGetatextStatus(json);
-    const messages = (order.messages || []).concat(pulled.messages);
-    const code = messages.map((item) => item.code).filter(Boolean).pop() || order.code;
-    const status: Order["status"] = pulled.terminal ? (/cancel/i.test(pulled.status) ? "refunded" : "completed") : code ? "received" : order.status;
-    const updated = { ...order, phone: pulled.phone || order.phone, code, messages, providerStatus: pulled.status || order.providerStatus, expiresAt: pulled.expiresAt || order.expiresAt || "", status };
-    let next = { ...doc, orders: doc.orders.map((item) => item.id === orderId ? updated : item) };
-    if (status === "refunded") {
+    const live = mapGetaTextRental(json);
+    const applied = applyLiveToOrder(order, live);
+    if (!applied.refund && applied.order.status === order.status && applied.order.code === order.code && applied.order.phone === order.phone && applied.order.providerStatus === order.providerStatus && applied.order.expiresAt === order.expiresAt && JSON.stringify(applied.order.messages || []) === JSON.stringify(order.messages || [])) return doc;
+    let next = { ...doc, orders: doc.orders.map((item) => item.id === orderId ? { ...item, ...applied.order } : item) };
+    if (applied.refund && order.status !== "refunded") {
       const moved = await creditBalance(order.userId, order.amount, "refund:" + order.id, "Refund · " + order.title, "refund");
       next = { ...next, users: next.users.map((user) => user.id === order.userId ? { ...user, balance: moved.balance } : user) };
+      await reverseReferral(order.userId, order.id);
     }
     return next;
   } catch {
@@ -1053,11 +1054,38 @@ export async function cancelUsaNumber(orderId: string) {
   const order = doc.orders.find((item) => item.id === orderId);
   if (!me || !order || (order.userId !== me.id && me.role !== "admin") || order.category !== "usa") return { error: "That purchase was not found.", state: null };
   if (order.status === "refunded") return { error: null, state: projectShop(doc, session.userId, session.draft) };
-  if (order.status === "completed" || order.code) return { error: "This number already has a code. It cannot be cancelled or refunded.", state: projectShop(doc, session.userId, session.draft) };
+  if (!orderIsOpen(order)) return { error: "This number is no longer active. Nothing was refunded.", state: projectShop(doc, session.userId, session.draft) };
   const provider = doc.providers.find((item) => item.enabled && /getatext\.com/i.test(item.baseUrl || ""));
   const key = provider ? await readProviderKey(provider.id) : "";
   const ref = String(order.providerOrderId || "").replace(/[^\d]/g, "");
-  if (!key || !ref) return { error: "This number has no provider reference, so it was not cancelled.", state: null };
+  if (!key || !ref) return { error: "This number has no reference, so it was not cancelled.", state: null };
+  let checked: Response;
+  try {
+    checked = await fetch("https://getatext.com/api/v1/rental-status", {
+      method: "POST",
+      headers: { Auth: key, Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ id: Number(ref) || ref }),
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch {
+    return { error: "The number service could not be reached. Nothing was refunded.", state: null };
+  }
+  const checkedBody = await checked.json().catch(() => null);
+  if (!checked.ok || !checkedBody) return { error: "The number service did not confirm this number. Nothing was refunded.", state: null };
+  const live = mapGetaTextRental(checkedBody);
+  const synced = applyLiveToOrder(order, live);
+  let currentDoc = { ...doc, orders: doc.orders.map((item) => item.id === order.id ? { ...item, ...synced.order } : item) };
+  if (synced.refund && order.status !== "refunded") {
+    const moved = await creditBalance(order.userId, order.amount, "refund:" + order.id, "Refund · " + order.title, "refund");
+    currentDoc = { ...currentDoc, users: currentDoc.users.map((user) => user.id === order.userId ? { ...user, balance: moved.balance } : user) };
+    await reverseReferral(order.userId, order.id);
+    await saveDoc(currentDoc);
+    return { error: null, state: projectShop(currentDoc, session.userId, session.draft) };
+  }
+  if (!live.cancellable) {
+    await saveDoc(currentDoc);
+    return { error: "This number can no longer be cancelled. Nothing was refunded.", state: projectShop(currentDoc, session.userId, session.draft) };
+  }
   let res: Response;
   try {
     res = await fetch("https://getatext.com/api/v1/cancel-rental", {
@@ -1067,24 +1095,46 @@ export async function cancelUsaNumber(orderId: string) {
       signal: AbortSignal.timeout(20000),
     });
   } catch {
-    return { error: "The number service could not be reached. Nothing was refunded.", state: null };
+    await saveDoc(currentDoc);
+    return { error: "The number service timed out. Nothing was refunded.", state: projectShop(currentDoc, session.userId, session.draft) };
   }
   const text = await res.text();
-  if (!res.ok) return { error: providerMessage(text, "The number service refused the cancellation. Nothing was refunded."), state: null };
+  let body: unknown = null;
+  try { body = JSON.parse(text); } catch { body = null; }
+  const verdict = getatextCancelResult(body, res.ok);
+  if (verdict !== "confirmed") {
+    await saveDoc(currentDoc);
+    return { error: "The number service did not confirm the cancellation. Nothing was refunded.", state: projectShop(currentDoc, session.userId, session.draft) };
+  }
   const moved = await creditBalance(order.userId, order.amount, "refund:" + order.id, "Refund · " + order.title, "refund");
   const data = {
-    ...doc,
-    orders: doc.orders.map((item) => item.id === order.id ? { ...item, status: "refunded" as const, gain: 0 } : item),
-    users: doc.users.map((user) => user.id === order.userId ? { ...user, balance: moved.balance } : user),
+    ...currentDoc,
+    orders: currentDoc.orders.map((item) => item.id === order.id ? { ...item, status: "refunded" as const, providerStatus: "cancelled", gain: 0 } : item),
+    users: currentDoc.users.map((user) => user.id === order.userId ? { ...user, balance: moved.balance } : user),
   };
+  await reverseReferral(order.userId, order.id);
   await saveDoc(data);
   return { error: null as string | null, state: projectShop(data, session.userId, session.draft) };
 }
 
 export async function syncServer1Numbers(doc: Data) {
   let next = doc;
-  const waiting = doc.orders.filter((order) => isServer1Number(order) && order.status === "waiting").slice(0, 20);
+  const waiting = doc.orders.filter((order) => isServer1Number(order) && orderIsOpen(order)).slice(0, 20);
   for (const order of waiting) next = await syncServer1Order(next, order.id);
+  return next;
+}
+
+export async function syncUsaNumbers(doc: Data) {
+  let next = doc;
+  const waiting = doc.orders.filter((order) => order.category === "usa" && orderIsOpen(order)).slice(0, 20);
+  for (const order of waiting) next = await syncUsaOrder(next, order.id);
+  return next;
+}
+
+export async function syncRentNumbers(doc: Data) {
+  let next = doc;
+  const waiting = doc.orders.filter((order) => order.server === "Rent number" && orderIsOpen(order)).slice(0, 20);
+  for (const order of waiting) next = await syncRentOrder(next, order.id);
   return next;
 }
 
@@ -1095,45 +1145,45 @@ export async function cancelServer1Number(orderId: string) {
   const me = doc.users.find((user) => user.id === session.userId);
   const order = doc.orders.find((item) => item.id === orderId);
   if (!me || !order || (order.userId !== me.id && me.role !== "admin")) return { error: "That purchase was not found.", state: null };
-  if (!isServer1Number(order)) return { error: "This purchase is not a FiveSim Server 1 number.", state: null };
+  if (!isServer1Number(order)) return { error: "This purchase cannot be cancelled from here.", state: null };
   if (order.status === "refunded") return { error: null, state: projectShop(doc, session.userId, session.draft) };
-  if (order.status === "completed") return { error: "FiveSim has already finished this number. It cannot be cancelled or refunded.", state: projectShop(doc, session.userId, session.draft) };
+  if (order.status === "completed") return { error: "This number is already finished. It cannot be cancelled or refunded.", state: projectShop(doc, session.userId, session.draft) };
   const provider = server1Provider(doc);
   const key = provider ? await readProviderKey(provider.id) : "";
   const ref = String(order.providerOrderId || "").replace(/[^\d]/g, "");
-  if (!key || !ref) return { error: "This number has no FiveSim order id, so it was not cancelled.", state: null };
+  if (!key || !ref) return { error: "This number has no reference, so it was not cancelled.", state: null };
   const { fiveSimCancelDecision } = await import("@/lib/fivesim-status");
   const { parseFiveSimCheck } = await import("@/lib/fulfilment");
   let checked;
   try {
     checked = await fiveSimCall(key, `check/${ref}`);
   } catch {
-    return { error: "FiveSim could not be reached. Nothing was refunded. Try again.", state: null };
+    return { error: "The number service could not be reached. Nothing was refunded. Try again.", state: null };
   }
-  if (!checked.ok) return { error: "FiveSim did not confirm the order status. Nothing was refunded.", state: null };
+  if (!checked.ok) return { error: "The number service did not confirm the order status. Nothing was refunded.", state: null };
   const current = parseFiveSimCheck(checked.json);
   const decision = fiveSimCancelDecision(current.status, current.messages.length > 0);
   if (decision === "already_done") {
     const synced = await applyFiveSim(doc, order.id, current);
     await saveDoc(synced);
-    return { error: "FiveSim has already completed this number. It cannot be cancelled or refunded.", state: projectShop(synced, session.userId, session.draft) };
+    return { error: "This number is already finished. It cannot be cancelled or refunded.", state: projectShop(synced, session.userId, session.draft) };
   }
   if (decision === "already_canceled") {
     const synced = await applyFiveSim(doc, order.id, current);
     await saveDoc(synced);
     return { error: null, state: projectShop(synced, session.userId, session.draft) };
   }
-  if (decision !== "cancel") return { error: "FiveSim did not confirm that this number can be cancelled. Nothing was refunded.", state: null };
+  if (decision !== "cancel") return { error: "The number service did not confirm that this number can be cancelled. Nothing was refunded.", state: null };
   let canceled;
   try {
     canceled = await fiveSimCall(key, `cancel/${ref}`);
   } catch {
-    return { error: "FiveSim timed out. Nothing was refunded. The order is left for reconciliation.", state: null };
+    return { error: "The number service timed out. Nothing was refunded. The order is left for reconciliation.", state: null };
   }
-  if (!canceled.ok) return { error: "FiveSim refused the cancellation. Nothing was refunded.", state: null };
+  if (!canceled.ok) return { error: "The number service refused the cancellation. Nothing was refunded.", state: null };
   const result = parseFiveSimCheck(canceled.json);
   if (fiveSimCancelDecision(result.status, result.messages.length > 0) !== "already_canceled") {
-    return { error: "FiveSim did not confirm the cancellation. Nothing was refunded.", state: null };
+    return { error: "The number service did not confirm the cancellation. Nothing was refunded.", state: null };
   }
   const synced = await applyFiveSim(doc, order.id, result);
   await saveDoc(synced);
@@ -1158,34 +1208,39 @@ async function fiveSimOrderCall(orderId: string, action: "cancel" | "finish") {
     return { error: "The number service could not be reached.", state: null };
   }
   const text = await res.text();
-  if (!res.ok) return { error: providerMessage(text, "The number service refused that request."), state: null };
-  return { error: null as string | null, state: doc, order, session };
+  let json: unknown = {};
+  try { json = text ? JSON.parse(text) : {}; } catch { json = {}; }
+  if (!res.ok) return { error: "The number service refused that request. Nothing was changed.", state: null };
+  return { error: null as string | null, state: doc, order, session, json };
 }
 
 export async function cancelRentNumber(orderId: string) {
   const called = await fiveSimOrderCall(orderId, "cancel");
-  if (called.error || !called.order || !called.state) return { error: called.error || "Could not cancel.", state: null as Data | null };
+  if (called.error || !called.order || !called.state) return { error: called.error || "Could not cancel. Nothing was refunded.", state: null as Data | null };
+  const { parseFiveSimCheck } = await import("@/lib/fulfilment");
+  const { fiveSimCancelDecision } = await import("@/lib/fivesim-status");
+  const result = parseFiveSimCheck(called.json);
+  if (fiveSimCancelDecision(result.status, result.messages.length > 0) !== "already_canceled") {
+    return { error: "The number service did not confirm the cancellation. Nothing was refunded.", state: null };
+  }
   const before = called.order;
-  const out = refundOrder(called.state, called.session?.userId || null, before.id);
-  if (out.error) return { error: out.error, state: null };
-  const moved = await creditBalance(before.userId, before.amount, "refund:" + before.id, "Refund · " + before.title, "refund");
-  const data = { ...out.data, users: out.data.users.map((user) => (user.id === before.userId ? { ...user, balance: moved.balance } : user)) };
-  await reverseReferral(before.userId, before.id);
-  await saveDoc(data);
+  if (before.status === "refunded") return { error: null, state: projectShop(called.state, called.session?.userId || null, called.session?.draft || null) };
+  const synced = await applyFiveSim(called.state, before.id, result);
+  await saveDoc(synced);
   const session = await readSession();
-  return { error: null as string | null, state: projectShop(data, session.userId, session.draft) };
+  return { error: null as string | null, state: projectShop(synced, session.userId, session.draft) };
 }
 
 export async function finishRentNumber(orderId: string) {
   const called = await fiveSimOrderCall(orderId, "finish");
   if (called.error || !called.order || !called.state) return { error: called.error || "Could not finish.", state: null as Data | null };
-  const data = {
-    ...called.state,
-    orders: called.state.orders.map((order) => order.id === called.order?.id ? { ...order, status: "completed" as const, providerStatus: "FINISHED" } : order),
-  };
-  await saveDoc(data);
+  const { parseFiveSimCheck } = await import("@/lib/fulfilment");
+  const result = parseFiveSimCheck(called.json);
+  if (result.status !== "FINISHED") return { error: "The number service did not confirm that this rental is finished.", state: null };
+  const synced = await applyFiveSim(called.state, called.order.id, result);
+  await saveDoc(synced);
   const session = await readSession();
-  return { error: null as string | null, state: projectShop(data, session.userId, session.draft) };
+  return { error: null as string | null, state: projectShop(synced, session.userId, session.draft) };
 }
 
 export async function quoteRentServices(country: string) {
@@ -1276,70 +1331,48 @@ export async function openPurchase(orderId: string, refresh: boolean) {
   const { messagesFrom, pullProviderSms, readFulfilment, saveFulfilmentMessages } = await import("@/lib/fulfilment.server");
   const { mergeMessages, purchaseView } = await import("@/lib/fulfilment");
   const row = await readFulfilment(orderId).catch(() => null);
-  let messages = mergeMessages(order.messages || [], row ? messagesFrom(row.messages) : []);
-  let providerNote = "";
-  let providerStatus = order.providerStatus || "";
   const numberLike = order.category === "number" || order.category === "numbers" || order.category === "rent" || order.category === "usa";
   const reference = order.providerOrderId || row?.provider_ref || "";
-  if (isServer1Number(order) && order.status !== "completed" && order.status !== "refunded") {
-    doc = await syncServer1Order(doc, order.id);
-    order = doc.orders.find((item) => item.id === orderId) || order;
-    messages = mergeMessages(messages, order.messages || []);
-    providerStatus = order.providerStatus || providerStatus;
+  const handled = isServer1Number(order) || order.category === "usa" || order.server === "Rent number";
+  const before = JSON.stringify({ status: order.status, code: order.code || "", phone: order.phone || "", providerStatus: order.providerStatus || "", expiresAt: order.expiresAt || "", messages: order.messages || [] });
+  if (numberLike && orderIsOpen(order)) {
+    if (isServer1Number(order)) doc = await syncServer1Order(doc, order.id);
+    else if (order.category === "usa") doc = await syncUsaOrder(doc, order.id);
+    else if (order.server === "Rent number") doc = await syncRentOrder(doc, order.id);
   }
-  if (order.category === "usa" && order.status === "waiting") {
-    doc = await syncUsaOrder(doc, order.id);
-    order = doc.orders.find((item) => item.id === orderId) || order;
-    messages = mergeMessages(messages, order.messages || []);
-    providerStatus = order.providerStatus || providerStatus;
-  }
-  if (order.server === "Rent number" && order.status === "waiting") {
-    doc = await syncRentOrder(doc, order.id);
-    order = doc.orders.find((item) => item.id === orderId) || order;
-    messages = mergeMessages(messages, order.messages || []);
-    providerStatus = order.providerStatus || providerStatus;
-  }
-  let terminal = /CANCELED|CANCELLED|TIMEOUT|FINISHED|BANNED|complete|expire/i.test(order.providerStatus || "");
-  if (refresh && numberLike && order.status === "waiting" && reference && !terminal) {
+  order = doc.orders.find((item) => item.id === orderId) || order;
+  let messages = mergeMessages(order.messages || [], row ? messagesFrom(row.messages) : []);
+  if (refresh && numberLike && !handled && orderIsOpen(order) && reference) {
     const key = row?.provider_id ? await readProviderKey(row.provider_id) : "";
-    const pulled = await pullProviderSms({ provider: row?.provider || "", apiKey: key, providerRef: reference });
-    providerNote = pulled.supported ? pulled.error : "";
-    if (pulled.messages.length || pulled.phone || pulled.status) {
-      messages = mergeMessages(messages, pulled.messages);
-      if (pulled.status) providerStatus = pulled.status;
-      terminal = pulled.terminal;
-    }
+    const pulled = await pullProviderSms({ provider: row?.provider || "", apiKey: key, providerRef: reference }).catch(() => null);
+    if (pulled?.messages.length) messages = mergeMessages(messages, pulled.messages);
   }
-  const code = messages.map((item) => item.code).filter(Boolean).pop() || "";
-  const nextStatus = numberLike && code && terminal ? "received" : order.status;
+  const code = messages.map((item) => item.code).filter(Boolean).pop() || order.code || "";
+  const nextStatus: Order["status"] = numberLike && orderIsOpen(order) && code && order.status === "waiting" ? "received" : order.status;
   const phone = order.phone || row?.phone || "";
-  const changed = code !== (order.code || "") || nextStatus !== order.status || providerStatus !== (order.providerStatus || "") || messages.length !== (order.messages || []).length || (!!row?.phone && !order.phone);
-  let current = order;
-  if (changed) {
-    current = {
-      ...order,
-      phone,
-      code: numberLike ? code : order.code,
-      status: nextStatus,
-      providerStatus,
-      messages,
-    };
-    const saved = current;
-    const next = { ...doc, orders: doc.orders.map((item) => (item.id === saved.id ? saved : item)) };
+  const current = {
+    ...order,
+    phone,
+    code: numberLike ? code : order.code,
+    status: nextStatus,
+    providerStatus: order.providerStatus || "",
+    expiresAt: order.expiresAt || "",
+    messages,
+  };
+  const after = JSON.stringify({ status: current.status, code: current.code || "", phone: current.phone || "", providerStatus: current.providerStatus || "", expiresAt: current.expiresAt || "", messages: current.messages || [] });
+  if (after !== before) {
+    const next = { ...doc, orders: doc.orders.map((item) => (item.id === current.id ? current : item)) };
     await saveDoc(next);
-    if (row) await saveFulfilmentMessages(saved.id, messages, { phone: saved.phone, status: saved.status }).catch(() => undefined);
+    if (row) await saveFulfilmentMessages(current.id, messages, { phone: current.phone, status: current.status }).catch(() => undefined);
   }
   const view = purchaseView({
     ...current,
-    phone: current.phone || row?.phone || "",
     country: current.country || row?.country || "",
     service: current.service || row?.service || "",
     delivery: current.delivery || row?.delivery || "",
     providerOrderId: current.providerOrderId || row?.provider_ref || "",
-    providerStatus,
-    messages,
   }, messages, { admin: me.role === "admin" });
-  return { error: null as string | null, view: providerNote ? { ...view, note: providerNote } : view };
+  return { error: null as string | null, view };
 }
 
 export async function purchasePreview(productId: string) {
@@ -2724,4 +2757,36 @@ export async function googleExchange(code: string, redirect: string) {
   if (!email) return { error: "Google did not share an email for this account.", needsPhone: false, role: "customer" as const, token: "" };
   const linked = await connectGoogle({ email, name: name || email });
   return { error: null as string | null, ...linked };
+}
+
+export async function attachNumberCode(orderId: string, message: { at: string; sender: string; text: string; code: string }, phone = "") {
+  if (!message.code) return;
+  const doc = await loadLight();
+  const order = doc.orders.find((item) => item.id === orderId);
+  if (!order) return;
+  const { mergeMessages } = await import("@/lib/fulfilment");
+  const messages = mergeMessages(order.messages || [], [message]);
+  if (messages.length === (order.messages || []).length && (!phone || phone === order.phone)) return;
+  const code = messages.map((item) => item.code).filter(Boolean).pop() || order.code;
+  const status: Order["status"] = orderIsOpen(order) && order.status === "waiting" ? "received" : order.status;
+  await saveDoc({
+    ...doc,
+    orders: doc.orders.map((item) => item.id === order.id ? { ...item, messages, code, phone: phone || item.phone, status } : item),
+  });
+}
+
+export async function sweepOpenNumbers() {
+  const doc = await loadLight();
+  let next = await syncServer1Numbers(doc);
+  next = await syncUsaNumbers(next);
+  next = await syncRentNumbers(next);
+  if (next !== doc) await saveDoc(next);
+}
+
+const numberSyncFlag = globalThis as typeof globalThis & { __verilogsNumberSync?: boolean };
+if (process.env.RENDER === "true" && process.env.NODE_ENV !== "test" && !numberSyncFlag.__verilogsNumberSync) {
+  numberSyncFlag.__verilogsNumberSync = true;
+  setInterval(() => {
+    void sweepOpenNumbers().catch((err) => console.error("number sync skipped", err instanceof Error ? err.message : err));
+  }, 20000);
 }

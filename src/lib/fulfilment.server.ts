@@ -166,7 +166,13 @@ export async function acceptGetatextWebhook(token: string, body: unknown) {
     await recordWebhook({ provider: "getatext", eventKey, status: "ok", summary: `SMS ${event.id}` });
     return { http: 200, error: "", duplicate: true };
   }
-  await saveFulfilmentMessages(row.order_id, merged, { phone: event.number, status: "received" });
+  await saveFulfilmentMessages(row.order_id, merged, { phone: event.number, status: row.status || "waiting" });
+  try {
+    const { attachNumberCode } = await import("@/lib/shop-core.server");
+    await attachNumberCode(row.order_id, incoming, event.number);
+  } catch (err) {
+    console.error("number code save skipped", err instanceof Error ? err.message : err);
+  }
   const recorded = await recordWebhook({ provider: "getatext", eventKey, status: "ok", summary: `SMS ${event.id}` });
   return { http: 200, error: "", duplicate: recorded.duplicate, orderId: row.order_id };
 }

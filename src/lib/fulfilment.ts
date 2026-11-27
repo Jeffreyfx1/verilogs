@@ -1,4 +1,5 @@
 import { hideSupplier, parseAccountDelivery, type ParsedAccount } from "@/lib/account-delivery";
+import { mapFiveSimActivation, mapGetaTextRental, phaseFromStored } from "@/lib/number-live";
 export { mapFiveSimStatus, fiveSimCancelDecision } from "@/lib/fivesim-status";
 
 export type SmsMessage = { at: string; sender: string; text: string; code: string };
@@ -43,6 +44,8 @@ export type PurchaseView = {
   messages: SmsMessage[];
   code: string;
   poll: boolean;
+  cancellable: boolean;
+  phase: "waiting" | "received" | "completed" | "cancelled" | "expired" | "unknown";
   note: string;
   createdAt: string;
   expiresAt: string;
@@ -76,42 +79,13 @@ function messageKey(message: SmsMessage) {
 }
 
 export function parseFiveSimCheck(body: unknown): { phone: string; status: string; messages: SmsMessage[]; terminal: boolean; expiresAt: string } {
-  const root = body && typeof body === "object" ? body as Record<string, unknown> : {};
-  const json = root.data && typeof root.data === "object" ? root.data as Record<string, unknown> : root;
-  const status = String(json.status || "");
-  const phone = typeof json.phone === "string" ? json.phone : "";
-  const raw = Array.isArray(json.sms) ? json.sms : json.sms && typeof json.sms === "object" ? [json.sms] : [];
-  const messages = raw.map((item) => {
-    const row = item && typeof item === "object" ? item as Record<string, unknown> : {};
-    const text = String(row.text || row.message || "");
-    const code = String(row.code || "").trim() || codeFromText(text);
-    return {
-      at: String(row.created_at || row.date || ""),
-      sender: String(row.sender || row.from || ""),
-      text,
-      code,
-    };
-  }).filter((item) => item.text || item.code);
-  const terminal = /CANCELED|CANCELLED|TIMEOUT|FINISHED|BANNED/i.test(status);
-  return { phone, status, messages, terminal, expiresAt: typeof json.expires === "string" ? json.expires : "" };
-}
-
-function codeFromText(text: string) {
-  const match = text.match(/\b\d{4,8}\b/);
-  return match ? match[0] : "";
+  const live = mapFiveSimActivation(body);
+  return { phone: live.phone, status: live.providerStatus, messages: live.messages, terminal: live.terminal, expiresAt: live.expiresAt };
 }
 
 export function parseGetatextStatus(body: unknown): { phone: string; status: string; messages: SmsMessage[]; terminal: boolean; expiresAt: string } {
-  const json = body && typeof body === "object" ? body as Record<string, unknown> : {};
-  const status = String(json.status || "");
-  const phone = String(json.number || "");
-  const codes = Array.isArray(json.codes) ? json.codes.map((item) => String(item || "")).filter(Boolean) : [];
-  const latest = String(json.code || "").trim();
-  const list = codes.length ? codes : latest && latest !== "null" ? [latest] : [];
-  const messages = list.map((code) => ({ at: "", sender: String(json.service_name || ""), text: "", code }));
-  const terminal = /complete|cancel|expire|timeout|finished/i.test(status);
-  const end = String(json.end_time || json.deadline || "");
-  return { phone, status, messages, terminal, expiresAt: end ? new Date(end).toISOString() : "" };
+  const live = mapGetaTextRental(body);
+  return { phone: live.phone, status: live.providerStatus, messages: live.messages, terminal: live.terminal, expiresAt: live.expiresAt };
 }
 
 export function parseGetatextWebhook(body: unknown): { id: string; code: string; number: string; at: string; service: string; status: string } | null {
@@ -141,19 +115,21 @@ export function purchaseView(order: PurchaseOrder, messages: SmsMessage[] = [], 
   const deliverySource = order.delivery || (kind === "number" ? "" : order.code || "");
   const delivery = linesOf(deliverySource);
   const accounts = kind === "logs" || kind === "vpn" ? parseAccountDelivery(deliverySource, `${order.title || ""}\n${order.detail || ""}`) : [];
-  const code = kind === "number" ? (stored.map((item) => item.code).filter(Boolean).pop() || (order.code || "")) : "";
   const phone = String(order.phone || "").trim();
+  const fromSms = stored.map((item) => item.code).filter(Boolean).pop() || "";
+  const code = kind === "number" ? (fromSms || (phone ? String(order.code || "") : "")) : "";
   const reference = String(order.providerOrderId || "").trim();
   const providerStatus = String(order.providerStatus || "");
-  const closed = order.status === "completed" || order.status === "refunded" || /CANCELED|CANCELLED|TIMEOUT|FINISHED|BANNED/i.test(providerStatus);
-  const waiting = !closed && !code;
+  const phase = kind === "number" ? phaseFromStored({ ...order, providerStatus, code, messages: stored }) : "unknown";
+  const terminal = phase === "completed" || phase === "cancelled" || phase === "expired";
   const supplier = order.server || "";
   const customerLogs = !admin && (kind === "logs" || kind === "vpn");
   const note = kind === "number"
-    ? (code ? "The code below is what was returned for this number." : waiting ? "Waiting for an SMS. Nothing is shown until it arrives." : "No SMS was stored for this order.")
+    ? (code ? "The code below is what was returned for this number." : !terminal ? "Waiting for an SMS. Nothing is shown until it arrives." : "No SMS was stored for this order.")
     : kind === "logs" || kind === "vpn"
       ? (accounts.length ? "The account details from this purchase are below." : "No account details were stored for this order.")
       : (delivery.length ? "Stored delivery for this order." : "No extra delivery was stored for this order.");
+  const cancellableServer = order.server === "Server 1" || order.server === "USA" || order.server === "Rent number";
   return {
     orderId: order.id,
     kind,
@@ -171,7 +147,9 @@ export function purchaseView(order: PurchaseOrder, messages: SmsMessage[] = [], 
     accounts,
     messages: stored,
     code,
-    poll: kind === "number" && waiting && !!reference,
+    poll: kind === "number" && !terminal && !!reference,
+    cancellable: kind === "number" && phase === "waiting" && !!reference && cancellableServer,
+    phase,
     note: customerLogs ? hideSupplier(note, supplier) : note,
     createdAt: order.createdAt || "",
     expiresAt: order.expiresAt || "",

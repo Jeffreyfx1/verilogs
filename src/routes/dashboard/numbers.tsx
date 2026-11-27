@@ -51,7 +51,7 @@ function NumbersPage() {
   const liveServers = servers.filter((s) => s.enabled);
   const allOrders = useStore((s) => s.orders);
   const session = useStore((s) => s.sessionUserId);
-  const orders = useMemo(() => allOrders.filter((o) => o.userId === session && o.server !== "Rent number" && (o.category === "numbers" || o.category === "rent" || o.category === "number" || o.category === "usa") && o.status === "waiting"), [allOrders, session]);
+  const orders = useMemo(() => allOrders.filter((o) => o.userId === session && o.server !== "Rent number" && (o.category === "numbers" || o.category === "rent" || o.category === "number" || o.category === "usa") && (o.status === "waiting" || o.status === "received") && !/^(expired|timeout|cancelled|canceled|completed|finished|banned)$/i.test(o.providerStatus || "")), [allOrders, session]);
   const bought = useMemo(() => allOrders.filter((o) => o.userId === session && o.server !== "Rent number" && (o.category === "numbers" || o.category === "rent" || o.category === "number" || o.category === "usa")).length, [allOrders, session]);
   const buy = useStore((s) => s.buy);
   const tick = useStore((s) => s.tickWaiting);

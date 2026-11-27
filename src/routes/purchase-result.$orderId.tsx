@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Guard } from "@/components/guard";
@@ -26,45 +26,64 @@ function ResultPage() {
   const [confirm, setConfirm] = useState(false);
   const [now, setNow] = useState(Date.now());
 
+  const seen = useRef(false);
+
   const load = async (refresh: boolean) => {
     setChecking(true);
     try {
       const res = await purchaseResult({ data: { orderId, refresh } });
-      if (res.error || !res.view) setError(res.error || "That purchase was not found.");
-      else {
+      if (res.view) {
+        seen.current = true;
         setError("");
         setView(res.view);
-        if (res.view.status !== "waiting") setConfirm(false);
-      }
+        if (res.view.phase !== "waiting") setConfirm(false);
+      } else if (!seen.current) setError(res.error || "That purchase was not found.");
     } catch {
-      setError("Could not open this purchase.");
+      if (!seen.current) setError("Could not open this purchase.");
     } finally {
       setChecking(false);
     }
   };
 
-  useEffect(() => { void load(true); }, [orderId]);
+  useEffect(() => { seen.current = false; void load(true); }, [orderId]);
 
   useEffect(() => {
     if (!view?.poll) return;
-    const timer = window.setInterval(() => { void load(true); }, 8000);
+    const timer = window.setInterval(() => { void load(true); }, 5000);
     return () => window.clearInterval(timer);
   }, [view?.poll, orderId]);
 
   useEffect(() => {
-    if (view?.kind !== "number" || view.status !== "waiting") return;
+    const sync = () => {
+      if (document.visibilityState === "visible") void load(true);
+    };
+    window.addEventListener("online", sync);
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      window.removeEventListener("online", sync);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [orderId]);
+
+  useEffect(() => {
+    if (view?.kind !== "number" || (view.phase !== "waiting" && view.phase !== "received")) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [view?.kind, view?.status, view?.expiresAt]);
+  }, [view?.kind, view?.phase, view?.expiresAt]);
 
   const cancelNumber = async () => {
     setActing("number");
     try {
-      const isRent = view?.server === "Rent number";
-      const isUsa = view?.server === "USA" || view?.country === "usa";
-      const res = isRent ? await cancelRentNumber({ data: { orderId } }) : isUsa ? await cancelUsaNumber({ data: { orderId } }) : await cancelServer1Number({ data: { orderId } });
+      const server = view?.server || "";
+      const res = server === "Rent number"
+        ? await cancelRentNumber({ data: { orderId } })
+        : server === "USA"
+          ? await cancelUsaNumber({ data: { orderId } })
+          : server === "Server 1"
+            ? await cancelServer1Number({ data: { orderId } })
+            : { error: "This number cannot be cancelled from here.", state: null };
       if (res.error) toast.error(res.error);
-      else toast.success("Cancelled. The refund is in your wallet.");
+      else toast.success(view?.phase === "expired" ? "This number has expired." : "Cancelled. The refund is in your wallet.");
       if (res.state) adopt(res.state);
       await load(true);
     } catch {
@@ -159,10 +178,9 @@ function NumberCard({ view, error, checking, acting, confirm, now, onCopy, onRef
 }) {
   const clock = clockOf(view.expiresAt, view.createdAt, now);
   const code = view.code || view.messages.map((item) => item.code).filter(Boolean).pop() || "";
-  const status = statusLabel(view.status, !!code, view.providerStatus);
-  const waiting = view.status === "waiting" && !code;
-  const closed = view.status === "completed" || view.status === "refunded";
-  const message = view.messages.find((item) => item.text)?.text || "";
+  const status = statusLabel(view.phase);
+  const closed = view.phase === "completed" || view.phase === "cancelled" || view.phase === "expired";
+  const earlier = view.messages.filter((item) => item.code && item.code !== code);
   return (
     <div className="mx-auto max-w-lg space-y-3">
       <Link to="/dashboard/numbers" search={{ server: "", country: "", kind: "", service: "" }} className="text-sm font-extrabold text-primary">Back to numbers</Link>
@@ -185,7 +203,7 @@ function NumberCard({ view, error, checking, acting, confirm, now, onCopy, onRef
         {clock ? (
           <div>
             <p className="text-center text-sm font-extrabold">Time remaining</p>
-            <p className="mt-1 text-center text-xs text-white/70">{waiting ? "The code usually arrives within a few minutes." : closed ? "This order is closed." : "SMS received."}</p>
+            <p className="mt-1 text-center text-xs text-white/70">{view.phase === "waiting" ? "The code usually arrives within a few minutes." : view.phase === "received" ? "The code is below. This number stays open until the service closes it." : closed ? "This order is closed." : ""}</p>
             <p className="mt-2 text-center text-2xl font-extrabold tabular-nums">{clock.label}</p>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/20">
               <div className="h-full rounded-full bg-[#1a8aa8] transition-all" style={{ width: `${clock.used}%` }} />
@@ -201,15 +219,24 @@ function NumberCard({ view, error, checking, acting, confirm, now, onCopy, onRef
                 <p className="font-mono text-2xl font-extrabold">{code}</p>
                 <button type="button" className="rounded-xl bg-[#1a8aa8] px-3 py-2 text-sm font-extrabold" onClick={() => onCopy(code, "Code")}>Copy</button>
               </div>
-              {message ? <p className="mt-2 break-words text-sm text-white/80">{message}</p> : null}
+              {messageText(view) ? <p className="mt-2 break-words text-sm text-white/80">{messageText(view)}</p> : null}
+              {earlier.length ? (
+                <ul className="mt-2 space-y-1 text-sm text-white/80">
+                  {view.messages.map((item, index) => (
+                    <li key={`${item.at}-${item.code}-${index}`}>{item.code}{item.text ? ` · ${item.text}` : ""}</li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           ) : (
             <p className="mt-2 rounded-xl bg-white/10 px-3 py-3 text-sm">{checking ? "Checking for SMS…" : "Waiting for SMS…"}</p>
           )}
         </div>
         <p className="text-sm"><span className="text-white/70">Status </span><span className="font-extrabold">{status}</span></p>
-        {view.status === "refunded" ? <p className="text-sm text-white/80">Cancelled. {naira(view.amount)} was returned to the wallet once.</p> : null}
-        {view.status === "waiting" && (view.server === "Server 1" || view.server === "Rent number" || view.server === "USA" || view.country === "usa") ? (
+        {view.status === "refunded" && view.phase === "expired" ? <p className="text-sm text-white/80">This number expired. {naira(view.amount)} was returned to the wallet once.</p> : null}
+        {view.status === "refunded" && view.phase !== "expired" ? <p className="text-sm text-white/80">Cancelled. {naira(view.amount)} was returned to the wallet once.</p> : null}
+        {view.phase === "expired" && view.status !== "refunded" ? <p className="text-sm text-white/80">This number has expired.</p> : null}
+        {view.cancellable ? (
           confirm ? (
             <div className="space-y-2 rounded-xl bg-white/10 p-3 text-sm">
               <p>Cancel this number? A refund is issued only if the service confirms it.</p>
@@ -243,11 +270,17 @@ function Line({ label, value }: { label: string; value: string }) {
   );
 }
 
-function statusLabel(status: string, hasCode: boolean, providerStatus: string) {
-  if (status === "refunded" || /CANCELED|CANCELLED|TIMEOUT|BANNED/i.test(providerStatus)) return "Cancelled";
-  if (status === "completed" || /FINISHED/i.test(providerStatus)) return "Completed";
-  if (hasCode) return "OTP received";
+function statusLabel(phase: string) {
+  if (phase === "cancelled") return "Cancelled";
+  if (phase === "completed") return "Completed";
+  if (phase === "expired") return "Expired";
+  if (phase === "received") return "Code received";
   return "Waiting for SMS";
+}
+
+function messageText(view: { messages: { text: string; code: string }[]; code: string }) {
+  const code = view.code || view.messages.map((item) => item.code).filter(Boolean).pop() || "";
+  return view.messages.find((item) => item.code === code && item.text)?.text || view.messages.find((item) => item.text)?.text || "";
 }
 
 function clockOf(expiresAt: string, createdAt: string, now: number) {
@@ -259,7 +292,7 @@ function clockOf(expiresAt: string, createdAt: string, now: number) {
   const used = Math.min(100, Math.max(0, Math.round(((now - start) / total) * 100)));
   const minutes = Math.floor(left / 60);
   const seconds = left % 60;
-  return { label: left ? `${minutes}:${String(seconds).padStart(2, "0")}` : "Ended", used };
+  return { label: `${minutes}:${String(seconds).padStart(2, "0")}`, used };
 }
 
 function FieldValue({ value }: { value: string }) {

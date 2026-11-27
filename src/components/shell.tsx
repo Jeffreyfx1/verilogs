@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Logo } from "@/components/ui";
 import { NoticeBell } from "@/components/bell";
@@ -26,12 +26,20 @@ function exactHome(to: string) {
 export function AppShell({ admin, children }: { admin?: boolean; children: ReactNode }) {
   const user = useUser();
   const logout = useStore((s) => s.logout);
+  const tick = useStore((s) => s.tickWaiting);
   const nav = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const hash = useRouterState({ select: (s) => String(s.location.hash || "").replace(/^#/, "") });
   const search = useRouterState({ select: (s) => s.location.search as { country?: string; kind?: string } });
   const job = useImportRun();
   const [open, setOpen] = useState(false);
+  const userId = user?.id || "";
+  useEffect(() => {
+    if (!userId) return;
+    tick();
+    const timer = window.setInterval(() => tick(), 20000);
+    return () => window.clearInterval(timer);
+  }, [tick, userId]);
   if (!user) return null;
 
   const userNav: Item[] = [

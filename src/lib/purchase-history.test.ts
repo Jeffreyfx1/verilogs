@@ -51,7 +51,8 @@ test("filters and search cover logs, vpn, numbers and other products", () => {
   assert.equal(purchaseStatusLabel({ status: "refunded", category: "numbers", providerStatus: "CANCELED" }), "Cancelled");
   assert.equal(purchaseStatusLabel({ status: "refunded", category: "data" }), "Refunded");
   assert.equal(purchaseStatusLabel({ status: "waiting", category: "numbers", providerStatus: "FAILED" }), "Failed");
-  assert.equal(purchaseStatusLabel({ status: "waiting", category: "rent", expiresAt: "2020-01-01T00:00:00.000Z" }), "Expired");
+  assert.equal(purchaseStatusLabel({ status: "waiting", category: "rent", expiresAt: "2020-01-01T00:00:00.000Z" }), "Waiting for SMS");
+  assert.equal(purchaseStatusLabel({ status: "waiting", category: "usa", providerStatus: "expired" }), "Expired");
   assert.equal(purchaseStatusLabel({ status: "received", category: "numbers", code: "1234" }), "OTP received");
 });
 

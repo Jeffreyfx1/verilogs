@@ -118,7 +118,7 @@ export function purchaseStatusLabel(order: {
   providerStatus?: string;
   code?: string;
   expiresAt?: string;
-}, now = Date.now()) {
+}, _now = Date.now()) {
   const provider = order.providerStatus || "";
   const numberLike = order.category === "numbers" || order.category === "number" || order.category === "usa" || order.category === "rent";
   if (order.status === "refunded") {
@@ -126,11 +126,11 @@ export function purchaseStatusLabel(order: {
     if (/cancel|banned/i.test(provider)) return "Cancelled";
     return "Refunded";
   }
+  if (/^(expired|timeout)$/i.test(provider)) return "Expired";
+  if (/^(cancelled|canceled|banned)$/i.test(provider)) return "Cancelled";
   if (/fail/i.test(provider) && order.status !== "completed" && order.status !== "received") return "Failed";
   if (order.status === "completed") return "Completed";
   if (order.status === "received" || order.code) return numberLike ? "OTP received" : "Completed";
-  const end = Date.parse(order.expiresAt || "");
-  if (numberLike && Number.isFinite(end) && end <= now) return "Expired";
   if (numberLike) return "Waiting for SMS";
   if (order.status === "waiting") return "Processing";
   return order.status;

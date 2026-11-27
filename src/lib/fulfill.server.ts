@@ -1,5 +1,6 @@
 import { nairaCost, type Product, type Provider } from "@/lib/catalog";
 import { instakingOrderFields, instakingPost, isInstakingHost, readSmmDetail } from "@/lib/instaking";
+import { easternWallToIso } from "@/lib/number-live";
 import { SMM_CLOSED, smmSalesOpen } from "@/lib/purchase-history";
 
 export type Placement =
@@ -140,8 +141,7 @@ export async function placeOnProvider(input: { product: Product; provider: Provi
     }
     const phone = String(json.number || "");
     if (!phone) return { ok: false, error: "The number service did not return a number. The wallet was not charged." };
-    const end = String(json.end_time || "");
-    return { ok: true, phone, ref: String(json.id || ""), waiting: true, cost, providerRef: String(json.id || ""), expiresAt: end ? new Date(end).toISOString() : "" };
+    return { ok: true, phone, ref: String(json.id || ""), waiting: true, cost, providerRef: String(json.id || ""), expiresAt: easternWallToIso(json.end_time) };
   }
 
   if (sme && product.category === "airtime") {

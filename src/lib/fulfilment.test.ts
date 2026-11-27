@@ -27,6 +27,17 @@ test("purchase view shows only stored provider data", () => {
   assert.equal(waiting.phone, "+234800");
   assert.equal(waiting.poll, true);
   assert.equal(waiting.country, "nigeria");
+  assert.equal(waiting.cancellable, false);
+
+  const server1 = purchaseView({ ...base, server: "Server 1" });
+  assert.equal(server1.cancellable, true);
+  assert.equal(server1.phase, "waiting");
+  const coded = purchaseView({ ...base, server: "USA", status: "received", providerStatus: "active", code: "444", messages: [{ at: "", sender: "", text: "", code: "444" }] });
+  assert.equal(coded.poll, true);
+  assert.equal(coded.phase, "received");
+  assert.equal(coded.cancellable, false);
+  assert.equal(purchaseView({ ...base, server: "Server 2" }).cancellable, false);
+  assert.equal(purchaseView({ ...base, server: "Server 3" }).cancellable, false);
 
   const done = purchaseView({ ...base, id: "c", providerStatus: "TIMEOUT" });
   assert.equal(done.poll, false);
@@ -49,7 +60,7 @@ test("purchase view shows only stored provider data", () => {
 
 test("parsers and message merge do not invent or duplicate SMS", () => {
   const five = parseFiveSimCheck({ status: "RECEIVED", phone: "+100", sms: [{ sender: "Google", text: "code 444", code: "444", created_at: "2026-01-01T00:00:00Z" }] });
-  assert.equal(five.terminal, true);
+  assert.equal(five.terminal, false);
   assert.equal(five.messages.length, 1);
   assert.equal(five.messages[0]?.code, "444");
   const again = mergeMessages(five.messages, five.messages);
