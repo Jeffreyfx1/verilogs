@@ -29,10 +29,9 @@ test("a Facebook listing format keeps each credential under the requested headin
   assert.equal(account?.fields[2]?.value, SECRET);
   assert.equal(account?.fields[3]?.value, "MailPass99");
   assert.equal(account?.fields.some((field) => field.value.includes("facebook.com")), false);
-  assert.equal(account?.guide?.heading, "Important Account Information");
+  assert.equal(account?.guide?.heading, "Links to get Code from 2FA-Key");
   assert.deepEqual(account?.guide?.links, [...FACEBOOK_2FA_LINKS]);
-  assert.match(account?.guide?.note || "", /private/);
-  assert.match(account?.guide?.note || "", /authenticator/);
+  assert.match(account?.guide?.note || "", /verification code/);
 });
 
 test("a UID format is not forced into the email format, and cookies stay off the page", () => {
@@ -57,9 +56,9 @@ test("an email-shaped row is not parsed with the UID format", () => {
 test("missing Facebook fields are omitted and a live code is not stored as the 2FA key", () => {
   const partial = parseFacebookAccounts("buyer@example.com:FbPassw0rd", "Facebook account\nAccount format: Facebook Email : Facebook Password");
   assert.deepEqual(partial[0]?.fields.map((field) => field.label), ["User ID (Login ID)", "Facebook Password"]);
-  assert.equal(partial[0]?.guide?.heading, "Important Account Information");
-  assert.deepEqual(partial[0]?.guide?.links, []);
-  assert.match(partial[0]?.guide?.note || "", /recovery/);
+  assert.equal(partial[0]?.guide?.heading, "Links to get Code from 2FA-Key");
+  assert.deepEqual(partial[0]?.guide?.links, [...FACEBOOK_2FA_LINKS]);
+  assert.doesNotMatch(partial[0]?.guide?.note || "", /FbPassw0rd/);
   const code = parseFacebookAccounts("61500000001:FbPassw0rd:123456:buyer@example.com", "Facebook account\nAccount format: UID : Facebook Password : 2FA : Mail");
   assert.equal(code[0]?.fields.some((field) => field.label === "2FA Key (Secret)"), false);
   assert.equal(code[0]?.fields.some((field) => field.value === "123456"), false);
@@ -120,7 +119,7 @@ test("a profile id line keeps both passwords and hides the base64 cookie", () =>
   assert.equal(listed?.fields.find((field) => field.label === "Linked Email Password")?.value, "MailPass99");
   assert.equal(listed?.fields.find((field) => field.label === "Linked Email")?.value, "buyer@example.com");
   assert.equal(listed?.fields.some((field) => field.value.includes("AAAA")), false);
-  assert.deepEqual(listed?.guide?.links, []);
+  assert.deepEqual(listed?.guide?.links, [...FACEBOOK_2FA_LINKS]);
   const [shaped] = parseFacebookAccounts(line, "Facebook account");
   assert.equal(shaped?.fields.find((field) => field.label === "User ID (Login ID)")?.value, "61500000001");
   assert.equal(shaped?.fields.find((field) => field.label === "Facebook Password")?.value, "FbPassw0rd");
@@ -155,7 +154,7 @@ test("a business manager id and a cookie blob stay off the customer fields", () 
   const opaque = parseAccountDelivery("Q".repeat(180), "Facebook account");
   assert.equal(opaque[0]?.layout, "facebook");
   assert.deepEqual(opaque[0]?.fields, []);
-  assert.equal(opaque[0]?.guide?.heading, "Important Account Information");
+  assert.equal(opaque[0]?.guide?.heading, "Links to get Code from 2FA-Key");
   assert.equal(JSON.stringify(opaque).includes("QQQQ"), false);
 });
 
@@ -179,7 +178,7 @@ test("only the purchaser view hides the raw Facebook response", () => {
   assert.equal(customer.reference, "");
   assert.equal(customer.accounts[0]?.layout, "facebook");
   assert.equal(customer.accounts[0]?.fields[1]?.value, "FbPassw0rd");
-  assert.equal(customer.accounts[0]?.guide?.heading, "Important Account Information");
+  assert.equal(customer.accounts[0]?.guide?.heading, "Links to get Code from 2FA-Key");
   assert.equal(JSON.stringify(customer).includes(delivery), false);
   const admin = purchaseView(order, [], { admin: true });
   assert.equal(admin.delivery.length, 0);

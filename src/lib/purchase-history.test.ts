@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { airtimeSalesOpen, historyFilterFromHash, isRetiredBill, listPurchases, orderQuantity, pagePurchases, purchaseStatusLabel, purchaseTypeLabel, smmSalesOpen, type HistoryOrder } from "./purchase-history.ts";
+import { airtimeSalesOpen, facebookOrderAccounts, historyFilterFromHash, isRetiredBill, listPurchases, orderQuantity, pagePurchases, purchaseStatusLabel, purchaseTypeLabel, smmSalesOpen, type HistoryOrder } from "./purchase-history.ts";
 
 const rows: HistoryOrder[] = [
   { id: "log-1", userId: "ada", category: "logs", title: "Facebook followers pack", amount: 1500, status: "completed", createdAt: "2026-11-01T10:00:00.000Z", detail: "pack" },
@@ -61,4 +61,17 @@ test("airtime and SMM sales stay closed and bill categories cannot be bought", (
   assert.equal(smmSalesOpen(), false);
   for (const category of ["cable", "electricity", "exam", "giftcard", "betting"]) assert.equal(isRetiredBill(category), true);
   for (const category of ["logs", "vpn", "numbers", "data", "smm", "airtime"]) assert.equal(isRetiredBill(category), false);
+});
+
+test("a Facebook order summary uses the labelled fields and not the raw provider line", () => {
+  const secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+  const raw = `buyer@example.com:FbPassw0rd:MailPass99:${secret}:https://facebook.com/buyer`;
+  const detail = "Facebook account\nAccount format: Facebook Email : Facebook Password : Email Password : 2FA Code : Profile Link";
+  const accounts = facebookOrderAccounts({ category: "logs", title: "USA Facebook", service: "Facebook", code: raw, detail });
+  assert.ok(accounts);
+  assert.deepEqual(accounts[0]?.fields.map((field) => field.label), ["User ID (Login ID)", "Facebook Password", "2FA Key (Secret)", "Linked Email Password"]);
+  assert.equal(JSON.stringify(accounts).includes(raw), false);
+  assert.equal(accounts[0]?.guide?.heading, "Links to get Code from 2FA-Key");
+  assert.equal(facebookOrderAccounts({ category: "logs", title: "Facebook followers pack", code: raw, detail: "pack" }), null);
+  assert.equal(facebookOrderAccounts({ category: "numbers", title: "Facebook", code: "123456" }), null);
 });

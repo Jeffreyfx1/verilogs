@@ -3,7 +3,7 @@ import { createFileRoute, Link, useRouterState } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { BtnSpinner } from "@/components/ui";
 import { naira, when } from "@/lib/money";
-import { historyFilterFromHash, listPurchases, orderQuantity, pagePurchases, purchaseStatusLabel, purchaseTypeLabel, type HistoryFilter } from "@/lib/purchase-history";
+import { historyFilterFromHash, listPurchases, orderQuantity, pagePurchases, purchaseStatusLabel, purchaseTypeLabel, facebookOrderAccounts, type HistoryFilter } from "@/lib/purchase-history";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/history")({ component: HistoryPage });
@@ -66,7 +66,7 @@ function HistoryPage() {
               <span className="text-muted">{when(order.createdAt)}</span>
               <span className="text-muted">Qty {orderQuantity(order.detail || "")}</span>
             </div>
-            <p className="mt-2 break-words text-xs leading-relaxed text-muted">{[order.server, order.network, order.phone, order.code && `code ${order.code}`, order.providerStatus, order.detail && !order.detail.startsWith("{") ? order.detail : ""].filter(Boolean).join(" · ")}</p>
+            <OrderSummary order={order} />
             <Link to="/purchase-result/$orderId" params={{ orderId: order.id }} className="mt-2 inline-block text-xs font-extrabold text-primary">Open delivery</Link>
             {order.category === "smm" && order.refillAvailable && order.providerOrderId && order.status !== "refunded" ? (
               <button
@@ -94,4 +94,23 @@ function HistoryPage() {
       {shown.more ? <button type="button" className="w-full rounded-xl border border-line bg-card py-2.5 text-sm font-extrabold" onClick={() => setPage((n) => n + 1)}>Show more</button> : null}
     </div>
   );
+}
+
+function OrderSummary({ order }: { order: { category?: string; title?: string; service?: string; detail?: string; delivery?: string; code?: string; server?: string; network?: string; phone?: string; providerStatus?: string } }) {
+  const accounts = facebookOrderAccounts(order);
+  if (accounts) {
+    const fields = accounts.flatMap((account) => account.fields);
+    if (!fields.length) return null;
+    return (
+      <div className="mt-2 space-y-1">
+        {fields.map((field, index) => (
+          <p key={`${field.label}-${index}`} className="break-all text-xs leading-relaxed">
+            <span className="font-extrabold">{field.label}:</span> {field.value}
+          </p>
+        ))}
+      </div>
+    );
+  }
+  const line = [order.server, order.network, order.phone, order.code && `code ${order.code}`, order.providerStatus, order.detail && !order.detail.startsWith("{") ? order.detail : ""].filter(Boolean).join(" · ");
+  return line ? <p className="mt-2 break-words text-xs leading-relaxed text-muted">{line}</p> : null;
 }

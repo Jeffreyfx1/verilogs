@@ -13,9 +13,8 @@ export const FACEBOOK_HEADINGS = [
   "Linked Email Password",
 ] as const;
 
-export const FACEBOOK_INFO_HEADING = "Important Account Information";
-export const FACEBOOK_INFO_NOTE = "Keep these details private. Use them only for this account, and follow the account's own security and recovery steps if you are locked out.";
-export const FACEBOOK_2FA_NOTE = "The 2FA key is used with a compatible authenticator to obtain this account's verification code.";
+export const FACEBOOK_2FA_HEADING = "Links to get Code from 2FA-Key";
+export const FACEBOOK_2FA_NOTE = "Paste the 2FA key into either link to get this account's verification code.";
 export const FACEBOOK_2FA_LINKS = ["https://2fa.vn", "https://2fa-auth.com"] as const;
 
 type Slot = "login" | "password" | "totp" | "email" | "emailPassword";
@@ -87,8 +86,7 @@ function accountFromSlots(slots: Partial<Record<Slot, string>>): ParsedAccount |
     fields.push({ label: HEADING[slot], value });
   }
   if (!fields.length) return null;
-  const note = slots.totp ? `${FACEBOOK_INFO_NOTE} ${FACEBOOK_2FA_NOTE}` : FACEBOOK_INFO_NOTE;
-  const guide: AccountGuide = { heading: FACEBOOK_INFO_HEADING, note, links: slots.totp ? [...FACEBOOK_2FA_LINKS] : [] };
+  const guide: AccountGuide = { heading: FACEBOOK_2FA_HEADING, note: FACEBOOK_2FA_NOTE, links: [...FACEBOOK_2FA_LINKS] };
   return { fields, layout: "facebook", guide };
 }
 
@@ -322,7 +320,10 @@ function decodedCredential(value: string) {
   if (compact.length < 40 || compact.length % 4 !== 0 || !/^[A-Za-z0-9+/=]+$/.test(compact)) return "";
   let text = "";
   try {
-    text = Buffer.from(compact, "base64").toString("utf8");
+    const binary = atob(compact);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    text = new TextDecoder().decode(bytes);
   } catch {
     return "";
   }

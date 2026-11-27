@@ -1,5 +1,8 @@
 /** Customer purchase history. Reads existing orders. It does not create or change them. */
 
+import { isFacebookAccount, parseFacebookAccounts } from "@/lib/facebook-account";
+import type { ParsedAccount } from "@/lib/account-delivery";
+
 export const BILL_CATEGORIES = new Set(["cable", "electricity", "exam", "giftcard", "betting"]);
 export const AIRTIME_CLOSED = "Airtime is coming soon. Nothing was sent.";
 export const SMM_CLOSED = "SMM is coming soon. Nothing was sent.";
@@ -66,6 +69,23 @@ export function purchaseTypeLabel(category: string) {
   if (category === "airtime") return "Airtime";
   if (isRetiredBill(category)) return "Bills";
   return "Other products";
+}
+
+/** Facebook rows on the orders page. Null means this purchase is not a Facebook account. */
+export function facebookOrderAccounts(order: {
+  category?: string;
+  title?: string;
+  service?: string;
+  detail?: string;
+  delivery?: string;
+  code?: string;
+}): ParsedAccount[] | null {
+  if (order.category && order.category !== "logs" && order.category !== "vpn") return null;
+  const hint = [order.title, order.service, order.detail].filter(Boolean).join("\n");
+  if (!isFacebookAccount(hint)) return null;
+  const raw = String(order.delivery || order.code || "").trim();
+  if (!raw) return [];
+  return parseFacebookAccounts(raw, hint);
 }
 
 export function orderQuantity(detail: string) {

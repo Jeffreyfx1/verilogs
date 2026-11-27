@@ -317,7 +317,6 @@ function FacebookDelivery({ account, onCopy }: { account: View["accounts"][numbe
       {account.guide ? (
         <section className="space-y-2 rounded-xl border border-line bg-paper px-3 py-3">
           <p className="text-sm font-extrabold">{account.guide.heading}</p>
-          <p className="text-sm leading-5 text-muted">{account.guide.note}</p>
           {account.guide.links.length ? (
             <div className="space-y-1">
               {account.guide.links.map((link) => (
@@ -325,6 +324,7 @@ function FacebookDelivery({ account, onCopy }: { account: View["accounts"][numbe
               ))}
             </div>
           ) : null}
+          <p className="text-sm leading-5 text-muted">{account.guide.note}</p>
         </section>
       ) : null}
     </div>
