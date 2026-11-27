@@ -305,23 +305,33 @@ function clockOf(expiresAt: string, createdAt: string, now: number) {
 
 function FacebookDelivery({ account, onCopy }: { account: View["accounts"][number]; onCopy: (value: string, label: string) => void }) {
   return (
-    <div className="space-y-4">
-      {account.fields.map((field) => (
-        <div key={field.label}>
-          <p className="text-[15px] font-extrabold">{field.label}:</p>
-          <div className="mt-1 flex items-start justify-between gap-3">
-            <p className="min-w-0 flex-1 break-all text-[15px] font-semibold leading-6">{field.value}</p>
-            <button type="button" className="shrink-0 rounded-lg bg-paper px-2.5 py-1 text-xs font-extrabold text-primary" onClick={() => onCopy(field.value, field.label)}>Copy</button>
-          </div>
-        </div>
-      ))}
+    <div className="space-y-3">
+      <div className="space-y-1 rounded-2xl bg-[#d9fdd3] px-3.5 py-3 text-[15px] leading-6 text-[#111b21]">
+        {account.fields.map((field) => {
+          const wrapped = field.label === "2FA Key (Secret)" || field.value.includes("@") || field.value.length > 28;
+          const linked = field.label === "User ID (Login ID)" || field.label === "Linked Email";
+          return (
+            <div key={field.label} className="flex items-start justify-between gap-2">
+              <p className="min-w-0 flex-1 break-all">
+                <span className="font-extrabold">{field.label}:</span>
+                {wrapped ? (
+                  <span className={`mt-0.5 block ${linked ? "font-semibold text-[#0a7c4a] underline" : "font-semibold"}`}>{field.value}</span>
+                ) : (
+                  <span className={linked ? "font-semibold text-[#0a7c4a] underline" : "font-semibold"}>{` ${field.value}`}</span>
+                )}
+              </p>
+              <button type="button" className="shrink-0 pt-0.5 text-xs font-extrabold text-[#0a7c4a]" onClick={() => onCopy(field.value, field.label)}>Copy</button>
+            </div>
+          );
+        })}
+      </div>
       {account.guide ? (
-        <div className="space-y-2 border-t border-line pt-3">
-          <p className="text-[15px] font-extrabold">{account.guide.heading}</p>
-          <p className="text-sm leading-5 text-muted">{account.guide.note}</p>
+        <div className="space-y-1 rounded-2xl bg-[#d9fdd3] px-3.5 py-3 text-[15px] leading-6 text-[#111b21]">
+          <p className="font-extrabold">{account.guide.heading}</p>
           {account.guide.links.map((link) => (
-            <a key={link} href={link} target="_blank" rel="noreferrer" className="block break-all text-[15px] font-extrabold text-[#128C7E] underline">{link}</a>
+            <a key={link} href={link} target="_blank" rel="noreferrer" className="block break-all font-semibold text-[#0a7c4a] underline">{link}</a>
           ))}
+          <p className="pt-1 text-sm leading-5 text-[#3b4a42]">{account.guide.note}</p>
         </div>
       ) : null}
     </div>

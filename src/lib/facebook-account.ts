@@ -13,7 +13,7 @@ export const FACEBOOK_HEADINGS = [
   "Linked Email Password",
 ] as const;
 
-export const FACEBOOK_2FA_HEADING = "Links to get Code from 2FA-Key";
+export const FACEBOOK_2FA_HEADING = "Links to get Code from 2fa-Key";
 export const FACEBOOK_2FA_NOTE = "The 2FA key is used with a compatible authenticator to obtain this account's verification code.";
 export const FACEBOOK_2FA_LINKS = ["https://2fa.vn", "https://2fa-auth.com"] as const;
 

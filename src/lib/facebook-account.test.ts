@@ -29,7 +29,7 @@ test("a Facebook listing format keeps each credential under the requested headin
   assert.equal(account?.fields[2]?.value, SECRET);
   assert.equal(account?.fields[3]?.value, "MailPass99");
   assert.equal(account?.fields.some((field) => field.value.includes("facebook.com")), false);
-  assert.equal(account?.guide?.heading, "Links to get Code from 2FA-Key");
+  assert.equal(account?.guide?.heading, "Links to get Code from 2fa-Key");
   assert.deepEqual(account?.guide?.links, [...FACEBOOK_2FA_LINKS]);
   assert.match(account?.guide?.note || "", /authenticator/);
 });
