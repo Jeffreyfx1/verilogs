@@ -215,7 +215,7 @@ export const importUrl = createServerFn({ method: "POST" })
   });
 
 export const browseNumbers = createServerFn({ method: "POST" })
-  .validator((input: { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean; list?: string; serverId?: string }) => ({
+  .validator((input: { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean; list?: string; serverId?: string; after?: string }) => ({
     providerId: String(input?.providerId || ""),
     category: input?.category === "rent" ? "rent" : input?.category === "usa" ? "usa" : input?.category === "number" ? "number" : "numbers",
     serverId: String(input?.serverId || ""),
@@ -224,6 +224,7 @@ export const browseNumbers = createServerFn({ method: "POST" })
     q: String(input?.q || "").slice(0, 60),
     detail: !!input?.detail,
     list: input?.list === "countries" || input?.list === "services" ? input.list : "",
+    after: String(input?.after || "").slice(0, 200),
   }))
   .handler(async ({ data }) => {
     const { browseNumbers } = await core();

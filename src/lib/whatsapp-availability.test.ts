@@ -112,19 +112,35 @@ test("a stocked WhatsApp row past the catalogue cap is still offered for several
   try {
     await upsertProductRows(products, "job-wa-cap");
     const browse = { providerId, category: "number", country: "Nigeria", admin: false, enabledProviderIds: [providerId] };
-    const listed = await queryServices(browse);
+    const listed = (await queryServices(browse)).rows;
     assert.equal(listed.some((item) => item.service === "WhatsApp"), false);
     assert.equal(listed.some((item) => item.service === "Telegram"), false);
     assert.equal(listed.some((item) => item.service === "Google"), true);
     assert.equal(listed.some((item) => item.service === "Facebook"), true);
+    const telegram = await queryServices({ ...browse, q: "telegram" });
+    assert.equal(telegram.rows[0]?.service, "Telegram");
+    const whatsapp = await queryServices({ ...browse, q: "whatsapp" });
+    assert.equal(whatsapp.rows.some((item) => item.service === "WhatsApp"), true);
+    const stockless = await queryServices({ ...browse, country: "Germany", q: "whatsapp" });
+    assert.equal(stockless.rows.some((item) => item.service === "WhatsApp"), true);
+    assert.equal((await queryServices({ ...browse, country: "Brazil", q: "whatsapp" })).rows.length, 0);
+    let after = "";
+    let sawTelegram = false;
+    for (let n = 0; n < 20; n++) {
+      const page = await queryServices({ ...browse, after });
+      if (page.rows.some((item) => item.service === "Telegram")) sawTelegram = true;
+      if (!page.more) break;
+      after = page.next;
+    }
+    assert.equal(sawTelegram, true);
     const offer = await queryWhatsAppOffer(browse);
     assert.deepEqual(offer.map((item) => item.service), ["WhatsApp"]);
     const ranked = listed
       .map((item) => ({ service: item.service, price: item.price }))
       .sort((a, b) => a.service.localeCompare(b.service));
-    const page = finishServicePage(ranked, 100, { fiveSim: true, q: "", offer: preferWhatsApp(offer.map((item) => ({ service: item.service, price: item.price }))) });
+    const page = finishServicePage(ranked, ranked.length, { fiveSim: true, q: "", offer: preferWhatsApp(offer.map((item) => ({ service: item.service, price: item.price }))) });
     assert.equal(page.filter((item) => item.service === "WhatsApp").length, 1);
-    assert.deepEqual(page.slice(0, 100).map((item) => item.service), ranked.slice(0, 100).map((item) => item.service));
+    assert.deepEqual(page.slice(0, ranked.length).map((item) => item.service), ranked.map((item) => item.service));
     assert.equal(page.some((item) => item.service === "Telegram"), false);
     const operators = await queryOperators({ ...browse, service: "WhatsApp" });
     assert.equal(operators.length, 1);

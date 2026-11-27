@@ -17,6 +17,7 @@ import { fetchNote, probeProviderCatalogue, readCataloguePage, reportOf, savePro
 import { IMPORT_BATCH, importBatchCount, sliceImport } from "@/lib/import-batch";
 import { uid } from "@/lib/money";
 import { isFiveSimServer1, isWhatsAppService, preferWhatsApp, wantsWhatsAppLookup, finishServicePage } from "@/lib/whatsapp-availability";
+import { mergeServicePrices } from "@/lib/service-search";
 import { mentionedCountry, mentionedService } from "@/lib/vera-mind";
 import { placeOnProvider } from "@/lib/fulfill.server";
 import {
@@ -41,8 +42,6 @@ import {
   setRowsEnabled,
   lockListing,
   upsertProductRows,
-  NUMBER_LIST_LIMIT,
-  FIVESIM_SEARCH_LIMIT,
 } from "@/lib/product-rows.server";
 import { catalogSplitVerified, ensureCatalogSplit } from "@/lib/catalog-split.server";
 import { beginPurchaseKey, creditBalance, debitBalance, markPurchaseKey, overlayBalances, reconcilePurchases } from "@/lib/shop-wallet.server";
@@ -2274,7 +2273,7 @@ export async function importFromUrl(input: { url: string; apiKey?: string; provi
   });
 }
 
-export async function browseNumbers(input: { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean; list?: string; serverId?: string }) {
+export async function browseNumbers(input: { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean; list?: string; serverId?: string; after?: string }) {
   const doc = await loadLight();
   const session = await readSession();
   const me = doc.users.find((u) => u.id === session.userId);
@@ -2283,7 +2282,7 @@ export async function browseNumbers(input: { providerId?: string; category?: str
   const serverId = want === "number" && !input.providerId ? input.serverId || "" : "";
   const enabledProviderIds = doc.providers.filter((item) => item.enabled && (want !== "usa" || item.importType === "USA_IMPORT" || item.serverId === "usa")).map((item) => item.id);
   const hidden = admin ? await queryHidden(input.providerId || "", want) : 0;
-  const empty = { services: [] as { service: string; price: number }[], countries: [] as Product[], operators: [] as Product[], hidden };
+  const empty = { services: [] as { service: string; price: number }[], countries: [] as Product[], operators: [] as Product[], hidden, more: false, next: "" };
   const query = {
     providerId: want === "usa" ? "" : input.providerId || "",
     category: want,
@@ -2291,32 +2290,27 @@ export async function browseNumbers(input: { providerId?: string; category?: str
     country: input.country || "",
     service: input.service || "",
     q: (input.q || "").trim(),
+    after: input.after || "",
     admin,
     enabledProviderIds: want === "usa" ? enabledProviderIds : doc.providers.filter((item) => item.enabled).map((item) => item.id),
   };
   if (!admin && input.providerId && !enabledProviderIds.includes(input.providerId)) return empty;
   const serviceList = async () => {
-    const rank = (rows: { service: string; providerId: string; cost: number; price: number }[]) => {
-      const best = new Map<string, number>();
-      for (const row of rows) {
-        const price = quoteProduct(
-          { id: "", providerId: row.providerId, externalId: "", category: want, name: row.service, service: row.service, country: input.country || "", network: "", price: row.price, cost: row.cost, stock: 0, operator: "", rate: -1, rates: "", enabled: true, validity: "", variable: false, description: "" },
-          doc,
-        ).price;
-        const prev = best.get(row.service);
-        if (price > 0 && (prev == null || price < prev)) best.set(row.service, price);
-      }
-      return [...best.entries()].map(([service, price]) => ({ service, price })).sort((a, b) => a.service.localeCompare(b.service));
+    const priceOf = (row: { service: string; providerId: string; cost: number; price: number }) => {
+      const quoted = quoteProduct(
+        { id: "", providerId: row.providerId, externalId: "", category: want, name: row.service, service: row.service, country: input.country || "", network: "", price: row.price, cost: row.cost, stock: 0, operator: "", rate: -1, rates: "", enabled: true, validity: "", variable: false, description: "" },
+        doc,
+      ).price;
+      return quoted > 0 ? quoted : (row.price > 0 ? row.price : 0);
     };
-    const ranked = rank(await queryServices(query));
-    const limit = want === "usa" ? NUMBER_LIST_LIMIT : FIVESIM_SEARCH_LIMIT;
+    const page = await queryServices(query);
+    const ranked = mergeServicePrices(page.rows.map((row) => ({ service: row.service, price: priceOf(row) })));
     const provider = doc.providers.find((item) => item.id === (input.providerId || ""));
-    const fiveSim = want === "number" && isFiveSimServer1(provider);
-    const preview = ranked.slice(0, limit);
-    const offer = fiveSim && wantsWhatsAppLookup(query.q) && !preview.some((row) => isWhatsAppService(row.service))
-      ? preferWhatsApp(rank(await queryWhatsAppOffer(query)))
+    const fiveSim = !input.after && want === "number" && isFiveSimServer1(provider);
+    const offer = fiveSim && wantsWhatsAppLookup(query.q) && !ranked.some((row) => isWhatsAppService(row.service))
+      ? preferWhatsApp((await queryWhatsAppOffer(query)).map((row) => ({ service: row.service, price: priceOf(row) })))
       : null;
-    return finishServicePage(ranked, limit, { fiveSim, q: query.q, offer });
+    return { services: finishServicePage(ranked, ranked.length, { fiveSim, q: query.q, offer }), more: page.more, next: page.next };
   };
   if (input.list === "countries") {
     const countries = (await queryCountries({ ...query, service: "", q: "" })).map((row) => quoteProduct(row, doc)).sort((a, b) => a.price - b.price || a.country.localeCompare(b.country));
@@ -2327,7 +2321,7 @@ export async function browseNumbers(input: { providerId?: string; category?: str
     const operators = rows.sort((a, b) => b.rate - a.rate || a.price - b.price);
     return { ...empty, operators };
   }
-  if (input.list === "services" || !input.service) return { ...empty, services: await serviceList() };
+  if (input.list === "services" || !input.service) return { ...empty, ...(await serviceList()) };
   const countries = (await queryCountries(query)).map((row) => quoteProduct(row, doc));
   return { ...empty, countries };
 }

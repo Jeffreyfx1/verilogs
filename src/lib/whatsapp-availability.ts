@@ -1,5 +1,5 @@
-/** 5sim service search returns 500 names. A shorter page still puts WhatsApp back
- * when that one row was cut off.
+/** Append one real in-stock WhatsApp row when the page handed in did not already include it.
+ * The customer list searches the whole catalogue, so this is only a safety net.
  */
 
 export function serviceSlug(name: string) {
@@ -48,7 +48,7 @@ export function preferWhatsApp<T extends { service: string }>(rows: T[]) {
   return matches.find((row) => row.service === "WhatsApp") || matches[0] || null;
 }
 
-/** Keep the existing alphabetical page. Append one real WhatsApp row when it was cut off. */
+/** Keep the page that was already loaded. Append one real WhatsApp row when it was missing. */
 export function finishServicePage<T extends { service: string }>(
   ranked: T[],
   limit: number,

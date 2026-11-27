@@ -2,13 +2,12 @@ import type { Product } from "@/lib/catalog";
 import { getSql } from "@/lib/db";
 import { publicImage } from "@/lib/logs-map";
 import { SHELF_CATEGORIES, shelfOf } from "@/lib/shelves";
+import { escapeLike, SERVICE_PAGE, serviceTerms, decodeServiceCursor, encodeServiceCursor } from "@/lib/service-search";
 
 const COLS = 27;
 
-/** Customer service and country lists. England currently has 831 in-stock services. */
+/** Country lists. Service names are paged separately and are not cut off here. */
 export const NUMBER_LIST_LIMIT = 5000;
-/** 5sim service search. Was 100, which cut off Telegram and later names. */
-export const FIVESIM_SEARCH_LIMIT = 500;
 
 export function encodeCursor(row: { service: string; name: string; id: string }) {
   return `${row.service}\u001f${row.name}\u001f${row.id}`;
@@ -22,13 +21,25 @@ export function decodeCursor(cursor: string) {
 function pushTextSearch(parts: string[], values: unknown[], q: string | undefined) {
   const raw = String(q || "").trim().toLowerCase();
   if (!raw) return;
-  const terms = raw.split(/[^0-9a-z]+/).filter(Boolean).slice(0, 8).map((term) => term.slice(0, 40));
+  const terms = serviceTerms(raw);
   if (!terms.length) {
     parts.push("false");
     return;
   }
-  values.push(terms.map((term) => `${term}:*`).join(" & "));
-  parts.push(`search_vec @@ to_tsquery('simple', $${values.length})`);
+  for (const term of terms) {
+    values.push(`%${escapeLike(term)}%`);
+    const like = values.length;
+    values.push(`${term}:*`);
+    const ts = values.length;
+    parts.push(`(
+      lower(service) like $${like} escape '\\'
+      or lower(name) like $${like} escape '\\'
+      or lower(external_id) like $${like} escape '\\'
+      or lower(country) like $${like} escape '\\'
+      or lower(regexp_replace(service, '[^a-zA-Z0-9]', '', 'g')) like $${like} escape '\\'
+      or search_vec @@ to_tsquery('simple', $${ts})
+    )`);
+  }
 }
 
 function rowOf(row: Record<string, unknown>): Product {
@@ -358,7 +369,7 @@ export async function clearProducts() {
   await sql`delete from shop_products`;
 }
 
-type BrowseInput = { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean; admin?: boolean; enabledProviderIds?: string[]; serverId?: string };
+type BrowseInput = { providerId?: string; category?: string; country?: string; service?: string; q?: string; detail?: boolean; admin?: boolean; enabledProviderIds?: string[]; serverId?: string; after?: string };
 
 function filters(input: BrowseInput, values: unknown[]) {
   const category = input.category === "usa" ? "usa" : input.category === "rent" ? "rent" : input.category === "numbers" ? "number" : input.category || "number";
@@ -400,13 +411,53 @@ export async function queryServices(input: BrowseInput) {
   const sql = await getSql();
   const values: unknown[] = [];
   const where = filters(input, values);
-  const limit = input.category === "usa" ? NUMBER_LIST_LIMIT : FIVESIM_SEARCH_LIMIT;
-  values.push(limit);
-  const rows = await sql.query<{ service: string; provider_id: string; cost: number; price: number }>(
-    `select service, provider_id, min(cost) as cost, min(price) as price from shop_products where ${where} group by service, provider_id order by service limit $${values.length}`,
+  const raw = String(input.q || "").trim().toLowerCase();
+  const terms = serviceTerms(raw);
+  let rankSql = "0";
+  if (terms.length) {
+    const slug = raw.replace(/[^0-9a-z]/g, "");
+    values.push(raw);
+    const exact = values.length;
+    values.push(slug);
+    const exactSlug = values.length;
+    values.push(`${escapeLike(raw)}%`);
+    const prefix = values.length;
+    values.push(`${escapeLike(slug)}%`);
+    const prefixSlug = values.length;
+    rankSql = `case
+      when lower(service) = $${exact} then 0
+      when lower(regexp_replace(service, '[^a-zA-Z0-9]', '', 'g')) = $${exactSlug} then 0
+      when lower(service) like $${prefix} escape '\\' then 1
+      when lower(regexp_replace(service, '[^a-zA-Z0-9]', '', 'g')) like $${prefixSlug} escape '\\' then 1
+      else 2
+    end`;
+  }
+  const cursor = decodeServiceCursor(input.after || "");
+  let cursorSql = "";
+  if (cursor) {
+    values.push(cursor.rank, cursor.service);
+    cursorSql = `where (match_rank, service) > ($${values.length - 1}, $${values.length})`;
+  }
+  values.push(SERVICE_PAGE + 1);
+  const rows = await sql.query<{ service: string; provider_id: string; cost: number; price: number; match_rank: number }>(
+    `select service, provider_id, cost, price, match_rank from (
+      select service, provider_id, min(cost) as cost, min(price) as price, min(${rankSql}) as match_rank
+      from shop_products where ${where}
+      group by service, provider_id
+    ) listed
+    ${cursorSql}
+    order by match_rank, service
+    limit $${values.length}`,
     values,
   );
-  return rows.map((row) => ({ service: row.service, providerId: row.provider_id, cost: Number(row.cost) || 0, price: Number(row.price) || 0 }));
+  const more = rows.length > SERVICE_PAGE;
+  const sliced = rows.slice(0, SERVICE_PAGE);
+  const last = sliced[sliced.length - 1];
+  return {
+    rows: sliced.map((row) => ({ service: row.service, providerId: row.provider_id, cost: Number(row.cost) || 0, price: Number(row.price) || 0 })),
+    more,
+    next: more && last ? encodeServiceCursor({ rank: Number(last.match_rank) || 0, service: last.service }) : "",
+  };
 }
 
 /** A stocked WhatsApp row outside the alphabetical page. Does not invent one. */

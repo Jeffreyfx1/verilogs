@@ -75,6 +75,9 @@ function NumbersPage() {
   const [serviceOpen, setServiceOpen] = useState(false);
   const [countries, setCountries] = useState<Product[]>([]);
   const [services, setServices] = useState<{ service: string; price: number }[]>([]);
+  const [serviceMore, setServiceMore] = useState(false);
+  const [serviceNext, setServiceNext] = useState("");
+  const [loadingMore, setLoadingMore] = useState(false);
   const [operators, setOperators] = useState<Product[]>([]);
   const [picked, setPicked] = useState(false);
   const [loadingOps, setLoadingOps] = useState(false);
@@ -113,6 +116,9 @@ function NumbersPage() {
     setOperators([]);
     setCountries([]);
     setServices([]);
+    setServiceMore(false);
+    setServiceNext("");
+    setLoadingMore(false);
     setPicked(false);
     setOpsError("");
     setNotice("");
@@ -159,32 +165,54 @@ function NumbersPage() {
     const token = ++serviceGen.current;
     if (kind === "rent" || !countryName) {
       setServices([]);
+      setServiceMore(false);
+      setServiceNext("");
       setLoadingServices(false);
       return;
     }
     setLoadingServices(true);
     const timer = setTimeout(() => {
       withTimeout(browseNumbers({ data: { providerId: activeId, category: want, country: countryName, list: "services", q: serviceQ } }))
-        .then((res) => {
+        .then(async (res) => {
           if (token !== serviceGen.current) return;
           const list = Array.isArray(res?.services) ? res.services : [];
           setServices(list);
+          setServiceMore(!!res?.more && !!res?.next);
+          setServiceNext(typeof res?.next === "string" ? res.next : "");
           if (serviceQ.trim()) return;
           const saved = memory.current[slotKey];
-          const next = restoreSlot(saved, [countryName], list.map((row) => row.service), usa ? "usa" : "");
-          if (saved?.service && !next.service) {
-            memory.current[slotKey] = { country: next.country || countryName, service: "" };
-            setService("");
-            setPicked(false);
-            setOperators([]);
-            setNotice("That service is not on this server. Choose another.");
-          } else if (next.service && next.service !== service) {
-            setService(next.service);
+          if (!saved?.service) return;
+          const same = (name: string) => name.toLowerCase() === saved.service.toLowerCase();
+          const onPage = list.find((row) => same(row.service));
+          if (onPage) {
+            if (onPage.service !== saved.service) memory.current[slotKey] = { country: countryName, service: onPage.service };
+            if (onPage.service !== service) setService(onPage.service);
+            return;
           }
+          try {
+            const found = await withTimeout(browseNumbers({ data: { providerId: activeId, category: want, country: countryName, list: "services", q: saved.service } }));
+            if (token !== serviceGen.current) return;
+            const hit = Array.isArray(found?.services) ? found.services.find((row) => same(row.service)) : undefined;
+            if (hit) {
+              if (hit.service !== saved.service) memory.current[slotKey] = { country: countryName, service: hit.service };
+              if (hit.service !== service) setService(hit.service);
+              return;
+            }
+          } catch {
+            return;
+          }
+          if (token !== serviceGen.current) return;
+          memory.current[slotKey] = { country: countryName, service: "" };
+          setService("");
+          setPicked(false);
+          setOperators([]);
+          setNotice("That service is not on this server. Choose another.");
         })
         .catch(() => {
           if (token !== serviceGen.current) return;
           setServices([]);
+          setServiceMore(false);
+          setServiceNext("");
         })
         .finally(() => {
           if (token === serviceGen.current) setLoadingServices(false);
@@ -228,9 +256,34 @@ function NumbersPage() {
       });
   };
 
+  const loadMoreServices = () => {
+    if (!serviceNext || loadingMore || !countryName || kind === "rent") return;
+    const token = serviceGen.current;
+    const after = serviceNext;
+    setLoadingMore(true);
+    withTimeout(browseNumbers({ data: { providerId: activeId, category: want, country: countryName, list: "services", q: serviceQ, after } }))
+      .then((res) => {
+        if (token !== serviceGen.current) return;
+        const list = Array.isArray(res?.services) ? res.services : [];
+        setServices((prev) => {
+          const seen = new Set(prev.map((row) => row.service));
+          const extra = list.filter((row) => row?.service && !seen.has(row.service));
+          return extra.length ? [...prev, ...extra] : prev;
+        });
+        setServiceMore(!!res?.more && !!res?.next);
+        setServiceNext(typeof res?.next === "string" ? res.next : "");
+      })
+      .catch(() => {
+        if (token !== serviceGen.current) return;
+      })
+      .finally(() => {
+        if (token === serviceGen.current) setLoadingMore(false);
+      });
+  };
+
   if (kind === "rent") return <p className="text-sm text-muted">Opening Rent numbers…</p>;
 
-  const shownCountries = countries.filter((c) => countryHit(c.country, countryQ)).slice(0, 40);
+  const shownCountries = countries.filter((c) => countryHit(c.country, countryQ));
   const title = usa ? "USA Services" : kind === "rent" ? "Rent a number" : "Buy a number";
 
   return (
@@ -309,6 +362,11 @@ function NumbersPage() {
               ))}
               {usa && !loadingServices && !services.length ? <p className="px-3 py-3 text-sm text-muted">No USA services available at the moment. Please check back later.</p> : null}
               {!usa && countryName && !loadingServices && !services.length ? <p className="px-3 py-3 text-sm text-muted">{serviceQ.trim() ? "No service matches that search." : "No services are available for this country on this server."}</p> : null}
+              {countryName && serviceMore ? (
+                <button type="button" className="w-full px-3 py-2 text-left text-sm font-extrabold text-primary hover:bg-primary hover:text-on-primary" onMouseDown={(e) => e.preventDefault()} onClick={loadMoreServices}>
+                  {loadingMore ? "Loading more…" : "More services"}
+                </button>
+              ) : null}
             </div>
           ) : null}
         </div>

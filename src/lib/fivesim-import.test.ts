@@ -13,7 +13,8 @@ import {
   slimFiveSim,
 } from "./categorize.ts";
 import { getSql } from "@/lib/db";
-import { FIVESIM_SEARCH_LIMIT, NUMBER_LIST_LIMIT, countExistingProducts, upsertProductRows } from "@/lib/product-rows.server";
+import { countExistingProducts, upsertProductRows } from "@/lib/product-rows.server";
+import { pageServices, SERVICE_PAGE } from "./service-search.ts";
 
 const quote = (cost: number, count: number, rate = 80) => ({ cost, count, rate, rate24: 70 });
 
@@ -104,9 +105,9 @@ test("Telegram for Canada keeps the 5sim service id and is not hidden by the old
   const names = Array.from({ length: 216 }, (_, index) => `name-${String(index).padStart(3, "0")}`);
   names[179] = "Telegram";
   assert.equal(names.slice(0, 100).includes("Telegram"), false);
-  assert.equal(FIVESIM_SEARCH_LIMIT, 500);
-  assert.equal(names.slice(0, FIVESIM_SEARCH_LIMIT).includes("Telegram"), true);
-  assert.ok(NUMBER_LIST_LIMIT >= 831);
+  const searched = pageServices(names.map((service) => ({ service })), "telegram", "");
+  assert.equal(searched.rows[0]?.service, "Telegram");
+  assert.ok(searched.rows.length <= SERVICE_PAGE);
 });
 
 test("a product-filtered 5sim response and an array of products still import", () => {
