@@ -13,12 +13,13 @@ export const FACEBOOK_HEADINGS = [
   "Linked Email Password",
 ] as const;
 
-export const FACEBOOK_2FA_HEADING = "Links to get Code from 2fa-Key";
+export const FACEBOOK_INFO_HEADING = "Important Account Information";
+export const FACEBOOK_INFO_NOTE = "Keep these details private. Use them only for this account, and follow the account's own security and recovery steps if you are locked out.";
 export const FACEBOOK_2FA_NOTE = "The 2FA key is used with a compatible authenticator to obtain this account's verification code.";
 export const FACEBOOK_2FA_LINKS = ["https://2fa.vn", "https://2fa-auth.com"] as const;
 
 type Slot = "login" | "password" | "totp" | "email" | "emailPassword";
-type Expect = "uid" | "email" | "password" | "totp" | "url" | "cookie" | "login";
+type Expect = "uid" | "email" | "password" | "totp" | "url" | "cookie" | "login" | "skip";
 type Role = { slot: Slot | "ignore"; expect: Expect };
 
 const HEADING: Record<Slot, (typeof FACEBOOK_HEADINGS)[number]> = {
@@ -60,8 +61,15 @@ export function parseFacebookAccounts(raw: string, hint = ""): ParsedAccount[] {
 function accountFromLine(line: string, hint: string): ParsedAccount | null {
   if (labeledPair(line)) return accountFromSlots(slotsFromPairs([line]));
   const pipes = (line.match(/\|/g) || []).length;
-  const separator: ":" | "|" = pipes >= 2 ? "|" : ":";
+  const semis = (line.match(/;/g) || []).length;
+  const colons = (line.match(/:/g) || []).length;
+  const separator: ":" | "|" | ";" = pipes >= 2 ? "|" : semis >= 2 && colons < 2 && !line.includes("://") ? ";" : ":";
   const parts = splitCredential(line, separator);
+  const decoded = parts.length === 1 ? decodedCredential(parts[0] || "") : "";
+  if (decoded && decoded !== line) {
+    const inner = accountFromLine(decoded, hint);
+    if (inner) return inner;
+  }
   const fitting = formatLists(hint).filter((labels) => formatFits(labels, parts));
   if (fitting[0]) return accountFromSlots(zipSlots(fitting[0], parts));
   return accountFromSlots(slotsFromShapes(parts));
@@ -79,9 +87,8 @@ function accountFromSlots(slots: Partial<Record<Slot, string>>): ParsedAccount |
     fields.push({ label: HEADING[slot], value });
   }
   if (!fields.length) return null;
-  const guide: AccountGuide | undefined = slots.totp
-    ? { heading: FACEBOOK_2FA_HEADING, note: FACEBOOK_2FA_NOTE, links: [...FACEBOOK_2FA_LINKS] }
-    : undefined;
+  const note = slots.totp ? `${FACEBOOK_INFO_NOTE} ${FACEBOOK_2FA_NOTE}` : FACEBOOK_INFO_NOTE;
+  const guide: AccountGuide = { heading: FACEBOOK_INFO_HEADING, note, links: slots.totp ? [...FACEBOOK_2FA_LINKS] : [] };
   return { fields, layout: "facebook", guide };
 }
 
@@ -97,14 +104,21 @@ function zipSlots(labels: string[], parts: string[]): Partial<Record<Slot, strin
 }
 
 function formatFits(labels: string[], parts: string[]) {
-  const values = align(labels, parts);
-  if (values.length < labels.length) return false;
   const roles = rolesFor(labels);
+  const last = roles[roles.length - 1];
+  const sink = last?.expect === "cookie" || last?.expect === "url" || last?.slot === "ignore";
+  if (parts.length > labels.length && !sink) return false;
+  if (parts.length < labels.length) {
+    const missing = roles.slice(parts.length);
+    if (missing.some((role) => role?.slot !== "ignore")) return false;
+  }
+  const values = align(labels, parts);
+  if (values.length < labels.length && !sink) return false;
   return labels.every((_, index) => {
     const known = roles[index];
     const value = clean(values[index] || "");
     if (!known) return false;
-    if (!value) return true;
+    if (!value) return known.slot === "ignore";
     return matches(known.expect, value);
   });
 }
@@ -138,14 +152,47 @@ function slotsFromShapes(parts: string[]): Partial<Record<Slot, string>> {
   parts.forEach((part, index) => {
     if (isUrl(clean(part)) || isCookie(clean(part)) || isLiveCode(clean(part))) used.add(index);
   });
-  const passwords = parts.filter((part, index) => !used.has(index) && isPassword(clean(part))).map((part) => clean(part));
+  const passwords = parts.map(clean).filter((part, index) => !used.has(index) && isPassword(part));
   if (uid) slots.login = uid;
   else if (emails[0]) slots.login = emails[0];
   if (totp) slots.totp = totp;
   if (emails.length >= 2) slots.email = emails[1];
   else if (uid && emails[0]) slots.email = emails[0];
-  if (passwords.length === 1) slots.password = passwords[0];
+  const ordered = passwordSlots(parts.map(clean), uid, emails[0] || "", totp);
+  const profile = ordered.password ? {} : profilePasswords(parts.map(clean));
+  if (ordered.password) slots.password = ordered.password;
+  else if (profile.password) slots.password = profile.password;
+  else if (passwords.length === 1 && (uid || emails.length)) slots.password = passwords[0];
+  if (ordered.emailPassword) slots.emailPassword = ordered.emailPassword;
+  else if (profile.emailPassword) slots.emailPassword = profile.emailPassword;
   return slots;
+}
+
+/** Email, Facebook password, mailbox password, profile id, then a cookie. Both passwords are fixed by that order. */
+function profilePasswords(parts: string[]) {
+  const emailAt = parts.findIndex((part) => isEmail(part));
+  const uidAt = parts.findIndex((part) => isUid(part));
+  if (emailAt !== 0 || uidAt < 3) return {};
+  const between = parts.slice(1, uidAt);
+  const tail = parts.slice(uidAt + 1).filter(Boolean);
+  if (between.length !== 2 || between.some((part) => !isPassword(part))) return {};
+  if (tail.some((part) => isTotp(part) || (!isCookie(part) && !isUrl(part)))) return {};
+  return { password: between[0], emailPassword: between[1] };
+}
+
+/** A uid, then a password, then a 2FA key, then the mailbox, then its password. The positions are fixed by those types. */
+function passwordSlots(parts: string[], uid: string, email: string, totp: string) {
+  if (!uid || !email || !totp) return {};
+  const uidAt = parts.indexOf(uid);
+  const emailAt = parts.indexOf(email);
+  const totpAt = parts.indexOf(totp);
+  if (uidAt < 0 || totpAt < 0 || emailAt < 0) return {};
+  if (!(uidAt < totpAt && totpAt < emailAt)) return {};
+  const facebook = parts[uidAt + 1] || "";
+  const mailbox = parts[emailAt + 1] || "";
+  if (facebook === totp || !isPassword(facebook)) return {};
+  if (mailbox && mailbox !== totp && !isPassword(mailbox) && !isCookie(mailbox) && !isUrl(mailbox)) return { password: facebook };
+  return { password: facebook, emailPassword: isPassword(mailbox) ? mailbox : "" };
 }
 
 function slotsFromPairs(lines: string[]): Partial<Record<Slot, string>> {
@@ -205,14 +252,14 @@ function rolesFor(labels: string[]): Array<Role | null> {
 function slotOf(label: string): Role | null {
   const name = label.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   if (!name || name.length > 40) return null;
-  if (/cookie|auth token|session/.test(name)) return { slot: "ignore", expect: "cookie" };
-  if (/profile link|profile url|backup/.test(name)) return { slot: "ignore", expect: "url" };
+  if (/cookie|auth token|session|base64/.test(name)) return { slot: "ignore", expect: "cookie" };
+  if (/profile link|profile url|page link|backup/.test(name)) return { slot: "ignore", expect: "url" };
+  if (/bm id|business manager|page id/.test(name)) return { slot: "ignore", expect: "skip" };
   if (/email ?pass|mail ?pass|mailbox pass|linked email pass|recovery pass/.test(name)) return { slot: "emailPassword", expect: "password" };
   if (/facebook pass|fb pass|account pass|^password$|^pass$|user pass|login pass/.test(name)) return { slot: "password", expect: "password" };
   if (/2fa|two fa|totp|authenticator|secret key|auth key/.test(name)) return { slot: "totp", expect: "totp" };
-  if (/linked email|recovery email|recovery mail|^mail$|^email$|email address|associated email/.test(name)) return { slot: "email", expect: "email" };
-  if (/facebook email|fb email|login email/.test(name)) return { slot: "login", expect: "email" };
-  if (/^uid$|facebook id|fb id|user id|login id/.test(name)) return { slot: "login", expect: "uid" };
+  if (/profile id|^uid$|facebook id|fb id|user id|login id/.test(name)) return { slot: "login", expect: "uid" };
+  if (/linked email|recovery email|recovery mail|^mail$|^email$|email address|associated email|facebook email|fb email|login email/.test(name)) return { slot: "email", expect: "email" };
   if (/username|user name|^login$|^id$/.test(name)) return { slot: "login", expect: "login" };
   return null;
 }
@@ -224,11 +271,12 @@ function matches(expect: Expect, value: string) {
   if (expect === "url") return isUrl(value);
   if (expect === "cookie") return isCookie(value) || value.length > 20;
   if (expect === "password") return isPassword(value);
+  if (expect === "skip") return value.length > 0;
   return isUid(value) || isEmail(value) || isUsername(value);
 }
 
-function splitCredential(line: string, separator: ":" | "|") {
-  if (separator === "|") return line.split("|").map((part) => part.trim()).filter(Boolean);
+function splitCredential(line: string, separator: ":" | "|" | ";") {
+  if (separator !== ":") return line.split(separator).map((part) => part.trim()).filter(Boolean);
   const raw = line.split(":");
   const out: string[] = [];
   for (let index = 0; index < raw.length; index += 1) {
@@ -269,6 +317,41 @@ function fromJson(value: unknown, hint: string): ParsedAccount[] {
   return account ? [account] : [];
 }
 
+function decodedCredential(value: string) {
+  const compact = value.replace(/\s+/g, "");
+  if (compact.length < 40 || compact.length % 4 !== 0 || !/^[A-Za-z0-9+/=]+$/.test(compact)) return "";
+  let text = "";
+  try {
+    text = Buffer.from(compact, "base64").toString("utf8");
+  } catch {
+    return "";
+  }
+  if (!text || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(text)) return "";
+  if (text.trim().startsWith("{") || text.trim().startsWith("[")) {
+    try {
+      const user = cookieUser(JSON.parse(text));
+      return user ? `User ID : ${user}` : "";
+    } catch {
+      return "";
+    }
+  }
+  if ((text.includes("@") || /\d{8,20}/.test(text)) && /[:|;]/.test(text)) return text.trim();
+  return "";
+}
+
+function cookieUser(value: unknown): string {
+  const rows = Array.isArray(value) ? value : value && typeof value === "object" ? [value] : [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const record = row as Record<string, unknown>;
+    const name = String(record.name || record.key || "").toLowerCase();
+    if (name === "c_user" && isUid(String(record.value || ""))) return String(record.value);
+    const nested = cookieUser(record.cookies || record.cookie);
+    if (nested) return nested;
+  }
+  return "";
+}
+
 function clean(value: string) {
   const text = value.trim().replace(/^["']|["']$/g, "");
   if (!text || /^null$/i.test(text) || text === "-") return "";
@@ -302,7 +385,8 @@ function isUrl(value: string) {
 }
 
 function isCookie(value: string) {
-  return value.length >= 100 || /^[\[{]/.test(value) || /c_user|datr=|xs=/.test(value);
+  if (value.length >= 100 || /^[\[{]/.test(value) || /c_user|datr=|xs=/.test(value)) return true;
+  return value.length >= 80 && /^[A-Za-z0-9+/=]+$/.test(value);
 }
 
 function isPassword(value: string) {

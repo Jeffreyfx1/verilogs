@@ -1,6 +1,6 @@
 /** Labels for a delivered Logs or VPN account. Labels come from the listing format or from names the provider already returned. */
 
-import { isFacebookAccount, parseFacebookAccounts } from "@/lib/facebook-account";
+import { FACEBOOK_INFO_HEADING, FACEBOOK_INFO_NOTE, isFacebookAccount, parseFacebookAccounts } from "@/lib/facebook-account";
 
 export type AccountField = { label: string; value: string };
 export type AccountGuide = { heading: string; note: string; links: string[] };
@@ -29,6 +29,7 @@ export function parseAccountDelivery(raw: string, hint = ""): ParsedAccount[] {
   if (isFacebookAccount(hint)) {
     const facebook = parseFacebookAccounts(text, hint);
     if (facebook.length) return facebook;
+    return [{ fields: [], layout: "facebook", guide: { heading: FACEBOOK_INFO_HEADING, note: FACEBOOK_INFO_NOTE, links: [] } }];
   }
   if (text.startsWith("{") || text.startsWith("[")) {
     try {
