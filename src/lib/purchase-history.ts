@@ -1,8 +1,5 @@
 /** Customer purchase history. Reads existing orders. It does not create or change them. */
 
-import { isFacebookAccount, parseFacebookAccounts } from "@/lib/facebook-account";
-import type { ParsedAccount } from "@/lib/account-delivery";
-
 export const BILL_CATEGORIES = new Set(["cable", "electricity", "exam", "giftcard", "betting"]);
 export const AIRTIME_CLOSED = "Airtime is coming soon. Nothing was sent.";
 export const SMM_CLOSED = "SMM is coming soon. Nothing was sent.";
@@ -71,21 +68,13 @@ export function purchaseTypeLabel(category: string) {
   return "Other products";
 }
 
-/** Facebook rows on the orders page. Null means this purchase is not a Facebook account. */
-export function facebookOrderAccounts(order: {
-  category?: string;
-  title?: string;
-  service?: string;
-  detail?: string;
-  delivery?: string;
-  code?: string;
-}): ParsedAccount[] | null {
-  if (order.category && order.category !== "logs" && order.category !== "vpn") return null;
-  const hint = [order.title, order.service, order.detail].filter(Boolean).join("\n");
-  if (!isFacebookAccount(hint)) return null;
-  const raw = String(order.delivery || order.code || "").trim();
-  if (!raw) return [];
-  return parseFacebookAccounts(raw, hint);
+/** Facebook account deliveries stay unparsed until a mapping is confirmed. Followers packs are not included. */
+export function isRawFacebookDelivery(order: { category?: string; title?: string; service?: string; detail?: string }) {
+  if (order.category && order.category !== "logs" && order.category !== "vpn") return false;
+  const text = `${order.title || ""}\n${order.service || ""}\n${order.detail || ""}`;
+  if (!/\b(facebook|fb)\b/i.test(text)) return false;
+  if (/\b(followers|likes|views|comments|shares|reactions|subscribers)\b/i.test(text) && !/\b(account format|password|2fa|uid|login|email)\b/i.test(text)) return false;
+  return true;
 }
 
 export function orderQuantity(detail: string) {

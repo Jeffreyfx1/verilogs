@@ -3,7 +3,7 @@ import { createFileRoute, Link, useRouterState } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { BtnSpinner } from "@/components/ui";
 import { naira, when } from "@/lib/money";
-import { historyFilterFromHash, listPurchases, orderQuantity, pagePurchases, purchaseStatusLabel, purchaseTypeLabel, facebookOrderAccounts, type HistoryFilter } from "@/lib/purchase-history";
+import { historyFilterFromHash, isRawFacebookDelivery, listPurchases, orderQuantity, pagePurchases, purchaseStatusLabel, purchaseTypeLabel, type HistoryFilter } from "@/lib/purchase-history";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/dashboard/history")({ component: HistoryPage });
@@ -66,7 +66,7 @@ function HistoryPage() {
               <span className="text-muted">{when(order.createdAt)}</span>
               <span className="text-muted">Qty {orderQuantity(order.detail || "")}</span>
             </div>
-            <OrderSummary order={order} />
+            <p className="mt-2 break-words text-xs leading-relaxed text-muted">{orderSummary(order)}</p>
             <Link to="/purchase-result/$orderId" params={{ orderId: order.id }} className="mt-2 inline-block text-xs font-extrabold text-primary">Open delivery</Link>
             {order.category === "smm" && order.refillAvailable && order.providerOrderId && order.status !== "refunded" ? (
               <button
@@ -96,30 +96,9 @@ function HistoryPage() {
   );
 }
 
-function OrderSummary({ order }: { order: { category?: string; title?: string; service?: string; detail?: string; delivery?: string; code?: string; server?: string; network?: string; phone?: string; providerStatus?: string } }) {
-  const accounts = facebookOrderAccounts(order);
-  if (accounts) {
-    const fields = accounts.flatMap((account) => account.fields);
-    const gaps = accounts.flatMap((account) => account.gaps || []);
-    if (!fields.length && !gaps.length) return null;
-    return (
-      <div className="mt-2 space-y-1">
-        {fields.map((field, index) => (
-          <div key={`${field.label}-${index}`} className="flex items-start justify-between gap-2">
-            <p className="min-w-0 break-all text-xs leading-relaxed">
-              <span className="font-extrabold">{field.label}:</span> {field.value}
-            </p>
-            <button type="button" className="shrink-0 text-xs font-extrabold text-primary" onClick={() => void navigator.clipboard.writeText(field.value).then(() => toast.success(`${field.label} copied`), () => toast.error("Could not copy that."))}>Copy</button>
-          </div>
-        ))}
-        {gaps.map((gap, index) => (
-          <p key={`${gap.label}-gap-${index}`} className="text-xs leading-relaxed text-muted">
-            <span className="font-extrabold">{gap.label}:</span> {gap.reason === "absent" ? "not included by the provider" : "not labelled clearly enough to place"}
-          </p>
-        ))}
-      </div>
-    );
-  }
-  const line = [order.server, order.network, order.phone, order.code && `code ${order.code}`, order.providerStatus, order.detail && !order.detail.startsWith("{") ? order.detail : ""].filter(Boolean).join(" · ");
-  return line ? <p className="mt-2 break-words text-xs leading-relaxed text-muted">{line}</p> : null;
+function orderSummary(order: { category?: string; title?: string; service?: string; detail?: string; server?: string; network?: string; phone?: string; code?: string; providerStatus?: string }) {
+  const held = isRawFacebookDelivery(order);
+  const line = [order.server, order.network, order.phone, !held && order.code ? `code ${order.code}` : "", order.providerStatus, !held && order.detail && !order.detail.startsWith("{") ? order.detail : ""].filter(Boolean).join(" · ");
+  if (line) return line;
+  return held ? "Facebook account details are stored for review." : "";
 }

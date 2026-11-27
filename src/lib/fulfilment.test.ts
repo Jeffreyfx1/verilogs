@@ -53,6 +53,17 @@ test("purchase view shows only stored provider data", () => {
   assert.equal(admin.server, "AccsZone");
   assert.equal(admin.reference, "az-42");
   assert.equal(logs.poll, false);
+  const facebook = "buyer@example.com:fb-secret:mail-secret";
+  const held = purchaseView({ id: "fb", category: "logs", title: "USA Facebook", service: "Facebook", amount: 1800, status: "completed", server: "AccsZone", delivery: facebook, detail: "Account format: Facebook Email : Facebook Password : Email Password" });
+  assert.equal(held.rawHeld, true);
+  assert.deepEqual(held.delivery, []);
+  assert.equal(held.accounts.length, 0);
+  assert.equal(held.detail, "");
+  assert.equal(JSON.stringify(held).includes(facebook), false);
+  const heldAdmin = purchaseView({ id: "fb", category: "logs", title: "USA Facebook", service: "Facebook", amount: 1800, status: "completed", server: "AccsZone", delivery: facebook, detail: "Account format: Facebook Email : Facebook Password : Email Password" }, [], { admin: true });
+  assert.equal(heldAdmin.delivery[0], facebook);
+  assert.match(heldAdmin.detail, /Account format/);
+  assert.equal(heldAdmin.accounts.length, 0);
 
   const fromCode = purchaseView({ id: "e", category: "data", title: "1GB", amount: 300, status: "completed", code: "VTU-REF-1" });
   assert.deepEqual(fromCode.delivery, ["VTU-REF-1"]);

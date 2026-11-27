@@ -129,20 +129,17 @@ function ResultPage() {
       {view ? (
         <article className="space-y-4 rounded-[1.4rem] border border-line bg-card p-4 shadow-card">
           <div>
-            <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#0c6e8a]">{view.accounts.some((account) => account.layout === "facebook") ? "Facebook account" : view.kind}</p>
+            <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#0c6e8a]">{view.kind}</p>
             <h2 className="mt-1 text-xl font-extrabold">{view.title}</h2>
             <p className="mt-1 text-sm text-muted">{naira(view.amount)} · {view.status}</p>
-            {view.accounts.some((account) => account.layout === "facebook") ? <p className="text-xs text-muted">Purchase reference {view.orderId}</p> : null}
             {view.createdAt ? <p className="text-xs text-muted">{when(view.createdAt)}</p> : null}
           </div>
           {view.accounts.length ? (
-            <div className="space-y-4">
-              {view.accounts.map((account, index) => account.layout === "facebook" ? (
-                <FacebookDelivery key={index} account={account} onCopy={copy} />
-              ) : (
+            <div className="space-y-2">
+              {view.accounts.map((account, index) => (
                 <div key={index} className="space-y-2">
                   {account.fields.map((field) => (
-                    <div key={`${field.label}-${index}`} className="rounded-xl bg-paper px-3 py-2">
+                    <div key={`${field.label}-${field.value}`} className="rounded-xl bg-paper px-3 py-2">
                       <div className="flex items-start justify-between gap-3">
                         <p className="text-xs text-muted">{field.label}</p>
                         <button type="button" className="text-xs font-extrabold text-primary" onClick={() => void copy(field.value, field.label)}>Copy</button>
@@ -154,6 +151,8 @@ function ResultPage() {
               ))}
             </div>
           ) : null}
+          {view.rawHeld && !view.admin ? <p className="text-sm text-muted">The provider response for this Facebook purchase is stored unchanged and is not shown on this page.</p> : null}
+          {view.admin && view.rawHeld ? <AdminDiagnostic view={view} onCopy={copy} /> : null}
           {view.server === "Rent number" && view.status === "waiting" ? (
             <div className="flex flex-wrap gap-2">
               <button type="button" className="rounded-xl border border-line px-3 py-2 text-sm font-extrabold" disabled={!!acting} onClick={() => void rentAct("cancel")}>{acting === "cancel" ? "Cancelling…" : "Cancel rental"}</button>
@@ -163,6 +162,31 @@ function ResultPage() {
         </article>
       ) : error ? null : <p className="text-sm text-muted">Opening this purchase…</p>}
     </div>
+  );
+}
+
+function AdminDiagnostic({ view, onCopy }: { view: View; onCopy: (value: string, label: string) => void }) {
+  const response = view.delivery.join("\n");
+  return (
+    <section className="space-y-3 rounded-xl border border-line bg-paper px-3 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-extrabold">Admin only · original provider response</p>
+          <p className="mt-1 text-xs text-muted">Stored account text, unmodified. AccsZone sends each account as one string. Verilogs keeps those strings separated by a new line. This block is not written to logs.</p>
+        </div>
+        {response ? <button type="button" className="shrink-0 text-xs font-extrabold text-primary" onClick={() => void onCopy(response, "Provider response")}>Copy</button> : null}
+      </div>
+      {response ? <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-card px-2 py-2 text-xs">{response}</pre> : <p className="text-sm text-muted">No provider text was stored on this order.</p>}
+      {view.detail ? (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-extrabold">Stored product description</p>
+            <button type="button" className="text-xs font-extrabold text-primary" onClick={() => void onCopy(view.detail, "Product description")}>Copy</button>
+          </div>
+          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-card px-2 py-2 text-xs">{view.detail}</pre>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -296,50 +320,6 @@ function clockOf(expiresAt: string, createdAt: string, now: number) {
   const minutes = Math.floor(left / 60);
   const seconds = left % 60;
   return { label: `${minutes}:${String(seconds).padStart(2, "0")}`, used };
-}
-
-function FacebookDelivery({ account, onCopy }: { account: View["accounts"][number]; onCopy: (value: string, label: string) => void }) {
-  return (
-    <div className="space-y-3">
-      {account.fields.length ? (
-        <div className="space-y-2">
-          {account.fields.map((field) => (
-            <div key={field.label} className="rounded-xl bg-paper px-3 py-2">
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-xs font-extrabold">{field.label}</p>
-                <button type="button" className="shrink-0 text-xs font-extrabold text-primary" onClick={() => onCopy(field.value, field.label)}>Copy</button>
-              </div>
-              <p className={`mt-1 break-all font-semibold ${field.label === "User ID (Login ID)" || field.label === "Linked Email" ? "text-primary underline" : ""}`}>{field.value}</p>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {account.gaps?.length ? (
-        <div className="space-y-2">
-          {account.gaps.map((gap) => (
-            <div key={gap.label} className="rounded-xl border border-dashed border-line px-3 py-2">
-              <p className="text-xs font-extrabold">{gap.label}</p>
-              <p className="mt-1 text-sm text-muted">{gap.reason === "absent" ? "Not included in this provider response." : "Not placed. The provider response did not label this field clearly enough to match it."}</p>
-            </div>
-          ))}
-          <p className="text-sm text-muted">This delivery did not include every account field. Nothing was invented to fill the gap.</p>
-        </div>
-      ) : null}
-      {account.guide ? (
-        <section className="space-y-2 rounded-xl border border-line bg-paper px-3 py-3">
-          <p className="text-sm font-extrabold">{account.guide.heading}</p>
-          {account.guide.links.length ? (
-            <div className="space-y-1">
-              {account.guide.links.map((link) => (
-                <a key={link} href={link} target="_blank" rel="noreferrer" className="block break-all font-semibold text-primary underline">{link}</a>
-              ))}
-            </div>
-          ) : null}
-          <p className="text-sm leading-5 text-muted">{account.guide.note}</p>
-        </section>
-      ) : null}
-    </div>
-  );
 }
 
 function FieldValue({ value }: { value: string }) {
