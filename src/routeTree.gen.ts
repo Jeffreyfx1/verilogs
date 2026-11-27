@@ -32,6 +32,7 @@ import { Route as AdminBrandRouteImport } from './routes/admin/brand'
 import { Route as AdminCatalogRouteImport } from './routes/admin/catalog'
 import { Route as AdminContentRouteImport } from './routes/admin/content'
 import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
+import { Route as AdminDepositsRouteImport } from './routes/admin/deposits'
 import { Route as AdminHostingRouteImport } from './routes/admin/hosting'
 import { Route as AdminImportRouteImport } from './routes/admin/import'
 import { Route as AdminLogosRouteImport } from './routes/admin/logos'
@@ -179,6 +180,11 @@ const AdminContentRoute = AdminContentRouteImport.update({
 const AdminCustomersRoute = AdminCustomersRouteImport.update({
   id: '/customers',
   path: '/customers',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminDepositsRoute = AdminDepositsRouteImport.update({
+  id: '/deposits',
+  path: '/deposits',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminHostingRoute = AdminHostingRouteImport.update({
@@ -370,6 +376,7 @@ export interface FileRoutesByFullPath {
   '/admin/catalog': typeof AdminCatalogRoute
   '/admin/content': typeof AdminContentRoute
   '/admin/customers': typeof AdminCustomersRoute
+  '/admin/deposits': typeof AdminDepositsRoute
   '/admin/hosting': typeof AdminHostingRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/logos': typeof AdminLogosRoute
@@ -426,6 +433,7 @@ export interface FileRoutesByTo {
   '/admin/catalog': typeof AdminCatalogRoute
   '/admin/content': typeof AdminContentRoute
   '/admin/customers': typeof AdminCustomersRoute
+  '/admin/deposits': typeof AdminDepositsRoute
   '/admin/hosting': typeof AdminHostingRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/logos': typeof AdminLogosRoute
@@ -485,6 +493,7 @@ export interface FileRoutesById {
   '/admin/catalog': typeof AdminCatalogRoute
   '/admin/content': typeof AdminContentRoute
   '/admin/customers': typeof AdminCustomersRoute
+  '/admin/deposits': typeof AdminDepositsRoute
   '/admin/hosting': typeof AdminHostingRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/logos': typeof AdminLogosRoute
@@ -884,6 +893,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCustomersRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/deposits': {
+      id: '/admin/deposits'
+      path: '/deposits'
+      fullPath: '/admin/deposits'
+      preLoaderRoute: typeof AdminDepositsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/hosting': {
       id: '/admin/hosting'
       path: '/hosting'
@@ -1124,6 +1140,7 @@ interface AdminRouteChildren {
   AdminCatalogRoute: typeof AdminCatalogRoute
   AdminContentRoute: typeof AdminContentRoute
   AdminCustomersRoute: typeof AdminCustomersRoute
+  AdminDepositsRoute: typeof AdminDepositsRoute
   AdminHostingRoute: typeof AdminHostingRoute
   AdminImportRoute: typeof AdminImportRoute
   AdminLogosRoute: typeof AdminLogosRoute
@@ -1145,6 +1162,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminCatalogRoute: AdminCatalogRoute,
   AdminContentRoute: AdminContentRoute,
   AdminCustomersRoute: AdminCustomersRoute,
+  AdminDepositsRoute: AdminDepositsRoute,
   AdminHostingRoute: AdminHostingRoute,
   AdminImportRoute: AdminImportRoute,
   AdminLogosRoute: AdminLogosRoute,

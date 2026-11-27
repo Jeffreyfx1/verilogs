@@ -122,6 +122,32 @@ export const confirmPaystack = createServerFn({ method: "POST" })
     return creditPaystack(data.reference, "session");
   });
 
+export const adminCustomerCounts = createServerFn({ method: "GET" }).handler(async () => {
+  const { adminContext } = await core();
+  const admin = await adminContext();
+  if (!admin) return { total: 0, today: 0, month: 0 };
+  const { customerCounts } = await import("@/lib/paystack-deposit.server");
+  return customerCounts();
+});
+
+export const depositDesk = createServerFn({ method: "GET" }).handler(async () => {
+  const { adminContext } = await core();
+  const admin = await adminContext();
+  if (!admin) return { error: "Only an admin can do that.", rows: [] as Awaited<ReturnType<typeof import("@/lib/paystack-deposit.server").listDeposits>> };
+  const { listDeposits } = await import("@/lib/paystack-deposit.server");
+  return { error: null as string | null, rows: await listDeposits() };
+});
+
+export const reconcileDeposit = createServerFn({ method: "POST" })
+  .validator((input: { reference?: string; mode?: string }) => ({
+    reference: String(input?.reference || "").trim().slice(0, 80),
+    mode: input?.mode === "credit" || input?.mode === "manual" ? input.mode : "check" as "check" | "credit" | "manual",
+  }))
+  .handler(async ({ data }) => {
+    const { adminReconcileDeposit } = await core();
+    return adminReconcileDeposit(data.reference, data.mode);
+  });
+
 export const clearNumberCatalog = createServerFn({ method: "POST" }).handler(async () => {
   const { clearNumberCatalog } = await core();
   return clearNumberCatalog();

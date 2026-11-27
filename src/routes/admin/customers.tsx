@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button, inputClass } from "@/components/ui";
 import { naira } from "@/lib/money";
+import { adminCustomerCounts } from "@/lib/shop-fns";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/customers")({ component: CustomersPage });
@@ -11,13 +12,15 @@ function CustomersPage() {
   const users = useStore((s) => s.users);
   const adjust = useStore((s) => s.adjustBalance);
   const mail = useStore((s) => s.mailUser);
+  const [counts, setCounts] = useState({ total: 0, today: 0, month: 0 });
   const [amounts, setAmounts] = useState<Record<string, string>>({});
+  useEffect(() => { adminCustomerCounts().then(setCounts).catch(() => undefined); }, [users.length]);
   const [subject, setSubject] = useState("A note from VeriLogs");
   const [body, setBody] = useState("");
   return (
     <div className="space-y-3">
       <h1 className="text-2xl font-extrabold">Customers</h1>
-      <p className="text-sm text-muted">Wallet changes and messages show up in the customer's notifications.</p>
+      <p className="text-sm text-muted">Wallet changes and messages show up in the customer's notifications. Total customers {counts.total.toLocaleString("en-NG")} · today {counts.today.toLocaleString("en-NG")} · this month {counts.month.toLocaleString("en-NG")}. Today and this month use Africa/Lagos.</p>
       {users.map((u) => (
         <article key={u.id} className="space-y-3 rounded-card border border-line bg-card p-4 text-sm shadow-card">
           <div className="flex flex-wrap items-center justify-between gap-3">

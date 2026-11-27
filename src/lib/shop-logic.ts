@@ -417,6 +417,29 @@ export function adjustBalance(data: Data, actorId: string | null, userId: string
   return { error: null, data: next, mail: { to: user.email, subject: "VeriLogs wallet update", text: `${note}. Change: ₦${n.toLocaleString("en-NG")}.` } };
 }
 
+export function recordPaystackCredit(data: Data, input: { userId: string; amount: number; reference: string; balance: number; applied: boolean; ensureHistory?: boolean }) {
+  const reference = String(input.reference || "").trim();
+  const user = data.users.find((item) => item.id === input.userId);
+  if (!user || !reference) return { data };
+  const note = "Paystack · " + reference;
+  const paidRefs = data.paidRefs.includes(reference) ? data.paidRefs : [...data.paidRefs, reference].slice(-5000);
+  const hasTxn = data.txns.some((item) => item.userId === user.id && item.note === note);
+  let next: Data = {
+    ...data,
+    paidRefs,
+    users: data.users.map((item) => (item.id === user.id ? { ...item, balance: input.balance } : item)),
+  };
+  if ((input.applied || input.ensureHistory) && !hasTxn) {
+    next = {
+      ...next,
+      txns: [{ id: "txn_" + reference.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 48), userId: user.id, kind: "topup", amount: Math.round(input.amount), note, createdAt: new Date().toISOString() }, ...next.txns],
+    };
+    next = pushNote(next, user.id, "Wallet funded", `Paystack added ₦${Math.round(input.amount).toLocaleString("en-NG")} to your wallet.`, "wallet");
+    return { data: next, mail: { to: user.email, subject: "VeriLogs wallet funded", text: `Paystack confirmed ₦${Math.round(input.amount).toLocaleString("en-NG")}. Reference ${reference}.` } };
+  }
+  return { data: next };
+}
+
 export function creditVerified(data: Data, userId: string, amount: number, reference: string) {
   if (data.paidRefs.includes(reference)) return { data, already: true };
   const n = Math.round(amount);

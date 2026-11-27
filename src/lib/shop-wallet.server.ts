@@ -88,7 +88,8 @@ export async function debitBalance(userId: string, amount: number, ref: string, 
 export async function creditBalance(userId: string, amount: number, ref: string, note: string, kind: "topup" | "refund" = "topup") {
   const amt = Math.round(amount);
   const sql = await getSql();
-  if (amt === 0 || !ref) return { ok: false, balance: await balanceOf(userId), applied: false };
+  if (amt === 0 || !ref || !userId) return { ok: false, balance: userId ? await balanceOf(userId) : 0, applied: false };
+  await sql.query("insert into shop_balances (user_id, balance) values ($1, 0) on conflict (user_id) do nothing", [userId]);
   const id = uid("led");
   const rows = await sql.query<{ balance_after: number }>(
     `with upd as (

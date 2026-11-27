@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { CATEGORY_LABEL, quoteProduct, type Provider } from "@/lib/catalog";
 import { Button, Field, inputClass } from "@/components/ui";
 import { naira, when } from "@/lib/money";
-import { profitReport, catalogStats } from "@/lib/shop-fns";
+import { profitReport, catalogStats, adminCustomerCounts } from "@/lib/shop-fns";
 import { useServers, useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/")({ component: AdminHome });
@@ -18,9 +18,11 @@ function AdminHome() {
   const servers = useServers();
   const [stats, setStats] = useState({ total: 0, live: 0, byCategory: {} as Record<string, number>, byProvider: {} as Record<string, { count: number; live: number }> });
   const [profit, setProfit] = useState<{ total: number; unverified: number; rows: Array<{ category: string; profit: number; orders: number }>; updatedAt: string } | null>(null);
+  const [customers, setCustomers] = useState({ total: 0, today: 0, month: 0 });
   useEffect(() => {
     catalogStats().then((res) => { if (res) setStats(res); }).catch(() => undefined);
     profitReport().then((res) => { if (res.report) setProfit(res.report); }).catch(() => undefined);
+    adminCustomerCounts().then((res) => { if (res) setCustomers(res); }).catch(() => undefined);
   }, [providers.length, orders.length]);
   const byCat = stats.byCategory;
   return (
@@ -49,6 +51,24 @@ function AdminHome() {
             </tbody>
           </table>
         </div>
+      </section>
+      <section className="rounded-card border border-line bg-card p-5 shadow-card">
+        <p className="text-xs font-bold tracking-wide text-muted">TOTAL CUSTOMERS</p>
+        <p className="mt-1 text-3xl font-extrabold">{customers.total.toLocaleString("en-NG")}</p>
+        <p className="mt-1 text-sm text-muted">Registered customer accounts in the database. Administrators and staff are not included. The same email is counted once. Deleted accounts are not included. Today and this month use Africa/Lagos (WAT, UTC+1).</p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          {[
+            ["Total registered", customers.total],
+            ["New today", customers.today],
+            ["New this month", customers.month],
+          ].map(([label, count]) => (
+            <div key={String(label)} className="rounded-xl bg-paper px-3 py-2">
+              <p className="text-xs text-muted">{label}</p>
+              <p className="text-xl font-extrabold">{Number(count).toLocaleString("en-NG")}</p>
+            </div>
+          ))}
+        </div>
+        <Link to="/admin/deposits" className="mt-3 inline-block text-sm font-semibold text-primary">Wallet deposits</Link>
       </section>
       <div className="grid gap-3 sm:grid-cols-4">
         {[
@@ -106,7 +126,7 @@ function AdminHome() {
           );
         })}
       </section>
-      <p className="text-xs text-muted">{users.filter((u) => u.role === "customer").length} customers · {orders.length} orders · your gain {naira(orders.reduce((sum, order) => sum + (order.status === "refunded" ? 0 : order.gain || 0), 0))} · wallet float {naira(users.reduce((s, u) => s + u.balance, 0))}</p>
+      <p className="text-xs text-muted">{customers.total.toLocaleString("en-NG")} customers · {orders.length} orders · your gain {naira(orders.reduce((sum, order) => sum + (order.status === "refunded" ? 0 : order.gain || 0), 0))} · wallet float {naira(users.reduce((s, u) => s + u.balance, 0))}</p>
     </div>
   );
 }

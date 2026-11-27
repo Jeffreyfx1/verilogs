@@ -1,5 +1,4 @@
 import { deleteCookie, getCookie, getRequestUrl, setCookie } from "@tanstack/react-start/server";
-import { paystackSignatureOk } from "@/lib/paystack-sign";
 import { getSql } from "@/lib/db";
 import { freshData, normalizeData, quoteProduct, resolveNumberServer, serverLabel, topupQuote, withAdminLogin, type Data, type Order, type Product, type SyncReport } from "@/lib/catalog";
 import { customerPrice, profitsOf, sellQuote, summarizeProfit } from "@/lib/pricing";
@@ -54,7 +53,7 @@ import {
   buyProduct,
   changePassword,
   completeGoogle,
-  creditVerified,
+  recordPaystackCredit,
   importServices,
   loginUser,
   mailUser,
@@ -1370,57 +1369,80 @@ export async function purchasePreview(productId: string) {
   };
 }
 
-function nairaCredit(data: { currency?: string; amount?: number; metadata?: { credit?: number } }) {
-  const currency = String(data.currency || "").toUpperCase();
-  if (currency !== "NGN") return { error: "Only a naira payment can fund the wallet." };
-  const charged = Math.round(Number(data.amount || 0) / 100);
-  const credit = Math.round(Number(data.metadata?.credit || 0));
-  if (charged < 100) return { error: "Paystack amount is too small." };
-  if (credit > charged) return { error: "Payment amount does not match the wallet credit." };
-  return { amount: credit > 0 ? credit : charged };
+async function applyVerifiedPaystack(verified: import("@/lib/paystack-deposit.server").VerifiedPaystack, options: { sessionUserId?: string | null; force?: boolean; acceptManual?: boolean }) {
+  const { settlePaystackDeposit } = await import("@/lib/paystack-deposit.server");
+  const settled = await settlePaystackDeposit({ verified, force: options.force, acceptManual: options.acceptManual });
+  const sessionMismatch = !!(options.sessionUserId && settled.userId && options.sessionUserId !== settled.userId);
+  if (settled.error && settled.status !== "credited") return { error: settled.error, settled, state: null as Data | null, bought: false, orderId: "" };
+  return locked(async () => {
+    const doc = await loadLight();
+    const recorded = recordPaystackCredit(doc, {
+      userId: settled.userId,
+      amount: settled.amount,
+      reference: verified.reference,
+      balance: settled.balance,
+      applied: settled.applied,
+      ensureHistory: settled.status === "credited" && !settled.manualRef,
+    });
+    let funded = recorded.data;
+    if (sessionMismatch) {
+      await saveDoc(funded);
+      const session = await readSession();
+      return { error: "This payment belongs to another account.", settled, bought: false, orderId: "", state: projectShop(funded, session.userId, session.draft) };
+    }
+    if (settled.applied) funded = await withDepositCashback(funded, settled.userId, settled.amount, verified.reference);
+    const finished = settled.applied
+      ? await finishPaidNumber(funded, settled.userId, settled.productId, verified.reference)
+      : { data: funded, bought: false, error: null as string | null, orderId: "" };
+    await saveDoc(finished.data);
+    if (settled.applied && "mail" in recorded) await sendMail(recorded.mail);
+    const session = await readSession();
+    return {
+      error: finished.error,
+      settled,
+      bought: finished.bought,
+      orderId: finished.orderId,
+      state: projectShop(finished.data, session.userId, session.draft),
+    };
+  });
 }
 
-export async function creditPaystack(reference: string, expectedUserId?: string | null) {
-  const secret = process.env.PAYSTACK_SECRET_KEY;
-  if (!secret) return { error: "Paystack is not connected yet. Add PAYSTACK_SECRET_KEY on the host." };
+export async function creditPaystack(reference: string, expectedUserId?: string | null, options?: { force?: boolean; acceptManual?: boolean }) {
+  const { verifyPaystack } = await import("@/lib/paystack-deposit.server");
   let expect = expectedUserId;
   if (expectedUserId === "session") {
     const session = await readSession();
     expect = session.userId;
     if (!expect) return { error: "Sign in first." };
   }
-  const res = await fetch("https://api.paystack.co/transaction/verify/" + encodeURIComponent(reference), {
-    headers: { Authorization: `Bearer ${secret}` },
-  });
-  const body = (await res.json()) as { status?: boolean; data?: { status?: string; currency?: string; amount?: number; metadata?: { userId?: string; credit?: number; productId?: string } } };
-  if (!body.status || body.data?.status !== "success") return { error: "Paystack has not confirmed this payment." };
-  const userId = body.data.metadata?.userId;
-  if (!userId) return { error: "Payment is missing the account it belongs to." };
-  if (expect && expect !== userId) return { error: "This payment belongs to another account." };
-  const priced = nairaCredit(body.data);
-  if ("error" in priced) return { error: priced.error };
-  const amount = priced.amount;
-  return locked(async () => {
-    const doc = await loadLight();
-    const out = creditVerified(doc, userId, amount, reference);
-    if (out.error) return { error: out.error };
-    let funded = out.data;
-    if (!("already" in out) || !out.already) {
-      const moved = await creditBalance(userId, amount, "paystack:" + reference, "Paystack · " + reference, "topup");
-      funded = { ...out.data, users: out.data.users.map((user) => (user.id === userId ? { ...user, balance: moved.balance } : user)) };
-    }
-    funded = await withDepositCashback(funded, userId, amount, reference);
-    const finished = await finishPaidNumber(funded, userId, body.data?.metadata?.productId || "", reference);
-    await saveDoc(finished.data);
-    await sendMail(out.mail);
-    const session = await readSession();
-    return { error: finished.error, bought: finished.bought, orderId: finished.orderId, state: projectShop(finished.data, session.userId, session.draft) };
-  });
+  const checked = await verifyPaystack(reference);
+  if (!checked.ok) return { error: checked.message };
+  const applied = await applyVerifiedPaystack(checked.verified, { sessionUserId: expect, force: options?.force, acceptManual: options?.acceptManual });
+  return { error: applied.error, bought: applied.bought, orderId: applied.orderId, state: applied.state };
+}
+
+export async function adminReconcileDeposit(reference: string, mode: "check" | "credit" | "manual") {
+  const admin = await adminContext();
+  if (!admin) return { error: "Only an admin can do that.", status: "" };
+  const clean = String(reference || "").trim();
+  if (!clean) return { error: "Enter the Paystack reference.", status: "" };
+  const { verifyPaystack, logDepositAction } = await import("@/lib/paystack-deposit.server");
+  const checked = await verifyPaystack(clean);
+  if (!checked.ok) {
+    await logDepositAction(admin.userId, clean, checked.state);
+    return { error: checked.message, status: checked.state };
+  }
+  const applied = await applyVerifiedPaystack(checked.verified, { force: mode === "credit", acceptManual: mode === "manual" });
+  await logDepositAction(admin.userId, clean, `${mode} ${applied.settled.status} ${applied.error || "ok"}`);
+  return { error: applied.error, status: applied.settled.status };
 }
 
 export async function creditFromWebhook(raw: string, signature: string | null) {
-  const secret = process.env.PAYSTACK_SECRET_KEY;
-  if (!paystackSignatureOk(raw, signature, secret || "")) {
+  const { paystackSignatureOk } = await import("@/lib/paystack-sign");
+  const { readWebhookEvent, shouldAckWebhook } = await import("@/lib/paystack-deposit");
+  const secret = process.env.PAYSTACK_SECRET_KEY || "";
+  const signatureOk = paystackSignatureOk(raw, signature, secret);
+  if (!signatureOk) {
     try {
       const { recordWebhook } = await import("@/lib/fulfilment.server");
       await recordWebhook({ provider: "paystack", eventKey: `rejected:${Date.now().toString(36)}`, status: "rejected", summary: "Rejected signature", error: secret ? "Bad signature" : "Secret missing" });
@@ -1429,45 +1451,58 @@ export async function creditFromWebhook(raw: string, signature: string | null) {
     }
     return false;
   }
-  let event: { event?: string; data?: { reference?: string; status?: string; currency?: string; amount?: number; metadata?: { userId?: string; credit?: number; productId?: string } } };
-  try {
-    event = JSON.parse(raw) as typeof event;
-  } catch {
-    return false;
-  }
-  if (event.event !== "charge.success" || event.data?.status !== "success" || !event.data.reference || !event.data.metadata?.userId) return true;
-  const priced = nairaCredit(event.data);
-  if ("error" in priced) {
-    console.error("Paystack webhook was signed but not credited:", priced.error);
+  const event = readWebhookEvent(raw);
+  if (!event) return false;
+  if (event.event !== "charge.success") return true;
+  if (!event.reference) return false;
+  const { verifyPaystack } = await import("@/lib/paystack-deposit.server");
+  const checked = await verifyPaystack(event.reference);
+  if (!checked.ok) {
+    if (checked.state !== "failed") return false;
+    try {
+      const { settlePaystackDeposit } = await import("@/lib/paystack-deposit.server");
+      await settlePaystackDeposit({
+        verified: {
+          reference: event.reference,
+          status: "failed",
+          charged: 0,
+          currency: "",
+          email: "",
+          paidAt: "",
+          metadataUserId: "",
+          metadataCredit: 0,
+          productId: "",
+        },
+      });
+    } catch (err) {
+      console.error("Paystack failure was not recorded", err instanceof Error ? err.message : err);
+      return false;
+    }
     return true;
   }
-  const amount = priced.amount;
-  const reference = event.data.reference;
-  const paidUser = event.data.metadata.userId;
-  const productId = event.data.metadata.productId || "";
+  let recorded = false;
   let logged: "ok" | "failed" = "failed";
-  await locked(async () => {
-    const doc = await loadLight();
-    const out = creditVerified(doc, paidUser, amount, reference);
-    if (out.error) return;
-    logged = "ok";
-    let funded = out.data;
-    if (!("already" in out) || !out.already) {
-      const moved = await creditBalance(paidUser, amount, "paystack:" + reference, "Paystack · " + reference, "topup");
-      funded = { ...out.data, users: out.data.users.map((user) => (user.id === paidUser ? { ...user, balance: moved.balance } : user)) };
-    }
-    funded = await withDepositCashback(funded, paidUser, amount, reference);
-    const finished = await finishPaidNumber(funded, paidUser, productId, reference);
-    await saveDoc(finished.data);
-    await sendMail(out.mail);
-  });
+  try {
+    const applied = await applyVerifiedPaystack(checked.verified, {});
+    recorded = applied.settled.status === "credited" || applied.settled.status === "failed" || applied.settled.status === "awaiting" || applied.settled.status === "needs_reconciliation";
+    logged = applied.settled.status === "credited" ? "ok" : "failed";
+  } catch (err) {
+    console.error("Paystack credit failed", err instanceof Error ? err.message : err);
+    recorded = false;
+  }
   try {
     const { recordWebhook } = await import("@/lib/fulfilment.server");
-    await recordWebhook({ provider: "paystack", eventKey: reference, status: logged, summary: `charge.success ${reference}`, error: logged === "failed" ? "Not credited" : "" });
+    await recordWebhook({ provider: "paystack", eventKey: event.reference, status: logged, summary: `charge.success ${event.reference}`, error: logged === "failed" ? "Not credited" : "" });
   } catch (err) {
     console.error("paystack webhook log skipped", err instanceof Error ? err.message : err);
   }
-  return true;
+  return shouldAckWebhook({
+    signatureOk: true,
+    event: event.event,
+    reference: event.reference,
+    verify: checked.verified.status === "success" ? "success" : checked.verified.status === "failed" ? "failed" : "pending",
+    recorded,
+  });
 }
 
 export async function startPaystack(amount: number, productId = "") {
@@ -1483,6 +1518,8 @@ export async function startPaystack(amount: number, productId = "") {
   const quote = topupQuote(n, doc.settings);
   if (quote.pay > 2000000) return { error: "That top up plus the site charge is too large." };
   const reference = "vl_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+  const { markDepositFailed, recordDepositIntent } = await import("@/lib/paystack-deposit.server");
+  await recordDepositIntent({ reference, userId: user.id, credit: quote.credit, charge: quote.pay, productId });
   const origin = (process.env.APP_URL || getRequestUrl().origin).replace(/\/$/, "");
   const back = productId ? `${origin}/dashboard/wallet?product=${encodeURIComponent(productId)}` : `${origin}/dashboard/wallet`;
   const res = await fetch("https://api.paystack.co/transaction/initialize", {
@@ -1495,11 +1532,14 @@ export async function startPaystack(amount: number, productId = "") {
       currency: "NGN",
       channels: ["bank_transfer", "bank", "card", "ussd"],
       callback_url: back,
-      metadata: { userId: user.id, credit: quote.credit, productId },
+      metadata: { userId: user.id, credit: String(quote.credit), productId: productId || "" },
     }),
   });
   const body = (await res.json()) as { status?: boolean; message?: string; data?: { authorization_url?: string } };
-  if (!body.status || !body.data?.authorization_url) return { error: body.message || "Paystack refused the payment." };
+  if (!body.status || !body.data?.authorization_url) {
+    await markDepositFailed(reference, body.message || "Paystack refused the payment.");
+    return { error: body.message || "Paystack refused the payment." };
+  }
   return { url: body.data.authorization_url, reference };
 }
 

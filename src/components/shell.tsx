@@ -61,6 +61,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
     { to: "/admin/airtime", label: "Airtime networks", icon: glyph.phone },
     { to: "/admin/orders", label: "Orders", icon: glyph.scroll },
     { to: "/admin/customers", label: "Customers", icon: glyph.users },
+    { to: "/admin/deposits", label: "Wallet deposits", icon: glyph.wallet },
     { to: "/admin/referrals", label: "Referrals", icon: glyph.users },
     { to: "/admin/content", label: "Content & settings", icon: glyph.settings },
     { to: "/admin/website", label: "Website content", icon: glyph.scroll },
