@@ -129,17 +129,19 @@ function ResultPage() {
       {view ? (
         <article className="space-y-4 rounded-[1.4rem] border border-line bg-card p-4 shadow-card">
           <div>
-            <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#0c6e8a]">{view.kind}</p>
+            <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#0c6e8a]">{view.accounts.some((account) => account.layout === "facebook") ? "Facebook account" : view.kind}</p>
             <h2 className="mt-1 text-xl font-extrabold">{view.title}</h2>
             <p className="mt-1 text-sm text-muted">{naira(view.amount)} · {view.status}</p>
             {view.createdAt ? <p className="text-xs text-muted">{when(view.createdAt)}</p> : null}
           </div>
           {view.accounts.length ? (
-            <div className="space-y-2">
-              {view.accounts.map((account, index) => (
+            <div className="space-y-4">
+              {view.accounts.map((account, index) => account.layout === "facebook" ? (
+                <FacebookDelivery key={index} account={account} onCopy={copy} />
+              ) : (
                 <div key={index} className="space-y-2">
                   {account.fields.map((field) => (
-                    <div key={`${field.label}-${field.value}`} className="rounded-xl bg-paper px-3 py-2">
+                    <div key={`${field.label}-${index}`} className="rounded-xl bg-paper px-3 py-2">
                       <div className="flex items-start justify-between gap-3">
                         <p className="text-xs text-muted">{field.label}</p>
                         <button type="button" className="text-xs font-extrabold text-primary" onClick={() => void copy(field.value, field.label)}>Copy</button>
@@ -150,6 +152,12 @@ function ResultPage() {
                 </div>
               ))}
             </div>
+          ) : null}
+          {view.admin && view.accounts.some((account) => account.layout === "facebook") && view.delivery.length ? (
+            <details className="rounded-xl border border-line px-3 py-2 text-sm">
+              <summary className="cursor-pointer font-extrabold">Provider response</summary>
+              <pre className="mt-2 whitespace-pre-wrap break-all text-xs text-muted">{view.delivery.join("\n")}</pre>
+            </details>
           ) : null}
           {view.server === "Rent number" && view.status === "waiting" ? (
             <div className="flex flex-wrap gap-2">
@@ -293,6 +301,31 @@ function clockOf(expiresAt: string, createdAt: string, now: number) {
   const minutes = Math.floor(left / 60);
   const seconds = left % 60;
   return { label: `${minutes}:${String(seconds).padStart(2, "0")}`, used };
+}
+
+function FacebookDelivery({ account, onCopy }: { account: View["accounts"][number]; onCopy: (value: string, label: string) => void }) {
+  return (
+    <div className="space-y-4">
+      {account.fields.map((field) => (
+        <div key={field.label}>
+          <p className="text-[15px] font-extrabold">{field.label}:</p>
+          <div className="mt-1 flex items-start justify-between gap-3">
+            <p className="min-w-0 flex-1 break-all text-[15px] font-semibold leading-6">{field.value}</p>
+            <button type="button" className="shrink-0 rounded-lg bg-paper px-2.5 py-1 text-xs font-extrabold text-primary" onClick={() => onCopy(field.value, field.label)}>Copy</button>
+          </div>
+        </div>
+      ))}
+      {account.guide ? (
+        <div className="space-y-2 border-t border-line pt-3">
+          <p className="text-[15px] font-extrabold">{account.guide.heading}</p>
+          <p className="text-sm leading-5 text-muted">{account.guide.note}</p>
+          {account.guide.links.map((link) => (
+            <a key={link} href={link} target="_blank" rel="noreferrer" className="block break-all text-[15px] font-extrabold text-[#128C7E] underline">{link}</a>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function FieldValue({ value }: { value: string }) {

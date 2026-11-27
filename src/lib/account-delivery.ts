@@ -1,7 +1,10 @@
 /** Labels for a delivered Logs or VPN account. Labels come from the listing format or from names the provider already returned. */
 
+import { isFacebookAccount, parseFacebookAccounts } from "@/lib/facebook-account";
+
 export type AccountField = { label: string; value: string };
-export type ParsedAccount = { fields: AccountField[] };
+export type AccountGuide = { heading: string; note: string; links: string[] };
+export type ParsedAccount = { fields: AccountField[]; layout?: "facebook"; guide?: AccountGuide };
 
 const SINK = /cookie|url|link|token|session|extra|raw|2fa|recovery/i;
 
@@ -23,6 +26,10 @@ export function formatLabels(text: string): string[] {
 export function parseAccountDelivery(raw: string, hint = ""): ParsedAccount[] {
   const text = String(raw || "").trim();
   if (!text) return [];
+  if (isFacebookAccount(hint)) {
+    const facebook = parseFacebookAccounts(text, hint);
+    if (facebook.length) return facebook;
+  }
   if (text.startsWith("{") || text.startsWith("[")) {
     try {
       const parsed = fromJson(JSON.parse(text));

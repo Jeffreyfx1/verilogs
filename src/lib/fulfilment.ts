@@ -114,7 +114,7 @@ export function purchaseView(order: PurchaseOrder, messages: SmsMessage[] = [], 
   const stored = mergeMessages(order.messages || [], messages);
   const deliverySource = order.delivery || (kind === "number" ? "" : order.code || "");
   const delivery = linesOf(deliverySource);
-  const accounts = kind === "logs" || kind === "vpn" ? parseAccountDelivery(deliverySource, `${order.title || ""}\n${order.detail || ""}`) : [];
+  const accounts = kind === "logs" || kind === "vpn" ? parseAccountDelivery(deliverySource, `${order.title || ""}\n${order.service || ""}\n${order.detail || ""}`) : [];
   const phone = String(order.phone || "").trim();
   const fromSms = stored.map((item) => item.code).filter(Boolean).pop() || "";
   const code = kind === "number" ? (fromSms || (phone ? String(order.code || "") : "")) : "";
@@ -129,6 +129,7 @@ export function purchaseView(order: PurchaseOrder, messages: SmsMessage[] = [], 
     : kind === "logs" || kind === "vpn"
       ? (accounts.length ? "The account details from this purchase are below." : "No account details were stored for this order.")
       : (delivery.length ? "Stored delivery for this order." : "No extra delivery was stored for this order.");
+  const facebook = accounts.some((account) => account.layout === "facebook");
   const cancellableServer = order.server === "Server 1" || order.server === "USA" || order.server === "Rent number";
   return {
     orderId: order.id,
@@ -143,7 +144,7 @@ export function purchaseView(order: PurchaseOrder, messages: SmsMessage[] = [], 
     network: customerLogs ? hideSupplier(order.network || "", supplier) : (order.network || ""),
     phone: kind === "number" || kind === "data" ? phone : phone,
     reference: customerLogs ? "" : reference,
-    delivery: kind === "number" ? [] : delivery,
+    delivery: kind === "number" || (facebook && !admin) ? [] : delivery,
     accounts,
     messages: stored,
     code,
