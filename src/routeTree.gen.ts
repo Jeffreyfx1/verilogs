@@ -66,6 +66,7 @@ import { Route as ApiGoogleCallbackRouteImport } from './routes/api/google/callb
 import { Route as ApiGoogleStartRouteImport } from './routes/api/google/start'
 import { Route as ApiPaystackWebhookRouteImport } from './routes/api/paystack/webhook'
 import { Route as ApiSiteImageSlotRouteImport } from './routes/api/site-image.$slot'
+import { Route as ApiVeraGeminiCheckRouteImport } from './routes/api/vera/gemini-check'
 import { Route as ApiVeraStreamRouteImport } from './routes/api/vera/stream'
 
 const IndexRoute = IndexRouteImport.update({
@@ -353,6 +354,11 @@ const ApiSiteImageSlotRoute = ApiSiteImageSlotRouteImport.update({
   path: '/api/site-image/$slot',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiVeraGeminiCheckRoute = ApiVeraGeminiCheckRouteImport.update({
+  id: '/api/vera/gemini-check',
+  path: '/api/vera/gemini-check',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiVeraStreamRoute = ApiVeraStreamRouteImport.update({
   id: '/api/vera/stream',
   path: '/api/vera/stream',
@@ -417,6 +423,7 @@ export interface FileRoutesByFullPath {
   '/api/google/start': typeof ApiGoogleStartRoute
   '/api/paystack/webhook': typeof ApiPaystackWebhookRoute
   '/api/site-image/$slot': typeof ApiSiteImageSlotRoute
+  '/api/vera/gemini-check': typeof ApiVeraGeminiCheckRoute
   '/api/vera/stream': typeof ApiVeraStreamRoute
 }
 export interface FileRoutesByTo {
@@ -475,6 +482,7 @@ export interface FileRoutesByTo {
   '/api/google/start': typeof ApiGoogleStartRoute
   '/api/paystack/webhook': typeof ApiPaystackWebhookRoute
   '/api/site-image/$slot': typeof ApiSiteImageSlotRoute
+  '/api/vera/gemini-check': typeof ApiVeraGeminiCheckRoute
   '/api/vera/stream': typeof ApiVeraStreamRoute
 }
 export interface FileRoutesById {
@@ -536,6 +544,7 @@ export interface FileRoutesById {
   '/api/google/start': typeof ApiGoogleStartRoute
   '/api/paystack/webhook': typeof ApiPaystackWebhookRoute
   '/api/site-image/$slot': typeof ApiSiteImageSlotRoute
+  '/api/vera/gemini-check': typeof ApiVeraGeminiCheckRoute
   '/api/vera/stream': typeof ApiVeraStreamRoute
 }
 export interface FileRouteTypes {
@@ -597,6 +606,7 @@ export interface FileRouteTypes {
     | '/api/google/start'
     | '/api/paystack/webhook'
     | '/api/site-image/$slot'
+    | '/api/vera/gemini-check'
     | '/api/vera/stream'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -654,6 +664,7 @@ export interface FileRouteTypes {
     | '/api/google/start'
     | '/api/paystack/webhook'
     | '/api/site-image/$slot'
+    | '/api/vera/gemini-check'
     | '/api/vera/stream'
   id:
     | '__root__'
@@ -713,6 +724,7 @@ export interface FileRouteTypes {
     | '/api/google/start'
     | '/api/paystack/webhook'
     | '/api/site-image/$slot'
+    | '/api/vera/gemini-check'
     | '/api/vera/stream'
   fileRoutesById: FileRoutesById
 }
@@ -740,6 +752,7 @@ export interface RootRouteChildren {
   ApiGoogleStartRoute: typeof ApiGoogleStartRoute
   ApiPaystackWebhookRoute: typeof ApiPaystackWebhookRoute
   ApiSiteImageSlotRoute: typeof ApiSiteImageSlotRoute
+  ApiVeraGeminiCheckRoute: typeof ApiVeraGeminiCheckRoute
   ApiVeraStreamRoute: typeof ApiVeraStreamRoute
 }
 
@@ -1144,6 +1157,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSiteImageSlotRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/vera/gemini-check': {
+      id: '/api/vera/gemini-check'
+      path: '/api/vera/gemini-check'
+      fullPath: '/api/vera/gemini-check'
+      preLoaderRoute: typeof ApiVeraGeminiCheckRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/vera/stream': {
       id: '/api/vera/stream'
       path: '/api/vera/stream'
@@ -1264,6 +1284,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGoogleStartRoute: ApiGoogleStartRoute,
   ApiPaystackWebhookRoute: ApiPaystackWebhookRoute,
   ApiSiteImageSlotRoute: ApiSiteImageSlotRoute,
+  ApiVeraGeminiCheckRoute: ApiVeraGeminiCheckRoute,
   ApiVeraStreamRoute: ApiVeraStreamRoute,
 }
 export const routeTree = rootRouteImport
