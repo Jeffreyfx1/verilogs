@@ -743,3 +743,83 @@ export const finishRentNumber = createServerFn({ method: "POST" })
     return finish(data.orderId);
   });
 
+export const submitComplaint = createServerFn({ method: "POST" })
+  .validator((input: { subject?: string; category?: string; body?: string; orderRef?: string; screenshot?: string; clientKey?: string }) => ({
+    subject: String(input?.subject || "").slice(0, 160),
+    category: String(input?.category || "").slice(0, 40),
+    body: String(input?.body || "").slice(0, 4500),
+    orderRef: String(input?.orderRef || "").slice(0, 80),
+    screenshot: String(input?.screenshot || "").slice(0, 500_000),
+    clientKey: String(input?.clientKey || "").slice(0, 80),
+  }))
+  .handler(async ({ data }) => {
+    const { submitComplaintForSession } = await import("@/lib/complaints.server");
+    return submitComplaintForSession(data);
+  });
+
+export const listMyComplaints = createServerFn({ method: "GET" }).handler(async () => {
+  const { listMyComplaintsForSession } = await import("@/lib/complaints.server");
+  return listMyComplaintsForSession();
+});
+
+export const readComplaint = createServerFn({ method: "POST" })
+  .validator((input: { id?: string }) => ({ id: String(input?.id || "").slice(0, 48) }))
+  .handler(async ({ data }) => {
+    const { readComplaintForSession } = await import("@/lib/complaints.server");
+    return readComplaintForSession(data.id);
+  });
+
+export const replyComplaint = createServerFn({ method: "POST" })
+  .validator((input: { id?: string; body?: string }) => ({
+    id: String(input?.id || "").slice(0, 48),
+    body: String(input?.body || "").slice(0, 4500),
+  }))
+  .handler(async ({ data }) => {
+    const { replyComplaintForSession } = await import("@/lib/complaints.server");
+    return replyComplaintForSession(data.id, data.body);
+  });
+
+export const adminComplaintDesk = createServerFn({ method: "POST" })
+  .validator((input: { q?: string; status?: string; category?: string; sort?: string; page?: number }) => ({
+    q: String(input?.q || "").slice(0, 80),
+    status: String(input?.status || "").slice(0, 40),
+    category: String(input?.category || "").slice(0, 40),
+    sort: input?.sort === "oldest" ? "oldest" : "newest",
+    page: Math.max(1, Math.min(200, Math.round(Number(input?.page) || 1))),
+  }))
+  .handler(async ({ data }) => {
+    const { adminComplaintDeskForSession } = await import("@/lib/complaints.server");
+    return adminComplaintDeskForSession(data);
+  });
+
+export const replyAdminComplaint = createServerFn({ method: "POST" })
+  .validator((input: { id?: string; body?: string; status?: string }) => ({
+    id: String(input?.id || "").slice(0, 48),
+    body: String(input?.body || "").slice(0, 4500),
+    status: input?.status === "resolved" ? "resolved" : "awaiting_customer",
+  }))
+  .handler(async ({ data }) => {
+    const { replyAdminComplaintForSession } = await import("@/lib/complaints.server");
+    return replyAdminComplaintForSession(data.id, data.body, data.status);
+  });
+
+export const noteAdminComplaint = createServerFn({ method: "POST" })
+  .validator((input: { id?: string; body?: string }) => ({
+    id: String(input?.id || "").slice(0, 48),
+    body: String(input?.body || "").slice(0, 4500),
+  }))
+  .handler(async ({ data }) => {
+    const { noteAdminComplaintForSession } = await import("@/lib/complaints.server");
+    return noteAdminComplaintForSession(data.id, data.body);
+  });
+
+export const setComplaintStatus = createServerFn({ method: "POST" })
+  .validator((input: { id?: string; status?: string }) => ({
+    id: String(input?.id || "").slice(0, 48),
+    status: String(input?.status || "").slice(0, 40),
+  }))
+  .handler(async ({ data }) => {
+    const { setComplaintStatusForSession } = await import("@/lib/complaints.server");
+    return setComplaintStatusForSession(data.id, data.status);
+  });
+

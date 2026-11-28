@@ -69,6 +69,7 @@ function AdminHome() {
           ))}
         </div>
         <Link to="/admin/deposits" className="mt-3 inline-block text-sm font-semibold text-primary">Wallet deposits</Link>
+        <Link to="/admin/complaints" className="mt-2 block text-sm font-semibold text-primary">Complaints</Link>
       </section>
       <div className="grid gap-3 sm:grid-cols-4">
         {[

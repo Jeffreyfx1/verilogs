@@ -154,6 +154,7 @@ export type Note = {
   read: boolean;
   createdAt: string;
   kind: "account" | "wallet" | "mail" | "order" | "support";
+  href?: string;
 };
 
 export type WelcomePopup = {

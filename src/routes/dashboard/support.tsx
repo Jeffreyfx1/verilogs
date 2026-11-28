@@ -37,10 +37,11 @@ function SupportPage() {
         });
       }}>
         <h1 className="text-2xl font-extrabold">Support</h1>
-        <p className="text-sm text-muted">This stays in your account. For the public community, use the link below.</p>
+        <p className="text-sm text-muted">This stays in your account. For a tracked complaint with replies, use Complaints. For the public community, use the link below.</p>
         <Field label="Subject"><input className={inputClass} required value={subject} onChange={(e) => setSubject(e.target.value)} /></Field>
         <Field label="Message"><textarea className={inputClass} required rows={5} value={body} onChange={(e) => setBody(e.target.value)} /></Field>
         <Button type="submit" busy={busy}>{busy ? "Sending…" : "Send"}</Button>
+        <Link to="/dashboard/complaints" className="block text-sm font-semibold text-primary">Submit a complaint</Link>
         <Link to="/community" className="block text-sm font-semibold text-primary">Join {settings.community}</Link>
       </form>
       <section className="rounded-card border border-line bg-card p-5 shadow-card">

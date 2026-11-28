@@ -60,6 +60,7 @@ import {
   mailUser,
   markNotes,
   projectShop,
+  pushShopNote,
   refundOrder,
   registerUser,
   recordAirtimeOrder,
@@ -239,6 +240,19 @@ async function writeState(doc: Data) {
 
 async function saveDoc(doc: Data, _catalog = false) {
   await writeState({ ...doc, products: [] });
+}
+
+export async function deliverSupportNotes(notes: { userId: string; title: string; body: string; href: string }[]) {
+  const list = notes.filter((note) => note.userId && note.title && note.body);
+  if (!list.length) return;
+  await locked(async () => {
+    let doc = await loadLight();
+    for (const note of list) {
+      const href = /^\/(?:dashboard|admin)\/complaints\/[A-Za-z0-9_-]{4,48}$/.test(note.href) ? note.href : "";
+      doc = pushShopNote(doc, note.userId, note.title.slice(0, 140), note.body.slice(0, 400), href);
+    }
+    await saveDoc(doc);
+  });
 }
 
 export async function sendMail(mail: Mail | Mail[] | undefined) {

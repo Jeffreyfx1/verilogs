@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { Glyph, glyph } from "@/components/icons";
 import { when } from "@/lib/money";
 import { useStore } from "@/lib/store";
+
+function complaintId(href: string | undefined) {
+  const match = /^\/(?:dashboard|admin)\/complaints\/([A-Za-z0-9_-]{4,48})$/.exec(href || "");
+  return match?.[1] || "";
+}
 
 export function NoticeBell() {
   const notes = useStore((s) => s.notifications);
@@ -46,13 +52,35 @@ export function NoticeBell() {
         <div className="notice-pop absolute right-0 z-50 mt-2 rounded-card border border-line bg-card p-2 shadow-card">
           <p className="px-2 py-1 text-xs font-semibold text-muted">Notifications</p>
           <div className="note-list space-y-1 overflow-y-auto">
-            {notes.slice(0, 12).map((n) => (
-              <div key={n.id} className="rounded-xl bg-paper px-2 py-2 text-sm">
-                <p className="font-semibold">{n.title}</p>
-                <p className="text-xs text-muted">{n.body}</p>
-                <p className="text-xs text-muted">{when(n.createdAt)}</p>
-              </div>
-            ))}
+            {notes.slice(0, 12).map((n) => {
+              const id = complaintId(n.href);
+              const body = (
+                <>
+                  <p className="font-semibold">{n.title}</p>
+                  <p className="text-xs text-muted">{n.body}</p>
+                  <p className="text-xs text-muted">{when(n.createdAt)}</p>
+                </>
+              );
+              if (id && n.href?.startsWith("/admin/")) {
+                return (
+                  <Link key={n.id} to="/admin/complaints/$id" params={{ id }} onClick={() => setOpen(false)} className="block rounded-xl bg-paper px-2 py-2 text-sm">
+                    {body}
+                  </Link>
+                );
+              }
+              if (id) {
+                return (
+                  <Link key={n.id} to="/dashboard/complaints/$id" params={{ id }} onClick={() => setOpen(false)} className="block rounded-xl bg-paper px-2 py-2 text-sm">
+                    {body}
+                  </Link>
+                );
+              }
+              return (
+                <div key={n.id} className="rounded-xl bg-paper px-2 py-2 text-sm">
+                  {body}
+                </div>
+              );
+            })}
             {!notes.length ? <p className="px-2 py-3 text-sm text-muted">No notices yet. Wallet credits, orders and mail show up here.</p> : null}
           </div>
         </div>

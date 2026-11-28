@@ -33,6 +33,8 @@ import { Route as AdminCatalogRouteImport } from './routes/admin/catalog'
 import { Route as AdminContentRouteImport } from './routes/admin/content'
 import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
 import { Route as AdminDepositsRouteImport } from './routes/admin/deposits'
+import { Route as AdminComplaintsRouteImport } from './routes/admin/complaints'
+import { Route as AdminComplaintsIdRouteImport } from './routes/admin/complaints.$id'
 import { Route as AdminHostingRouteImport } from './routes/admin/hosting'
 import { Route as AdminImportRouteImport } from './routes/admin/import'
 import { Route as AdminLogosRouteImport } from './routes/admin/logos'
@@ -49,6 +51,8 @@ import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as DashboardAirtimeRouteImport } from './routes/dashboard/airtime'
 import { Route as DashboardAnnouncementsRouteImport } from './routes/dashboard/announcements'
 import { Route as DashboardBillsRouteImport } from './routes/dashboard/bills'
+import { Route as DashboardComplaintsRouteImport } from './routes/dashboard/complaints'
+import { Route as DashboardComplaintsIdRouteImport } from './routes/dashboard/complaints.$id'
 import { Route as DashboardDataRouteImport } from './routes/dashboard/data'
 import { Route as DashboardExtraRouteImport } from './routes/dashboard/extra'
 import { Route as DashboardHistoryRouteImport } from './routes/dashboard/history'
@@ -189,6 +193,16 @@ const AdminDepositsRoute = AdminDepositsRouteImport.update({
   path: '/deposits',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminComplaintsRoute = AdminComplaintsRouteImport.update({
+  id: '/complaints',
+  path: '/complaints',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminComplaintsIdRoute = AdminComplaintsIdRouteImport.update({
+  id: '/complaints/$id',
+  path: '/complaints/$id',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminHostingRoute = AdminHostingRouteImport.update({
   id: '/hosting',
   path: '/hosting',
@@ -267,6 +281,16 @@ const DashboardAnnouncementsRoute = DashboardAnnouncementsRouteImport.update({
 const DashboardBillsRoute = DashboardBillsRouteImport.update({
   id: '/bills',
   path: '/bills',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardComplaintsRoute = DashboardComplaintsRouteImport.update({
+  id: '/complaints',
+  path: '/complaints',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardComplaintsIdRoute = DashboardComplaintsIdRouteImport.update({
+  id: '/complaints/$id',
+  path: '/complaints/$id',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardDataRoute = DashboardDataRouteImport.update({
@@ -389,6 +413,8 @@ export interface FileRoutesByFullPath {
   '/admin/content': typeof AdminContentRoute
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/deposits': typeof AdminDepositsRoute
+  '/admin/complaints': typeof AdminComplaintsRoute
+  '/admin/complaints/$id': typeof AdminComplaintsIdRoute
   '/admin/hosting': typeof AdminHostingRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/logos': typeof AdminLogosRoute
@@ -404,6 +430,8 @@ export interface FileRoutesByFullPath {
   '/dashboard/airtime': typeof DashboardAirtimeRoute
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
   '/dashboard/bills': typeof DashboardBillsRoute
+  '/dashboard/complaints': typeof DashboardComplaintsRoute
+  '/dashboard/complaints/$id': typeof DashboardComplaintsIdRoute
   '/dashboard/data': typeof DashboardDataRoute
   '/dashboard/extra': typeof DashboardExtraRoute
   '/dashboard/history': typeof DashboardHistoryRoute
@@ -448,6 +476,8 @@ export interface FileRoutesByTo {
   '/admin/content': typeof AdminContentRoute
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/deposits': typeof AdminDepositsRoute
+  '/admin/complaints': typeof AdminComplaintsRoute
+  '/admin/complaints/$id': typeof AdminComplaintsIdRoute
   '/admin/hosting': typeof AdminHostingRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/logos': typeof AdminLogosRoute
@@ -463,6 +493,8 @@ export interface FileRoutesByTo {
   '/dashboard/airtime': typeof DashboardAirtimeRoute
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
   '/dashboard/bills': typeof DashboardBillsRoute
+  '/dashboard/complaints': typeof DashboardComplaintsRoute
+  '/dashboard/complaints/$id': typeof DashboardComplaintsIdRoute
   '/dashboard/data': typeof DashboardDataRoute
   '/dashboard/extra': typeof DashboardExtraRoute
   '/dashboard/history': typeof DashboardHistoryRoute
@@ -510,6 +542,8 @@ export interface FileRoutesById {
   '/admin/content': typeof AdminContentRoute
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/deposits': typeof AdminDepositsRoute
+  '/admin/complaints': typeof AdminComplaintsRoute
+  '/admin/complaints/$id': typeof AdminComplaintsIdRoute
   '/admin/hosting': typeof AdminHostingRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/logos': typeof AdminLogosRoute
@@ -525,6 +559,8 @@ export interface FileRoutesById {
   '/dashboard/airtime': typeof DashboardAirtimeRoute
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
   '/dashboard/bills': typeof DashboardBillsRoute
+  '/dashboard/complaints': typeof DashboardComplaintsRoute
+  '/dashboard/complaints/$id': typeof DashboardComplaintsIdRoute
   '/dashboard/data': typeof DashboardDataRoute
   '/dashboard/extra': typeof DashboardExtraRoute
   '/dashboard/history': typeof DashboardHistoryRoute
@@ -572,6 +608,8 @@ export interface FileRouteTypes {
     | '/admin/catalog'
     | '/admin/content'
     | '/admin/customers'
+    | '/admin/complaints'
+    | '/admin/complaints/$id'
     | '/admin/hosting'
     | '/admin/import'
     | '/admin/logos'
@@ -587,6 +625,8 @@ export interface FileRouteTypes {
     | '/dashboard/airtime'
     | '/dashboard/announcements'
     | '/dashboard/bills'
+    | '/dashboard/complaints'
+    | '/dashboard/complaints/$id'
     | '/dashboard/data'
     | '/dashboard/extra'
     | '/dashboard/history'
@@ -630,6 +670,8 @@ export interface FileRouteTypes {
     | '/admin/catalog'
     | '/admin/content'
     | '/admin/customers'
+    | '/admin/complaints'
+    | '/admin/complaints/$id'
     | '/admin/hosting'
     | '/admin/import'
     | '/admin/logos'
@@ -645,6 +687,8 @@ export interface FileRouteTypes {
     | '/dashboard/airtime'
     | '/dashboard/announcements'
     | '/dashboard/bills'
+    | '/dashboard/complaints'
+    | '/dashboard/complaints/$id'
     | '/dashboard/data'
     | '/dashboard/extra'
     | '/dashboard/history'
@@ -690,6 +734,8 @@ export interface FileRouteTypes {
     | '/admin/catalog'
     | '/admin/content'
     | '/admin/customers'
+    | '/admin/complaints'
+    | '/admin/complaints/$id'
     | '/admin/hosting'
     | '/admin/import'
     | '/admin/logos'
@@ -705,6 +751,8 @@ export interface FileRouteTypes {
     | '/dashboard/airtime'
     | '/dashboard/announcements'
     | '/dashboard/bills'
+    | '/dashboard/complaints'
+    | '/dashboard/complaints/$id'
     | '/dashboard/data'
     | '/dashboard/extra'
     | '/dashboard/history'
@@ -926,6 +974,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminDepositsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/complaints': {
+      id: '/admin/complaints'
+      path: '/complaints'
+      fullPath: '/admin/complaints'
+      preLoaderRoute: typeof AdminComplaintsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/complaints/$id': {
+      id: '/admin/complaints/$id'
+      path: '/complaints/$id'
+      fullPath: '/admin/complaints/$id'
+      preLoaderRoute: typeof AdminComplaintsIdRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/hosting': {
       id: '/admin/hosting'
       path: '/hosting'
@@ -1036,6 +1098,20 @@ declare module '@tanstack/react-router' {
       path: '/bills'
       fullPath: '/dashboard/bills'
       preLoaderRoute: typeof DashboardBillsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/complaints': {
+      id: '/dashboard/complaints'
+      path: '/complaints'
+      fullPath: '/dashboard/complaints'
+      preLoaderRoute: typeof DashboardComplaintsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/complaints/$id': {
+      id: '/dashboard/complaints/$id'
+      path: '/complaints/$id'
+      fullPath: '/dashboard/complaints/$id'
+      preLoaderRoute: typeof DashboardComplaintsIdRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/data': {
@@ -1181,6 +1257,8 @@ interface AdminRouteChildren {
   AdminContentRoute: typeof AdminContentRoute
   AdminCustomersRoute: typeof AdminCustomersRoute
   AdminDepositsRoute: typeof AdminDepositsRoute
+  AdminComplaintsRoute: typeof AdminComplaintsRoute
+  AdminComplaintsIdRoute: typeof AdminComplaintsIdRoute
   AdminHostingRoute: typeof AdminHostingRoute
   AdminImportRoute: typeof AdminImportRoute
   AdminLogosRoute: typeof AdminLogosRoute
@@ -1203,6 +1281,8 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminContentRoute: AdminContentRoute,
   AdminCustomersRoute: AdminCustomersRoute,
   AdminDepositsRoute: AdminDepositsRoute,
+  AdminComplaintsRoute: AdminComplaintsRoute,
+  AdminComplaintsIdRoute: AdminComplaintsIdRoute,
   AdminHostingRoute: AdminHostingRoute,
   AdminImportRoute: AdminImportRoute,
   AdminLogosRoute: AdminLogosRoute,
@@ -1224,6 +1304,8 @@ interface DashboardRouteChildren {
   DashboardAirtimeRoute: typeof DashboardAirtimeRoute
   DashboardAnnouncementsRoute: typeof DashboardAnnouncementsRoute
   DashboardBillsRoute: typeof DashboardBillsRoute
+  DashboardComplaintsRoute: typeof DashboardComplaintsRoute
+  DashboardComplaintsIdRoute: typeof DashboardComplaintsIdRoute
   DashboardDataRoute: typeof DashboardDataRoute
   DashboardExtraRoute: typeof DashboardExtraRoute
   DashboardHistoryRoute: typeof DashboardHistoryRoute
@@ -1242,6 +1324,8 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardAirtimeRoute: DashboardAirtimeRoute,
   DashboardAnnouncementsRoute: DashboardAnnouncementsRoute,
   DashboardBillsRoute: DashboardBillsRoute,
+  DashboardComplaintsRoute: DashboardComplaintsRoute,
+  DashboardComplaintsIdRoute: DashboardComplaintsIdRoute,
   DashboardDataRoute: DashboardDataRoute,
   DashboardExtraRoute: DashboardExtraRoute,
   DashboardHistoryRoute: DashboardHistoryRoute,

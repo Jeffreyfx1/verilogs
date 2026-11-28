@@ -85,7 +85,7 @@ export function retrieveKnowledge<T extends { title: string; body: string; categ
 }
 
 export function wantsEscalation(text: string) {
-  return /\b(human|person|agent|telegram|complaint|dispute|scam|charged twice|account (ban|banned|restricted|locked))\b/i.test(text);
+  return /\b(human|person|agent|telegram|dispute|scam|charged twice|account (ban|banned|restricted|locked))\b/i.test(text);
 }
 
 /** A hello with no shop question. These do not need the catalogue, a wallet read, or a long prompt. */
@@ -134,6 +134,9 @@ export function localVeraReply(input: {
     const fact = input.facts.split("\n").find((line) => line.startsWith("Recent orders:"));
     if (fact) lines.push(`${fact} I can only see orders on the signed-in account.`);
   }
+  if (/\bcomplaints?\b|\bcomplain\b/.test(folded)) {
+    lines.push("Open Complaints in your dashboard to submit one. You get a reference number and can read the reply there. Vera cannot close a complaint, delete it, or send the official reply.");
+  }
   if (escalate) lines.push(`I can’t finish this one here. A person can help on Telegram: ${telegram}`);
   if (!lines.length) {
     return {
@@ -156,4 +159,5 @@ export const VERA_SEED: Array<{ id: string; category: (typeof VERA_CATEGORIES)[n
   { id: "vk-referrals", category: "Referrals and Rewards", title: "Referral rewards", body: "A customer who registers with a valid referral link can receive 5 percent of their first successful deposit in the wallet, once. Later deposits do not pay it again. The person who shared the code still receives the existing referral reward after a qualifying purchase. Vera must not change either amount." },
   { id: "vk-trouble", category: "Technical Troubleshooting", title: "Common problems", body: "If money is not showing, check that Paystack succeeded and the customer is on the same account. If a service is missing, it may be out of stock or past the usual list; WhatsApp on Server 1 is still sold when a stocked row exists. A missing SMS on a waiting number can be cancelled for a wallet refund." },
   { id: "vk-support", category: "Customer Support", title: "Human support", body: "When Vera cannot resolve a payment dispute, a missing transaction, a failed purchase, or an account restriction, she sends the customer to the existing Telegram channel. She does not change balances, approve deposits, or issue refunds herself." },
+  { id: "vk-complaints", category: "Customer Support", title: "Complaints", body: "A signed-in customer submits a complaint from Complaints in the dashboard. They choose a category, write a subject and description, and can attach their own order number or a screenshot. Each complaint has a reference number. The customer can read replies and send a follow-up. Statuses are Pending, Under Review, Replied and Resolved. Vera cannot close, delete, or answer a complaint. Official replies are sent by an administrator in the complaint conversation." },
 ];

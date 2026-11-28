@@ -59,6 +59,8 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
   const historyNav: Item[] = [
     { to: "/dashboard/history", label: "Orders", icon: glyph.history, match: "hist" },
     { to: "/dashboard/profile", label: "Profile", icon: glyph.user },
+    { to: "/dashboard/support", label: "Support", icon: glyph.chat },
+    { to: "/dashboard/complaints", label: "Complaints", icon: glyph.support },
   ];
   const adminNav: Item[] = [
     { to: "/admin", label: "Overview", icon: glyph.dashboard, end: true },
@@ -68,6 +70,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
     { to: "/admin/logos", label: "Category logos", icon: glyph.store },
     { to: "/admin/airtime", label: "Airtime networks", icon: glyph.phone },
     { to: "/admin/orders", label: "Orders", icon: glyph.scroll },
+    { to: "/admin/complaints", label: "Complaints", icon: glyph.support },
     { to: "/admin/customers", label: "Customers", icon: glyph.users },
     { to: "/admin/deposits", label: "Wallet deposits", icon: glyph.wallet },
     { to: "/admin/referrals", label: "Referrals", icon: glyph.users },
@@ -164,6 +167,7 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
             <Link to="/dashboard/support" onClick={() => setOpen(false)} className="mt-2 flex items-center justify-center gap-2 rounded-xl bg-deep py-2 text-sm font-semibold text-on-deep">
               <Glyph icon={glyph.support} className="size-4 text-white" /> Contact
             </Link>
+            <Link to={admin ? "/admin/complaints" : "/dashboard/complaints"} onClick={() => setOpen(false)} className="block text-center text-xs font-semibold text-primary">Complaints</Link>
           </div>
           <button onClick={signOut} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-danger hover:bg-paper">
             <Glyph icon={glyph.logout} className="size-4" /> Log out
@@ -200,12 +204,12 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
                 { to: "/admin", label: "Home", icon: glyph.dashboard },
                 { to: "/admin/import", label: "Import", icon: glyph.download },
                 { to: "/admin/catalog", label: "Catalogue", icon: glyph.package },
-                { to: "/admin/hosting", label: "Host", icon: glyph.settings },
+                { to: "/admin/complaints", label: "Complaints", icon: glyph.support },
               ]
             : [
                 { to: "/dashboard", label: "Home", icon: glyph.dashboard },
                 { to: "/dashboard/history", label: "Orders", icon: glyph.history },
-                { to: "/dashboard/support", label: "Support", icon: glyph.support },
+                { to: "/dashboard/complaints", label: "Complaints", icon: glyph.support },
                 { to: "/dashboard/profile", label: "Settings", icon: glyph.settings },
               ]
           ).map((item) => {

@@ -37,9 +37,14 @@ function adminGuard(data: Data, userId: string | null) {
   return null;
 }
 
-function pushNote(data: Data, userId: string, title: string, body: string, kind: Note["kind"]): Data {
+function pushNote(data: Data, userId: string, title: string, body: string, kind: Note["kind"], href = ""): Data {
   const item: Note = { id: uid("ntf"), userId, title, body, read: false, createdAt: new Date().toISOString(), kind };
+  if (href) item.href = href;
   return { ...data, notifications: [item, ...(data.notifications || [])].slice(0, 200) };
+}
+
+export function pushShopNote(data: Data, userId: string, title: string, body: string, href = ""): Data {
+  return pushNote(data, userId, title, body, "support", href);
 }
 
 export function projectShop(doc: Data, userId: string | null, draft: Draft | null): Data {
