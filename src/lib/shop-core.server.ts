@@ -117,8 +117,7 @@ async function rotateSession(previous: string | null, userId: string, remember =
   touchCookie(token, remember);
 }
 
-async function readSession() {
-  const token = getCookie(COOKIE);
+async function sessionFromToken(token: string | null) {
   if (!token) return { token: null as string | null, userId: null as string | null, draft: null as Draft | null };
   const sql = await getSql();
   const rows = await sql<{ user_id: string | null; draft: string | null }>`select user_id, draft from shop_sessions where token = ${token}`;
@@ -133,6 +132,10 @@ async function readSession() {
     }
   }
   return { token, userId: row.user_id, draft };
+}
+
+async function readSession() {
+  return sessionFromToken(getCookie(COOKIE) || null);
 }
 
 async function writeSession(token: string, userId: string | null, draft: Draft | null) {
@@ -2565,27 +2568,56 @@ export async function testInstakingKey(apiKey: string) {
   return { ok: true, error: "", balance: String(body.balance ?? ""), currency: instakingCurrency(body.currency) || String(body.currency || "") };
 }
 
-export async function askSupport(question: string, threadId = "") {
+export async function askSupport(question: string, threadId = "", onDelta?: (chunk: string) => void) {
+  const session = await readSession();
+  return supportFor(session.userId, question, threadId, onDelta);
+}
+
+export async function askSupportFromCookie(cookieHeader: string, question: string, threadId = "", onDelta?: (chunk: string) => void) {
+  const token = cookieValue(cookieHeader, COOKIE);
+  const session = await sessionFromToken(token);
+  return supportFor(session.userId, question, threadId, onDelta);
+}
+
+function cookieValue(header: string, name: string) {
+  const hit = header.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${name}=`));
+  if (!hit) return null;
+  try {
+    return decodeURIComponent(hit.slice(name.length + 1)) || null;
+  } catch {
+    return null;
+  }
+}
+
+async function supportFor(userId: string | null, question: string, threadId: string, onDelta?: (chunk: string) => void) {
   const q = question.trim().slice(0, 500);
   if (!q) return { text: "Type a question first.", threadId: "", escalated: false, unanswered: false };
   const doc = await loadLight();
-  const session = await readSession();
-  const me = doc.users.find((user) => user.id === session.userId) || null;
+  const me = userId ? doc.users.find((user) => user.id === userId) || null : null;
   const facts = await supportFacts(doc, me, q);
   const { answerVera } = await import("@/lib/vera.server");
   return answerVera({
     question: q,
     threadId: threadId.slice(0, 80),
-    user: me ? { id: me.id } : null,
+    user: me ? { id: me.id, role: me.role } : null,
+    shop: me
+      ? {
+          balance: me.balance,
+          name: me.name || "",
+          orders: doc.orders as unknown as Record<string, unknown>[],
+          txns: doc.txns as unknown as Record<string, unknown>[],
+        }
+      : undefined,
     facts,
     faqs: doc.faqs,
     telegram: doc.settings.telegram,
     welcome: doc.settings.supportWelcome,
+    onDelta,
   });
 }
 
 async function supportFacts(doc: Data, user: Data["users"][number] | null, question: string) {
-  const lines = ["Server 1 is FiveSim. Server 2 and Server 3 are different providers. Do not mix their stock or prices."];
+  const lines = ["Server 1 is FiveSim. Server 2 and Server 3 are different providers. Do not mix their stock or prices. USA Services and Rent Number are separate. Airtime purchases and SMM sales are closed. Bill payments are retired."];
   if (!user) lines.push("Customer is not signed in. Do not guess a balance, order or deposit.");
   else {
     lines.push(`Signed-in balance: ₦${user.balance}. Use this figure only.`);

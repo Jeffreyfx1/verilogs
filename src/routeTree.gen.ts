@@ -66,6 +66,7 @@ import { Route as ApiGoogleCallbackRouteImport } from './routes/api/google/callb
 import { Route as ApiGoogleStartRouteImport } from './routes/api/google/start'
 import { Route as ApiPaystackWebhookRouteImport } from './routes/api/paystack/webhook'
 import { Route as ApiSiteImageSlotRouteImport } from './routes/api/site-image.$slot'
+import { Route as ApiVeraStreamRouteImport } from './routes/api/vera/stream'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -352,6 +353,11 @@ const ApiSiteImageSlotRoute = ApiSiteImageSlotRouteImport.update({
   path: '/api/site-image/$slot',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiVeraStreamRoute = ApiVeraStreamRouteImport.update({
+  id: '/api/vera/stream',
+  path: '/api/vera/stream',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -411,6 +417,7 @@ export interface FileRoutesByFullPath {
   '/api/google/start': typeof ApiGoogleStartRoute
   '/api/paystack/webhook': typeof ApiPaystackWebhookRoute
   '/api/site-image/$slot': typeof ApiSiteImageSlotRoute
+  '/api/vera/stream': typeof ApiVeraStreamRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -468,6 +475,7 @@ export interface FileRoutesByTo {
   '/api/google/start': typeof ApiGoogleStartRoute
   '/api/paystack/webhook': typeof ApiPaystackWebhookRoute
   '/api/site-image/$slot': typeof ApiSiteImageSlotRoute
+  '/api/vera/stream': typeof ApiVeraStreamRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -528,6 +536,7 @@ export interface FileRoutesById {
   '/api/google/start': typeof ApiGoogleStartRoute
   '/api/paystack/webhook': typeof ApiPaystackWebhookRoute
   '/api/site-image/$slot': typeof ApiSiteImageSlotRoute
+  '/api/vera/stream': typeof ApiVeraStreamRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -588,6 +597,7 @@ export interface FileRouteTypes {
     | '/api/google/start'
     | '/api/paystack/webhook'
     | '/api/site-image/$slot'
+    | '/api/vera/stream'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -644,6 +654,7 @@ export interface FileRouteTypes {
     | '/api/google/start'
     | '/api/paystack/webhook'
     | '/api/site-image/$slot'
+    | '/api/vera/stream'
   id:
     | '__root__'
     | '/'
@@ -702,6 +713,7 @@ export interface FileRouteTypes {
     | '/api/google/start'
     | '/api/paystack/webhook'
     | '/api/site-image/$slot'
+    | '/api/vera/stream'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -728,6 +740,7 @@ export interface RootRouteChildren {
   ApiGoogleStartRoute: typeof ApiGoogleStartRoute
   ApiPaystackWebhookRoute: typeof ApiPaystackWebhookRoute
   ApiSiteImageSlotRoute: typeof ApiSiteImageSlotRoute
+  ApiVeraStreamRoute: typeof ApiVeraStreamRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1131,6 +1144,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSiteImageSlotRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/vera/stream': {
+      id: '/api/vera/stream'
+      path: '/api/vera/stream'
+      fullPath: '/api/vera/stream'
+      preLoaderRoute: typeof ApiVeraStreamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -1244,6 +1264,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGoogleStartRoute: ApiGoogleStartRoute,
   ApiPaystackWebhookRoute: ApiPaystackWebhookRoute,
   ApiSiteImageSlotRoute: ApiSiteImageSlotRoute,
+  ApiVeraStreamRoute: ApiVeraStreamRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

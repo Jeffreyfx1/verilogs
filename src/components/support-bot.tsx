@@ -7,6 +7,60 @@ import { veraFrame, type VeraFrame } from "@/lib/vera-frame";
 const QUICK = ["How do I buy a number?", "How do I fund my wallet?", "How do I make a purchase?", "How do I contact support?"];
 const THREAD_KEY = "vl_vera_thread";
 
+async function readVeraStream(question: string, threadId: string, onText: (full: string) => void) {
+  let res: Response;
+  try {
+    res = await fetch("/api/vera/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      credentials: "same-origin",
+      body: JSON.stringify({ question, threadId }),
+    });
+  } catch {
+    return null;
+  }
+  const type = res.headers.get("content-type") || "";
+  if (!res.ok || !res.body || !type.includes("text/event-stream")) return null;
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  let text = "";
+  let nextThread = threadId;
+  let failed = false;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const blocks = buf.split("\n\n");
+    buf = blocks.pop() || "";
+    for (const block of blocks) {
+      let event = "message";
+      let data = "";
+      for (const line of block.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) data += line.slice(5).trim();
+      }
+      if (!data) continue;
+      let payload: { text?: string; threadId?: string } = {};
+      try {
+        payload = JSON.parse(data) as { text?: string; threadId?: string };
+      } catch {
+        continue;
+      }
+      if (event === "delta" && payload.text) {
+        text += payload.text;
+        onText(text);
+      } else if (event === "done") {
+        if (payload.threadId) nextThread = payload.threadId;
+        if (payload.text) text = payload.text;
+      } else if (event === "error") failed = true;
+    }
+  }
+  if (failed && !text) throw new Error("Vera stream failed");
+  if (!text) return null;
+  return { text, threadId: nextThread };
+}
+
 type Line = { from: "me" | "vera"; text: string; at: string };
 
 function clock(iso: string) {
@@ -44,6 +98,7 @@ export function SupportBot() {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [live, setLive] = useState("");
   const [threadId, setThreadId] = useState("");
   const threadRef = useRef("");
   const [rated, setRated] = useState("");
@@ -83,7 +138,7 @@ export function SupportBot() {
   useEffect(() => {
     const box = scroller.current;
     if (box) box.scrollTop = box.scrollHeight;
-  }, [log, busy, open, frame?.keyboard, frame?.panelHeight]);
+  }, [log, busy, live, open, frame?.keyboard, frame?.panelHeight]);
 
   const remember = (id: string) => {
     if (!id) return;
@@ -101,17 +156,26 @@ export function SupportBot() {
     if (!q || busy) return;
     setLog((prev) => [...prev, { from: "me", text: q, at: new Date().toISOString() }]);
     setText("");
+    setLive("");
     setBusy(true);
     try {
-      const res = await supportAsk({ data: { question: q, threadId: threadRef.current } });
-      remember(res.threadId || "");
-      setLog((prev) => [...prev, { from: "vera", text: res.text, at: new Date().toISOString() }]);
+      const streamed = await readVeraStream(q, threadRef.current, (full) => setLive(full));
+      if (streamed) {
+        remember(streamed.threadId || "");
+        setLive("");
+        setLog((prev) => [...prev, { from: "vera", text: streamed.text, at: new Date().toISOString() }]);
+      } else {
+        const res = await supportAsk({ data: { question: q, threadId: threadRef.current } });
+        remember(res.threadId || "");
+        setLog((prev) => [...prev, { from: "vera", text: res.text, at: new Date().toISOString() }]);
+      }
       if (/complaint|problem|not working|scam|charged/.test(q.toLowerCase()) && user) {
         await addTicket({ email: user.email, subject: "Chat complaint", body: q });
       }
     } catch {
       setLog((prev) => [...prev, { from: "vera", text: "I could not answer just now. Use the Telegram channel and a person will pick it up.", at: new Date().toISOString() }]);
     } finally {
+      setLive("");
       setBusy(false);
     }
   };
@@ -183,8 +247,8 @@ export function SupportBot() {
               <div className="flex items-end gap-2">
                 <VeraFace size="sm" />
                 <div className="vera-bubble vera-bubble-vera">
-                  <p className="vera-typing flex gap-1" aria-hidden="true"><span /><span /><span /></p>
-                  <p className="mt-1 text-[10px] text-slate-400">Vera is typing…</p>
+                  {live ? <p className="whitespace-pre-wrap break-words">{live}</p> : <p className="vera-typing flex gap-1" aria-hidden="true"><span /><span /><span /></p>}
+                  <p className="mt-1 text-[10px] text-slate-400">{live ? "Vera is replying…" : "Vera is checking…"}</p>
                 </div>
               </div>
             ) : null}
