@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getSql } from "@/lib/db";
-import { answerVera, previewVeraAnswer } from "@/lib/vera.server";
+import { answerVera, lastVeraTiming, previewVeraAnswer } from "@/lib/vera.server";
 import { runVeraTool, veraToolAllowed, type VeraShop } from "@/lib/vera-tools.server";
 
 const token = "zxqveratools";
@@ -206,38 +206,9 @@ test("Vera answers through free-tier Gemini without sending private account data
     process.env.GEMINI_MODEL = "gemini-4-argon";
     delete process.env.VERA_PROVIDER;
     let calls = 0;
-    globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+    globalThis.fetch = (async () => {
       calls += 1;
-      const address = String(url);
-      assert.equal(address.includes("api.x.ai"), false);
-      assert.match(address, /generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-3\.8-flash:/);
-      const headers = new Headers(init?.headers);
-      assert.equal(headers.get("x-goog-api-key"), "gemini-test-key");
-      const body = JSON.parse(String(init?.body || "{}")) as {
-        systemInstruction?: { parts?: { text?: string }[] };
-        generationConfig?: { maxOutputTokens?: number; temperature?: number; thinkingConfig?: { thinkingLevel?: string } };
-        contents?: { role: string; parts: { text?: string; functionResponse?: { response?: { items?: { name?: string }[] } } }[] }[];
-        tools?: { functionDeclarations?: { name: string }[] }[];
-      };
-      const packed = JSON.stringify(body);
-      assert.equal(body.generationConfig?.maxOutputTokens, 2048);
-      assert.equal(body.generationConfig?.temperature, undefined);
-      assert.equal(body.generationConfig?.thinkingConfig?.thinkingLevel, "low");
-      assert.equal(packed.includes("gemini-test-key"), false);
-      assert.equal(packed.includes("paid-key"), false);
-      assert.equal(packed.includes("Signed-in balance"), false);
-      assert.equal(packed.includes("Ada"), false);
-      assert.equal(packed.includes("4000"), false);
-      assert.equal(packed.includes("ada@example.com"), false);
-      assert.equal(packed.includes("hunter2"), false);
-      if (calls === 1) {
-        assert.equal(body.tools?.[0]?.functionDeclarations?.some((tool) => tool.name === "admin_overview"), false);
-        assert.equal(body.tools?.[0]?.functionDeclarations?.some((tool) => tool.name === "account_snapshot"), true);
-        return new Response(JSON.stringify({
-          candidates: [{ content: { parts: [{ functionCall: { name: "account_snapshot", args: {} } }] } }],
-        }), { status: 200 });
-      }
-      throw new Error("private data must not make a second Gemini call");
+      throw new Error("a wallet balance must be answered from the shop, not Gemini");
     }) as typeof fetch;
 
     const answered = await answerVera({
@@ -253,7 +224,9 @@ test("Vera answers through free-tier Gemini without sending private account data
     assert.match(answered.text, /4,000/);
     assert.equal(answered.text.includes("ada@example.com"), false);
     assert.equal(answered.text.includes("hunter2"), false);
-    assert.equal(calls, 1);
+    assert.equal(calls, 0);
+    assert.equal(lastVeraTiming()?.path, "private");
+    assert.equal(lastVeraTiming()?.modelCalls, 0);
     const saved = await sql.query<{ body: string }>("select body from shop_vera_messages where thread_id = $1 order by created_at asc", [answered.threadId]);
     assert.equal(saved.length, 2);
 
@@ -263,20 +236,26 @@ test("Vera answers through free-tier Gemini without sending private account data
       calls += 1;
       const address = String(url);
       assert.equal(address.includes("api.x.ai"), false);
-      const body = JSON.parse(String(init?.body || "{}")) as { contents?: { parts?: { text?: string }[] }[] };
+      assert.match(address, /generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-3\.8-flash:streamGenerateContent/);
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get("x-goog-api-key"), "gemini-test-key");
+      const body = JSON.parse(String(init?.body || "{}")) as {
+        contents?: { parts?: { text?: string }[] }[];
+        tools?: unknown;
+        generationConfig?: { temperature?: number; maxOutputTokens?: number; thinkingConfig?: { thinkingLevel?: string } };
+      };
       const packed = JSON.stringify(body);
-      if (calls === 1) {
-        assert.match(packed, /How much money do I have/);
-        assert.equal(packed.includes("4000"), false);
-        assert.equal(packed.includes("ada@example.com"), false);
-        return new Response(JSON.stringify({
-          candidates: [{ content: { parts: [{ functionCall: { name: "search_catalogue", args: { query: "telegram", area: "numbers" } } }] } }],
-        }), { status: 200 });
-      }
-      assert.match(address, /streamGenerateContent/);
+      assert.equal(body.tools, undefined);
+      assert.equal(body.generationConfig?.temperature, undefined);
+      assert.equal(body.generationConfig?.thinkingConfig?.thinkingLevel, "low");
+      assert.equal(body.generationConfig?.maxOutputTokens, 1024);
+      assert.match(packed, /How much money do I have/);
       assert.match(packed, /telegram/i);
       assert.equal(packed.includes("4000"), false);
-      return new Response(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "Telegram is listed in the current catalogue." }] } }] })}\n\ndata: [DONE]\n\n`, { status: 200 });
+      assert.equal(packed.includes("ada@example.com"), false);
+      assert.equal(packed.includes("hunter2"), false);
+      assert.equal(packed.includes("gemini-test-key"), false);
+      return new Response(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "Telegram is listed in the current catalogue." }] } }] })}\n\n`, { status: 200 });
     }) as typeof fetch;
     const follow = await answerVera({
       question: "Is telegram in stock?",
@@ -291,7 +270,9 @@ test("Vera answers through free-tier Gemini without sending private account data
     });
     assert.match(follow.text, /Telegram/);
     assert.equal(chunks.join(""), follow.text);
-    assert.equal(calls, 2);
+    assert.equal(calls, 1);
+    assert.equal(lastVeraTiming()?.path, "chat");
+    assert.equal(lastVeraTiming()?.modelCalls, 1);
     const threadMessages = await sql.query<{ n: number }>("select count(*)::int as n from shop_vera_messages where thread_id = $1", [answered.threadId]);
     assert.equal(Number(threadMessages[0]?.n), 4);
 
@@ -337,13 +318,9 @@ test("Vera answers through free-tier Gemini without sending private account data
     assert.equal(calls, 2);
 
     calls = 0;
-    globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+    globalThis.fetch = (async () => {
       calls += 1;
-      const body = JSON.parse(String(init?.body || "{}")) as { tools?: { functionDeclarations?: { name: string }[] }[] };
-      assert.equal(body.tools?.[0]?.functionDeclarations?.some((tool) => tool.name === "admin_overview"), false);
-      return new Response(JSON.stringify({
-        candidates: [{ content: { parts: [{ functionCall: { name: "admin_overview", args: { role: "admin" } } }] } }],
-      }), { status: 200 });
+      throw new Error("an administrator total is not sent to Gemini");
     }) as typeof fetch;
     const blocked = await answerVera({
       question: "What is today's revenue?",
@@ -357,6 +334,7 @@ test("Vera answers through free-tier Gemini without sending private account data
     });
     assert.match(blocked.text, /not available on this account/i);
     assert.equal(blocked.text.includes("4000"), false);
+    assert.equal(calls, 0);
     const previewCalls = calls;
     const preview = await previewVeraAnswer("Why is my money not showing?");
     assert.match(preview.text, /wallet|Paystack/i);
@@ -380,4 +358,130 @@ test("Vera answers through free-tier Gemini without sending private account data
     await sql.query("delete from shop_vera_unanswered where question like $1", [`%${token}%`]);
   }
 });
+
+test("Vera shows the first Gemini token before the rest of the answer", async () => {
+  const prev = { gemini: process.env.GEMINI_API_KEY, model: process.env.GEMINI_MODEL, provider: process.env.VERA_PROVIDER, fetch: globalThis.fetch };
+  const sql = await getSql();
+  const rows: string[] = [];
+  try {
+    process.env.GEMINI_API_KEY = "gemini-test-key";
+    process.env.GEMINI_MODEL = "gemini-3.8-flash";
+    delete process.env.VERA_PROVIDER;
+    const shop: VeraShop = {
+      balance: 2500,
+      name: "Ada",
+      orders: [{ id: "ord-1", userId: `${token}-speed`, title: "WhatsApp UK", category: "number", status: "waiting", amount: 800, createdAt: "2026-11-28T03:00:00.000Z", code: "445566", phone: "+447700900111" }],
+      txns: [],
+    };
+    const actor = { id: `${token}-speed`, role: "customer" as const };
+    globalThis.fetch = (async () => {
+      throw new Error("order lookup must not call Gemini");
+    }) as typeof fetch;
+    const orderStarted = performance.now();
+    const order = await answerVera({
+      question: "What is the status of my last order?",
+      threadId: "",
+      user: actor,
+      facts: "Signed-in balance: ₦2500.",
+      faqs: [],
+      telegram: "https://t.me/verilogs",
+      welcome: "Hi",
+      shop,
+    });
+    const orderTiming = lastVeraTiming();
+    assert.match(order.text, /WhatsApp UK/);
+    assert.equal(orderTiming?.path, "private");
+    assert.equal(orderTiming?.modelCalls, 0);
+    rows.push(`order first=${orderTiming?.firstVisibleMs}ms total=${Math.round(performance.now() - orderStarted)}ms calls=0`);
+
+    let release: () => void = () => {};
+    const hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body || "{}")) as { tools?: unknown; generationConfig?: { maxOutputTokens?: number; thinkingConfig?: { thinkingLevel?: string } } };
+      assert.equal(body.tools, undefined);
+      assert.equal(body.generationConfig?.thinkingConfig?.thinkingLevel, "low");
+      assert.equal(body.generationConfig?.maxOutputTokens, 512);
+      const stream = new ReadableStream({
+        async start(controller) {
+          const enc = new TextEncoder();
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "Hello" }] } }] })}\n\n`));
+          await hold;
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: " from Vera." }] } }] })}\n\n`));
+          controller.close();
+        },
+      });
+      return new Response(stream, { status: 200 });
+    }) as typeof fetch;
+    let firstAt = 0;
+    const greetStarted = performance.now();
+    const pending = answerVera({
+      question: "Hello",
+      threadId: "",
+      user: null,
+      facts: "Not signed in.",
+      faqs: [],
+      telegram: "https://t.me/verilogs",
+      welcome: "Hi",
+      onDelta: () => {
+        if (!firstAt) firstAt = performance.now();
+      },
+    });
+    const deadline = Date.now() + 4000;
+    while (!firstAt && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
+    assert.ok(firstAt > 0, "the first token was held until Gemini finished");
+    const firstWait = firstAt - greetStarted;
+    await new Promise((r) => setTimeout(r, 80));
+    release();
+    const greeted = await pending;
+    const greetTotal = performance.now() - greetStarted;
+    assert.match(greeted.text, /Hello from Vera/);
+    assert.ok(greetTotal > firstWait + 50, `first token ${Math.round(firstWait)}ms was not ahead of total ${Math.round(greetTotal)}ms`);
+    const greetTiming = lastVeraTiming();
+    assert.equal(greetTiming?.path, "brief");
+    rows.push(`greeting first=${Math.round(firstWait)}ms total=${Math.round(greetTotal)}ms prep=${greetTiming?.prepMs}ms gemini=${greetTiming?.geminiWaitMs}ms`);
+
+    globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body || "{}")) as { tools?: { functionDeclarations?: { name: string }[] }[]; generationConfig?: { thinkingConfig?: { thinkingLevel?: string }; maxOutputTokens?: number } };
+      assert.equal(body.generationConfig?.thinkingConfig?.thinkingLevel, "medium");
+      assert.equal(body.generationConfig?.maxOutputTokens, 2048);
+      assert.equal(body.tools?.[0]?.functionDeclarations?.some((tool) => tool.name === "search_catalogue"), true);
+      assert.equal(body.tools?.[0]?.functionDeclarations?.some((tool) => tool.name === "admin_overview"), false);
+      return new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ text: "Server 1 is FiveSim and Server 2 is a separate catalogue, so a service on one is not automatically on the other." }] } }],
+      }), { status: 200 });
+    }) as typeof fetch;
+    const deepStarted = performance.now();
+    const deep = await answerVera({
+      question: "Compare Server 1 and Server 2 step by step and explain why a number stocked on one server is not automatically available on the other.",
+      threadId: "",
+      user: null,
+      facts: "Not signed in.",
+      faqs: [],
+      telegram: "https://t.me/verilogs",
+      welcome: "Hi",
+    });
+    assert.match(deep.text, /FiveSim/);
+    assert.equal(lastVeraTiming()?.path, "deep");
+    rows.push(`deep first=${lastVeraTiming()?.firstVisibleMs}ms total=${Math.round(performance.now() - deepStarted)}ms calls=${lastVeraTiming()?.modelCalls}`);
+    console.log(rows.join("\n"));
+  } finally {
+    if (prev.gemini === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = prev.gemini;
+    if (prev.model === undefined) delete process.env.GEMINI_MODEL;
+    else process.env.GEMINI_MODEL = prev.model;
+    if (prev.provider === undefined) delete process.env.VERA_PROVIDER;
+    else process.env.VERA_PROVIDER = prev.provider;
+    globalThis.fetch = prev.fetch;
+    const talked = await sql.query<{ thread_id: string }>("select distinct thread_id from shop_vera_messages where body like $1 or body like $2 or body like $3", [`%${token}-speed%`, "%Hello from Vera%", "%Compare Server 1%"]);
+    for (const row of talked) {
+      await sql.query("delete from shop_vera_messages where thread_id = $1", [row.thread_id]);
+      await sql.query("delete from shop_vera_threads where id = $1", [row.thread_id]);
+    }
+    await sql.query("delete from shop_vera_messages where body like $1", ["%FiveSim and Server 2%"]);
+    await sql.query("delete from shop_vera_unanswered where question like $1", ["%Compare Server 1%"]);
+  }
+});
+
 

@@ -37,6 +37,7 @@ export const Route = createFileRoute("/api/vera/stream")({
             "Content-Type": "text/event-stream; charset=utf-8",
             "Cache-Control": "no-cache, no-transform",
             "X-Accel-Buffering": "no",
+            "Content-Encoding": "identity",
           },
         });
       },

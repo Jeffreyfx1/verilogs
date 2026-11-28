@@ -17,7 +17,7 @@ import { IMPORT_BATCH, importBatchCount, sliceImport } from "@/lib/import-batch"
 import { uid } from "@/lib/money";
 import { isFiveSimServer1, isWhatsAppService, preferWhatsApp, wantsWhatsAppLookup, finishServicePage } from "@/lib/whatsapp-availability";
 import { mergeServicePrices } from "@/lib/service-search";
-import { mentionedCountry, mentionedService } from "@/lib/vera-mind";
+import { isPureGreeting, mentionedCountry, mentionedService } from "@/lib/vera-mind";
 import { applyLiveToOrder, getatextCancelResult, mapGetaTextRental, orderIsOpen } from "@/lib/number-live";
 import { placeOnProvider } from "@/lib/fulfill.server";
 import {
@@ -2592,10 +2592,24 @@ function cookieValue(header: string, name: string) {
 async function supportFor(userId: string | null, question: string, threadId: string, onDelta?: (chunk: string) => void) {
   const q = question.trim().slice(0, 500);
   if (!q) return { text: "Type a question first.", threadId: "", escalated: false, unanswered: false };
+  const { answerVera } = await import("@/lib/vera.server");
+  if (isPureGreeting(q)) {
+    return answerVera({
+      question: q,
+      threadId: threadId.slice(0, 80),
+      user: userId ? { id: userId, role: "customer" } : null,
+      facts: "Greeting only. No account lookup.",
+      faqs: [],
+      telegram: "",
+      welcome: "Hello.",
+      onDelta,
+    });
+  }
   const doc = await loadLight();
   const me = userId ? doc.users.find((user) => user.id === userId) || null : null;
-  const facts = await supportFacts(doc, me, q);
-  const { answerVera } = await import("@/lib/vera.server");
+  const choice = (process.env.VERA_PROVIDER || "gemini").trim().toLowerCase();
+  const geminiOn = choice !== "xai" && choice !== "local" && !!process.env.GEMINI_API_KEY?.trim();
+  const facts = await supportFacts(doc, me, geminiOn ? "" : q);
   return answerVera({
     question: q,
     threadId: threadId.slice(0, 80),

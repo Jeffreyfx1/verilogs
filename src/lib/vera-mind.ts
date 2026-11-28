@@ -88,6 +88,17 @@ export function wantsEscalation(text: string) {
   return /\b(human|person|agent|telegram|complaint|dispute|scam|charged twice|account (ban|banned|restricted|locked))\b/i.test(text);
 }
 
+/** A hello with no shop question. These do not need the catalogue, a wallet read, or a long prompt. */
+export function isPureGreeting(question: string) {
+  const q = String(question || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[!?.]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /^(hi|hello|hey|hiya|howdy|yo|good morning|good afternoon|good evening|thanks|thank you|hi vera|hello vera|hey vera|thank you vera)$/.test(q);
+}
+
 export function stripUnanswered(text: string) {
   const unanswered = /\[\[UNANSWERED\]\]/i.test(text);
   return { unanswered, text: text.replace(/\[\[UNANSWERED\]\]/gi, "").trim() };
