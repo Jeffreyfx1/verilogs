@@ -47,7 +47,7 @@ async function probe(key: string, model: string, body: Record<string, unknown>):
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(45_000),
     });
     const raw = await res.text();
     let message = "";

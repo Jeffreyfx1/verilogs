@@ -215,10 +215,14 @@ test("Vera answers through free-tier Gemini without sending private account data
       assert.equal(headers.get("x-goog-api-key"), "gemini-test-key");
       const body = JSON.parse(String(init?.body || "{}")) as {
         systemInstruction?: { parts?: { text?: string }[] };
+        generationConfig?: { maxOutputTokens?: number; temperature?: number; thinkingConfig?: { thinkingLevel?: string } };
         contents?: { role: string; parts: { text?: string; functionResponse?: { response?: { items?: { name?: string }[] } } }[] }[];
         tools?: { functionDeclarations?: { name: string }[] }[];
       };
       const packed = JSON.stringify(body);
+      assert.equal(body.generationConfig?.maxOutputTokens, 2048);
+      assert.equal(body.generationConfig?.temperature, undefined);
+      assert.equal(body.generationConfig?.thinkingConfig?.thinkingLevel, "low");
       assert.equal(packed.includes("gemini-test-key"), false);
       assert.equal(packed.includes("paid-key"), false);
       assert.equal(packed.includes("Signed-in balance"), false);
@@ -311,6 +315,26 @@ test("Vera answers through free-tier Gemini without sending private account data
     assert.equal(calls, 1);
     const kept = await sql.query<{ n: number }>("select count(*)::int as n from shop_vera_messages where thread_id = $1", [limited.threadId]);
     assert.equal(Number(kept[0]?.n), 2);
+
+    calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      if (calls === 1) return new Response("unavailable", { status: 503 });
+      return new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ text: "Server 1 is the FiveSim catalogue." }] } }],
+      }), { status: 200 });
+    }) as typeof fetch;
+    const recovered = await answerVera({
+      question: `${token} which catalogue is server 1`,
+      threadId: "",
+      user: null,
+      facts: "Not signed in.",
+      faqs: [],
+      telegram: "https://t.me/verilogs",
+      welcome: "Hi",
+    });
+    assert.match(recovered.text, /FiveSim/);
+    assert.equal(calls, 2);
 
     calls = 0;
     globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {

@@ -110,9 +110,17 @@ export async function answerVera(input: {
       unanswered = spoken.unanswered;
     } catch (err) {
       const status = err instanceof Error ? err.message : "";
-      console.error(status ? `Vera could not reach Gemini (${status.slice(0, 40)})` : "Vera could not reach Gemini");
-      text = geminiUnavailable(status, input.telegram);
-      unanswered = true;
+      const safe = redactGeminiFault(status);
+      console.error(safe ? `Vera could not reach Gemini (${safe.slice(0, 300)})` : "Vera could not reach Gemini");
+      const forced = privateIntent(input.question);
+      if (forced) {
+        const raw = await runVeraTool(forced, {}, input.user ? { id: input.user.id, role: veraRole(input.user) } : null, input.shop);
+        text = narratePrivate(forced, raw);
+        unanswered = false;
+      } else {
+        text = geminiUnavailable(status, input.telegram);
+        unanswered = true;
+      }
     }
   } else if (provider === "xai") {
     try {
@@ -211,6 +219,24 @@ function geminiUnavailable(status: string, telegram: string) {
     return `Vera is temporarily at the free assistant limit, so I cannot answer this one right now. Your conversation is saved. Try again later, or message ${where}. Nothing on your account was changed.`;
   }
   return `Vera could not reach the assistant just now. Your conversation is saved, and nothing on your account was changed. Try again in a moment, or message ${where}.`;
+}
+
+function redactGeminiFault(text: string) {
+  return text
+    .replace(/AIza[0-9A-Za-z_-]{8,}/g, "[key]")
+    .replace(/\bAQ\.[A-Za-z0-9_-]{8,}/g, "[key]")
+    .replace(/key=[^&\s]+/gi, "key=[key]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 300);
+}
+
+function geminiGenerationConfig(model: string) {
+  const config: { maxOutputTokens: number; thinkingConfig?: { thinkingLevel: "low" } } = { maxOutputTokens: 2048 };
+  // Gemini 3/4 thinking tokens count against maxOutputTokens. The default medium
+  // level plus a 480 cap returned an empty answer or hit the 18s client abort.
+  if (/^gemini-[34]/.test(model)) config.thinkingConfig = { thinkingLevel: "low" };
+  return config;
 }
 
 const PRIVATE_TOOLS = new Set(["account_snapshot", "my_orders", "order_status", "my_deposits", "admin_overview"]);
@@ -474,7 +500,13 @@ async function grokReply(input: {
   return stripUnanswered(finalTurn.content.trim());
 }
 
-type GeminiPart = { text?: string; functionCall?: { name: string; args?: Record<string, unknown> }; functionResponse?: { name: string; response: Record<string, unknown> } };
+type GeminiPart = {
+  text?: string;
+  thought?: boolean;
+  thoughtSignature?: string;
+  functionCall?: { name: string; args?: Record<string, unknown>; id?: string };
+  functionResponse?: { name: string; id?: string; response: Record<string, unknown> };
+};
 type GeminiContent = { role: "user" | "model"; parts: GeminiPart[] };
 
 function geminiSystem(input: { role: VeraRole; knowledge: string; telegram: string }) {
@@ -507,7 +539,7 @@ function geminiDeclarations(role: VeraRole) {
 function fromGemini(raw: string, onDelta?: (chunk: string) => void) {
   const trimmed = raw.trim();
   const objects: { candidates?: { content?: { parts?: GeminiPart[] } }[] }[] = [];
-  if (!trimmed) return { content: "", toolCalls: [] as ToolCall[] };
+  if (!trimmed) return { content: "", toolCalls: [] as ToolCall[], modelParts: [] as GeminiPart[] };
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
     const parsed = JSON.parse(trimmed) as { candidates?: { content?: { parts?: GeminiPart[] } }[] } | { candidates?: { content?: { parts?: GeminiPart[] } }[] }[];
     objects.push(...(Array.isArray(parsed) ? parsed : [parsed]));
@@ -526,9 +558,11 @@ function fromGemini(raw: string, onDelta?: (chunk: string) => void) {
   }
   let content = "";
   const toolCalls: ToolCall[] = [];
+  const modelParts: GeminiPart[] = [];
   for (const obj of objects) {
     for (const part of obj.candidates?.[0]?.content?.parts || []) {
-      if (part.text) {
+      modelParts.push(part);
+      if (part.text && !part.thought) {
         content += part.text;
         const piece = part.text.replace(/\[\[UNANSWERED\]\]/gi, "");
         if (piece) onDelta?.(piece);
@@ -542,7 +576,13 @@ function fromGemini(raw: string, onDelta?: (chunk: string) => void) {
       }
     }
   }
-  return { content, toolCalls: toolCalls.slice(0, 3) };
+  return { content, toolCalls: toolCalls.slice(0, 3), modelParts };
+}
+
+function geminiRetryable(err: unknown) {
+  if (!(err instanceof Error)) return false;
+  if (err.message === "429" || /^\d{3}\b/.test(err.message)) return false;
+  return err.name === "TimeoutError" || err.name === "AbortError" || /timeout|aborted|fetch failed|ECONNRESET|ETIMEDOUT|network/i.test(err.message);
 }
 
 async function completeGemini(input: {
@@ -555,20 +595,42 @@ async function completeGemini(input: {
 }) {
   const model = geminiModel();
   const action = input.stream ? "streamGenerateContent" : "generateContent";
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:${action}${input.stream ? "?alt=sse" : ""}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": input.apiKey },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: input.system }] },
-      contents: input.contents,
-      generationConfig: { maxOutputTokens: 480, temperature: 0.3 },
-      ...(input.tools.length ? { tools: [{ functionDeclarations: input.tools }] } : {}),
-    }),
-    signal: AbortSignal.timeout(18_000),
+  const body = JSON.stringify({
+    systemInstruction: { parts: [{ text: input.system }] },
+    contents: input.contents,
+    generationConfig: geminiGenerationConfig(model),
+    ...(input.tools.length ? { tools: [{ functionDeclarations: input.tools }] } : {}),
   });
-  if (!res.ok) throw new Error(res.status === 429 ? "429" : String(res.status));
-  const raw = await res.text();
-  return fromGemini(raw, input.stream ? input.onDelta : undefined);
+  let last: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:${action}${input.stream ? "?alt=sse" : ""}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": input.apiKey },
+        body,
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (!res.ok) {
+        const detail = redactGeminiFault(await res.text());
+        const quota = res.status === 429 || /RESOURCE_EXHAUSTED|\bquota\b/i.test(detail);
+        if (!quota && attempt === 0 && (res.status === 502 || res.status === 503 || res.status === 504)) {
+          last = new Error(`${res.status}${detail ? ` ${detail}` : ""}`);
+          continue;
+        }
+        throw new Error(quota ? "429" : `${res.status}${detail ? ` ${detail}` : ""}`);
+      }
+      const raw = await res.text();
+      return fromGemini(raw, input.stream ? input.onDelta : undefined);
+    } catch (err) {
+      if (err instanceof Error && (err.message === "429" || /^\d{3}\b/.test(err.message))) throw err;
+      if (attempt === 0 && geminiRetryable(err)) {
+        last = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw last instanceof Error ? last : new Error("timeout");
 }
 
 function geminiHistory(history: { role: string; body: string }[], question: string) {
@@ -629,10 +691,7 @@ async function geminiReply(input: {
       else publicCalls.push({ name: call.function.name, args, raw });
     }
     if (privateNotes.length) return say([...privateNotes, ...publicCalls.map((call) => narrateCatalogue(call.raw))].filter(Boolean).join("\n\n"));
-    contents.push({
-      role: "model",
-      parts: turn.toolCalls.map((call) => ({ functionCall: { name: call.function.name, args: parseArgs(call.function.arguments) } })),
-    });
+    contents.push({ role: "model", parts: turn.modelParts.length ? turn.modelParts : turn.toolCalls.map((call) => ({ functionCall: { name: call.function.name, args: parseArgs(call.function.arguments) } })) });
     contents.push({
       role: "user",
       parts: publicCalls.map((call) => {
@@ -643,7 +702,8 @@ async function geminiReply(input: {
         } catch {
           response = { result: "The lookup failed." };
         }
-        return { functionResponse: { name: call.name, response } };
+        const providerId = turn.modelParts.find((part) => part.functionCall?.name === call.name)?.functionCall?.id;
+        return { functionResponse: { name: call.name, ...(providerId ? { id: providerId } : {}), response } };
       }),
     });
     break;
