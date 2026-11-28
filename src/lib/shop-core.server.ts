@@ -1584,7 +1584,7 @@ export function integrationStatus() {
     paystack: !!process.env.PAYSTACK_SECRET_KEY,
     resend: !!process.env.RESEND_API_KEY,
     google: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
-    ai: !!process.env.XAI_API_KEY,
+    ai: !!(process.env.GEMINI_API_KEY?.trim() || ((process.env.VERA_PROVIDER || "").trim().toLowerCase() === "xai" && process.env.XAI_API_KEY?.trim())),
     appUrl: process.env.APP_URL || "",
   };
 }

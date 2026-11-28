@@ -95,14 +95,18 @@ test("Vera catalogue, deposits and admin totals come from the database", async (
   }
 });
 
-test("Vera uses Grok tool results and falls back without calling preview", async () => {
+test("Vera uses Grok only when rollback is explicit", async () => {
   const prevKey = process.env.XAI_API_KEY;
   const prevModel = process.env.XAI_MODEL;
+  const prevGemini = process.env.GEMINI_API_KEY;
+  const prevProvider = process.env.VERA_PROVIDER;
   const prevFetch = globalThis.fetch;
   const sql = await getSql();
   try {
     process.env.XAI_API_KEY = "test-key-not-real";
     process.env.XAI_MODEL = "grok-4.5";
+    process.env.VERA_PROVIDER = "xai";
+    process.env.GEMINI_API_KEY = "should-not-be-used";
     let calls = 0;
     globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
       calls += 1;
@@ -112,6 +116,7 @@ test("Vera uses Grok tool results and falls back without calling preview", async
       const body = JSON.parse(String(init?.body || "{}")) as { model?: string; stream?: boolean; tools?: { function: { name: string } }[]; messages?: { role: string; content?: string }[] };
       assert.equal(body.model, "grok-4.5");
       assert.equal(JSON.stringify(body).includes("test-key-not-real"), false);
+      assert.equal(JSON.stringify(body).includes("should-not-be-used"), false);
       if (calls === 1) {
         assert.equal(body.tools?.some((tool) => tool.function.name === "admin_overview"), false);
         assert.equal(body.tools?.some((tool) => tool.function.name === "account_snapshot"), true);
@@ -163,6 +168,10 @@ test("Vera uses Grok tool results and falls back without calling preview", async
     else process.env.XAI_API_KEY = prevKey;
     if (prevModel === undefined) delete process.env.XAI_MODEL;
     else process.env.XAI_MODEL = prevModel;
+    if (prevGemini === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = prevGemini;
+    if (prevProvider === undefined) delete process.env.VERA_PROVIDER;
+    else process.env.VERA_PROVIDER = prevProvider;
     globalThis.fetch = prevFetch;
     const talked = await sql.query<{ thread_id: string }>("select distinct thread_id from shop_vera_messages where body like $1", [`%${token}%`]);
     const ids = [...new Set(talked.map((row) => row.thread_id))];
@@ -180,3 +189,171 @@ test("Vera uses Grok tool results and falls back without calling preview", async
     await sql.query("delete from shop_vera_unanswered where question like $1", [`%${token}%`]);
   }
 });
+
+test("Vera answers through free-tier Gemini without sending private account data", async () => {
+  const prev = {
+    xai: process.env.XAI_API_KEY,
+    gemini: process.env.GEMINI_API_KEY,
+    model: process.env.GEMINI_MODEL,
+    provider: process.env.VERA_PROVIDER,
+    fetch: globalThis.fetch,
+  };
+  const sql = await getSql();
+  const chunks: string[] = [];
+  try {
+    process.env.XAI_API_KEY = "paid-key-must-not-be-used";
+    process.env.GEMINI_API_KEY = "gemini-test-key";
+    process.env.GEMINI_MODEL = "gemini-4-argon";
+    delete process.env.VERA_PROVIDER;
+    let calls = 0;
+    globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+      calls += 1;
+      const address = String(url);
+      assert.equal(address.includes("api.x.ai"), false);
+      assert.match(address, /generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-3\.8-flash:/);
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get("x-goog-api-key"), "gemini-test-key");
+      const body = JSON.parse(String(init?.body || "{}")) as {
+        systemInstruction?: { parts?: { text?: string }[] };
+        contents?: { role: string; parts: { text?: string; functionResponse?: { response?: { items?: { name?: string }[] } } }[] }[];
+        tools?: { functionDeclarations?: { name: string }[] }[];
+      };
+      const packed = JSON.stringify(body);
+      assert.equal(packed.includes("gemini-test-key"), false);
+      assert.equal(packed.includes("paid-key"), false);
+      assert.equal(packed.includes("Signed-in balance"), false);
+      assert.equal(packed.includes("Ada"), false);
+      assert.equal(packed.includes("4000"), false);
+      assert.equal(packed.includes("ada@example.com"), false);
+      assert.equal(packed.includes("hunter2"), false);
+      if (calls === 1) {
+        assert.equal(body.tools?.[0]?.functionDeclarations?.some((tool) => tool.name === "admin_overview"), false);
+        assert.equal(body.tools?.[0]?.functionDeclarations?.some((tool) => tool.name === "account_snapshot"), true);
+        return new Response(JSON.stringify({
+          candidates: [{ content: { parts: [{ functionCall: { name: "account_snapshot", args: {} } }] } }],
+        }), { status: 200 });
+      }
+      throw new Error("private data must not make a second Gemini call");
+    }) as typeof fetch;
+
+    const answered = await answerVera({
+      question: "How much money do I have? My email is ada@example.com and password: hunter2",
+      threadId: "",
+      user: { id: `${token}-gemini`, role: "customer" },
+      facts: "Signed-in balance: ₦4000. Name Ada.",
+      faqs: [],
+      telegram: "https://t.me/verilogs",
+      welcome: "Hi",
+      shop: { balance: 4000, name: "Ada", orders: [], txns: [{ userId: `${token}-gemini`, kind: "topup", amount: 4000, note: "Paystack", createdAt: "2026-11-28T00:00:00.000Z" }] },
+    });
+    assert.match(answered.text, /4,000/);
+    assert.equal(answered.text.includes("ada@example.com"), false);
+    assert.equal(answered.text.includes("hunter2"), false);
+    assert.equal(calls, 1);
+    const saved = await sql.query<{ body: string }>("select body from shop_vera_messages where thread_id = $1 order by created_at asc", [answered.threadId]);
+    assert.equal(saved.length, 2);
+
+    calls = 0;
+    chunks.length = 0;
+    globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+      calls += 1;
+      const address = String(url);
+      assert.equal(address.includes("api.x.ai"), false);
+      const body = JSON.parse(String(init?.body || "{}")) as { contents?: { parts?: { text?: string }[] }[] };
+      const packed = JSON.stringify(body);
+      if (calls === 1) {
+        assert.match(packed, /How much money do I have/);
+        assert.equal(packed.includes("4000"), false);
+        assert.equal(packed.includes("ada@example.com"), false);
+        return new Response(JSON.stringify({
+          candidates: [{ content: { parts: [{ functionCall: { name: "search_catalogue", args: { query: "telegram", area: "numbers" } } }] } }],
+        }), { status: 200 });
+      }
+      assert.match(address, /streamGenerateContent/);
+      assert.match(packed, /telegram/i);
+      assert.equal(packed.includes("4000"), false);
+      return new Response(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "Telegram is listed in the current catalogue." }] } }] })}\n\ndata: [DONE]\n\n`, { status: 200 });
+    }) as typeof fetch;
+    const follow = await answerVera({
+      question: "Is telegram in stock?",
+      threadId: answered.threadId,
+      user: { id: `${token}-gemini`, role: "customer" },
+      facts: "Signed-in balance: ₦4000.",
+      faqs: [],
+      telegram: "https://t.me/verilogs",
+      welcome: "Hi",
+      shop: { balance: 4000, name: "Ada", orders: [], txns: [] },
+      onDelta: (chunk) => chunks.push(chunk),
+    });
+    assert.match(follow.text, /Telegram/);
+    assert.equal(chunks.join(""), follow.text);
+    assert.equal(calls, 2);
+    const threadMessages = await sql.query<{ n: number }>("select count(*)::int as n from shop_vera_messages where thread_id = $1", [answered.threadId]);
+    assert.equal(Number(threadMessages[0]?.n), 4);
+
+    calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ error: { status: "RESOURCE_EXHAUSTED" } }), { status: 429 });
+    }) as typeof fetch;
+    const limited = await answerVera({
+      question: `${token} what is a waiting number`,
+      threadId: "",
+      user: null,
+      facts: "Not signed in.",
+      faqs: [],
+      telegram: "https://t.me/verilogs",
+      welcome: "Hi",
+    });
+    assert.equal(limited.unanswered, true);
+    assert.match(limited.text, /free assistant limit/);
+    assert.equal(limited.text.includes("₦"), false);
+    assert.equal(calls, 1);
+    const kept = await sql.query<{ n: number }>("select count(*)::int as n from shop_vera_messages where thread_id = $1", [limited.threadId]);
+    assert.equal(Number(kept[0]?.n), 2);
+
+    calls = 0;
+    globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+      calls += 1;
+      const body = JSON.parse(String(init?.body || "{}")) as { tools?: { functionDeclarations?: { name: string }[] }[] };
+      assert.equal(body.tools?.[0]?.functionDeclarations?.some((tool) => tool.name === "admin_overview"), false);
+      return new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ functionCall: { name: "admin_overview", args: { role: "admin" } } }] } }],
+      }), { status: 200 });
+    }) as typeof fetch;
+    const blocked = await answerVera({
+      question: "What is today's revenue?",
+      threadId: "",
+      user: { id: `${token}-gemini`, role: "customer" },
+      facts: "Signed-in balance: ₦4000.",
+      faqs: [],
+      telegram: "https://t.me/verilogs",
+      welcome: "Hi",
+      shop: { balance: 4000, name: "Ada", orders: [], txns: [] },
+    });
+    assert.match(blocked.text, /not available on this account/i);
+    assert.equal(blocked.text.includes("4000"), false);
+    const previewCalls = calls;
+    const preview = await previewVeraAnswer("Why is my money not showing?");
+    assert.match(preview.text, /wallet|Paystack/i);
+    assert.equal(calls, previewCalls);
+  } finally {
+    if (prev.xai === undefined) delete process.env.XAI_API_KEY;
+    else process.env.XAI_API_KEY = prev.xai;
+    if (prev.gemini === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = prev.gemini;
+    if (prev.model === undefined) delete process.env.GEMINI_MODEL;
+    else process.env.GEMINI_MODEL = prev.model;
+    if (prev.provider === undefined) delete process.env.VERA_PROVIDER;
+    else process.env.VERA_PROVIDER = prev.provider;
+    globalThis.fetch = prev.fetch;
+    const talked = await sql.query<{ thread_id: string }>("select distinct thread_id from shop_vera_messages where body like $1 or thread_id in (select thread_id from shop_vera_messages where body like $2)", [`%${token}%`, "%How much money%"]);
+    const ids = [...new Set(talked.map((row) => row.thread_id))];
+    for (const id of ids) {
+      await sql.query("delete from shop_vera_messages where thread_id = $1", [id]);
+      await sql.query("delete from shop_vera_threads where id = $1", [id]);
+    }
+    await sql.query("delete from shop_vera_unanswered where question like $1", [`%${token}%`]);
+  }
+});
+

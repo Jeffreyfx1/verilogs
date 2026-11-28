@@ -71,6 +71,8 @@ test("Vera understands wallet trouble, typos, follow-ups and escalation", () => 
 
 test("publishing, Vera history and analytics use the real rows", async () => {
   delete process.env.XAI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.VERA_PROVIDER;
   const sql = await getSql();
   const before = await adminPage("notices");
   assert.ok(before);
