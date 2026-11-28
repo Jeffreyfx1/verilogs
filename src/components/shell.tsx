@@ -134,13 +134,18 @@ export function AppShell({ admin, children }: { admin?: boolean; children: React
     <div className="shell-screen flex overflow-hidden bg-paper text-ink">
       {open ? <button className="fixed inset-0 z-30 bg-deep/40 lg:hidden" aria-label="Close menu" onClick={() => setOpen(false)} /> : null}
       <aside className={`shell-aside fixed inset-y-0 left-0 z-40 flex w-80 flex-col border-r border-line bg-card transition-transform lg:static lg:translate-x-0 ${open ? "is-open translate-x-0" : "-translate-x-full"}`}>
-        <div className="flex items-center justify-between px-4 py-4">
+        <div className="flex items-center justify-between gap-2 px-4 py-4">
           <Link to={admin ? "/admin" : "/dashboard"} onClick={() => setOpen(false)}>
             <Logo />
           </Link>
-          <button className="rounded-lg p-1 text-[#5b4cdb] lg:hidden" onClick={() => setOpen(false)} aria-label="Close">
-            <Glyph icon={glyph.close} className="size-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="hidden lg:inline-flex">
+              <NoticeBell />
+            </span>
+            <button className="rounded-lg p-1 text-[#5b4cdb] lg:hidden" onClick={() => setOpen(false)} aria-label="Close">
+              <Glyph icon={glyph.close} className="size-5" />
+            </button>
+          </div>
         </div>
         <div className="px-4 pb-3">
           <p className="truncate text-xs text-muted">{user.email}</p>

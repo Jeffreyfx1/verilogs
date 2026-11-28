@@ -6,6 +6,7 @@ import { Button, Field, inputClass } from "@/components/ui";
 import { naira, when } from "@/lib/money";
 import { profitReport, catalogStats, adminCustomerCounts } from "@/lib/shop-fns";
 import { useServers, useStore } from "@/lib/store";
+import { AdminNoticeList } from "@/components/bell";
 
 export const Route = createFileRoute("/admin/")({ component: AdminHome });
 
@@ -14,6 +15,8 @@ function AdminHome() {
   const orders = useStore((s) => s.orders);
   const users = useStore((s) => s.users);
   const tickets = useStore((s) => s.tickets);
+  const notes = useStore((s) => s.notifications);
+  const unread = notes.filter((note) => !note.read).length;
   const setProvider = useStore((s) => s.setProvider);
   const servers = useServers();
   const [stats, setStats] = useState({ total: 0, live: 0, byCategory: {} as Record<string, number>, byProvider: {} as Record<string, { count: number; live: number }> });
@@ -31,6 +34,16 @@ function AdminHome() {
         <h1 className="text-2xl font-extrabold">Admin</h1>
         <p className="text-sm text-muted">Catalogue, wallets and orders. Profit below uses completed orders only.</p>
       </div>
+      <section className="rounded-card border border-line bg-card p-5 shadow-card">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-bold">Notifications</h2>
+          {unread ? <span className="rounded-full bg-danger px-2 py-0.5 text-xs font-bold text-white">{unread} new</span> : null}
+        </div>
+        <p className="mt-1 text-sm text-muted">Complaints, purchases and new customers. The bell updates while this page is open.</p>
+        <div className="mt-3">
+          <AdminNoticeList notes={notes} />
+        </div>
+      </section>
       <section className="rounded-card border border-primary/30 bg-card p-5 shadow-card">
         <p className="text-xs font-bold tracking-wide text-muted">TOTAL BUSINESS PROFIT</p>
         <p className="mt-1 text-3xl font-extrabold">{naira(profit?.total || 0)}</p>

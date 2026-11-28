@@ -43,6 +43,15 @@ function pushNote(data: Data, userId: string, title: string, body: string, kind:
   return { ...data, notifications: [item, ...(data.notifications || [])].slice(0, 200) };
 }
 
+function noteAdmins(data: Data, title: string, body: string, kind: Note["kind"], href = "", exceptId = ""): Data {
+  let next = data;
+  for (const user of data.users) {
+    if (user.role !== "admin" || !user.id || user.id === exceptId) continue;
+    next = pushNote(next, user.id, title, body, kind, href);
+  }
+  return next;
+}
+
 export function pushShopNote(data: Data, userId: string, title: string, body: string, href = ""): Data {
   return pushNote(data, userId, title, body, "support", href);
 }
@@ -97,8 +106,7 @@ export async function registerUser(data: Data, input: { name: string; email: str
   };
   let next = { ...data, users: [...data.users, user] };
   next = pushNote(next, user.id, "Welcome to VeriLogs", "Your account is ready. Fund the wallet with Paystack, then buy a number, data or a bill.", "account");
-  const admin = data.users.find((u) => u.role === "admin");
-  if (admin) next = pushNote(next, admin.id, "New customer", `${user.name} · ${user.email}`, "account");
+  next = noteAdmins(next, `${user.name} joined VeriLogs`, user.email, "account", "/admin/customers");
   return { error: null, data: next, userId: user.id, referrerId: user.referredBy || "", mail: { to: user.email, subject: "Welcome to VeriLogs", text: `Hi ${user.name}, your VeriLogs account is ready. Fund your naira wallet, then buy numbers, data or other digital services.` } };
 }
 
@@ -134,6 +142,7 @@ export function completeGoogle(data: Data, draft: Draft | null, input: { name: s
   };
   let next = { ...data, users: [...data.users, user] };
   next = pushNote(next, user.id, "Welcome to VeriLogs", "Google sign-in is linked. Fund the wallet when you are ready to buy.", "account");
+  next = noteAdmins(next, `${user.name} joined VeriLogs`, user.email, "account", "/admin/customers");
   return { error: null, data: next, userId: user.id, mail: { to: user.email, subject: "Welcome to VeriLogs", text: `Hi ${user.name}, your Google account is linked to VeriLogs.` } };
 }
 
@@ -225,6 +234,7 @@ export function buyProduct(data: Data, userId: string | null, productId: string,
     txns: [{ id: uid("txn"), userId: user.id, kind: "purchase", amount: -amount, note: product.name, createdAt: order.createdAt }, ...data.txns],
   };
   next = pushNote(next, user.id, "Order placed", `${product.name} · ₦${amount.toLocaleString("en-NG")}`, "order");
+  next = noteAdmins(next, `${user.name || "A customer"} made a purchase`, `${product.name} · ₦${amount.toLocaleString("en-NG")}`, "order", "/admin/orders", user.role === "admin" ? user.id : "");
   return { error: null, data: next };
 }
 
@@ -258,7 +268,7 @@ export function recordAirtimeOrder(data: Data, userId: string | null, input: { n
     providerStatus: "",
     refillAvailable: false,
   };
-  const next = pushNote(
+  const placed = pushNote(
     {
       ...data,
       users: data.users.map((item) => (item.id === user.id ? { ...item, balance: item.balance - amount } : item)),
@@ -270,6 +280,7 @@ export function recordAirtimeOrder(data: Data, userId: string | null, input: { n
     `${input.title} · ₦${amount.toLocaleString("en-NG")}`,
     "order",
   );
+  const next = noteAdmins(placed, `${user.name || "A customer"} made a purchase`, `${input.title} · ₦${amount.toLocaleString("en-NG")}`, "order", "/admin/orders", user.role === "admin" ? user.id : "");
   return { error: null, data: next, order };
 }
 
@@ -307,7 +318,7 @@ export function recordRentOrder(data: Data, userId: string | null, input: { offe
     delivery: "",
     messages: [],
   };
-  const next = pushNote(
+  const placed = pushNote(
     {
       ...data,
       users: data.users.map((item) => (item.id === user.id ? { ...item, balance: item.balance - amount } : item)),
@@ -319,6 +330,7 @@ export function recordRentOrder(data: Data, userId: string | null, input: { offe
     `${input.title} · ₦${amount.toLocaleString("en-NG")}`,
     "order",
   );
+  const next = noteAdmins(placed, `${user.name || "A customer"} made a purchase`, `${input.title} · ₦${amount.toLocaleString("en-NG")}`, "order", "/admin/orders", user.role === "admin" ? user.id : "");
   return { error: null, data: next, order };
 }
 

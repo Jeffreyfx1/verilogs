@@ -233,8 +233,8 @@ export async function submitComplaint(actor: Actor, input: {
     { userId: actor.id, title: "Complaint received", body: `${reference} · ${subject}`, href: customerHref(id) },
     ...admins.map((userId) => ({
       userId,
-      title: "New complaint",
-      body: `${cleanLine(actor.name, 80) || "Customer"} · ${reference} · ${subject}`,
+      title: `${cleanLine(actor.name, 80) || "A customer"} made a complaint`,
+      body: `${reference} · ${subject}`,
       href: adminHref(id),
     })),
   ]);
@@ -362,8 +362,8 @@ export async function replyComplaint(actor: Actor, rawId: string, rawBody: strin
   const admins = await adminNoteTargets();
   await notify(admins.map((userId) => ({
     userId,
-    title: "Complaint reply",
-    body: `${cleanLine(actor.name, 80) || "Customer"} replied on ${reference}`,
+    title: `${cleanLine(actor.name, 80) || "A customer"} replied to a complaint`,
+    body: reference || "Open the complaint",
     href: adminHref(id),
   })));
   return { error: null as string | null, id };

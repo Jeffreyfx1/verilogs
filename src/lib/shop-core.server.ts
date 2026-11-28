@@ -242,13 +242,19 @@ async function saveDoc(doc: Data, _catalog = false) {
   await writeState({ ...doc, products: [] });
 }
 
+function safeNoteHref(href: string) {
+  if (/^\/(?:dashboard|admin)\/complaints\/[A-Za-z0-9_-]{4,48}$/.test(href)) return href;
+  if (href === "/admin/orders" || href === "/admin/customers" || href === "/admin/complaints" || href === "/dashboard/complaints") return href;
+  return "";
+}
+
 export async function deliverSupportNotes(notes: { userId: string; title: string; body: string; href: string }[]) {
   const list = notes.filter((note) => note.userId && note.title && note.body);
   if (!list.length) return;
   await locked(async () => {
     let doc = await loadLight();
     for (const note of list) {
-      const href = /^\/(?:dashboard|admin)\/complaints\/[A-Za-z0-9_-]{4,48}$/.test(note.href) ? note.href : "";
+      const href = safeNoteHref(note.href);
       doc = pushShopNote(doc, note.userId, note.title.slice(0, 140), note.body.slice(0, 400), href);
     }
     await saveDoc(doc);
